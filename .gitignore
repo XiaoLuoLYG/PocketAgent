@@ -18,6 +18,7 @@ docs/superpowers/
 tool-gateway/.env.local
 tool-gateway/.env
 tool-gateway/.smoke/
+entry/src/main/resources/rawfile/aiphone_provider_config.json
 
 # Local verification captures
 /aiphone-*.jpeg

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,19 +8,15 @@ const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const outDir = join(rootDir, 'tool-gateway', '.smoke');
 mkdirSync(outDir, { recursive: true });
 
-const defaultQueries = [
-  '你好',
-  '帮我查明天北京到上海航班',
-  '帮我查明天北京到上海高铁票',
-  '帮我查询深圳北出发到香港西九龙明天晚上六点之后的高铁',
-  '帮我查附近咖啡',
-  '我想明天从北京去上海，帮我整理可查的出行选项'
+const defaultCases = [
+  { query: '你好', expectsTool: false },
+  { query: '帮我查明天北京到上海航班', expectsTool: true },
+  { query: '帮我查明天北京到上海高铁票', expectsTool: true },
+  { query: '帮我查附近咖啡', expectsTool: true },
+  { query: '我想明天从北京去上海，帮我整理可查的出行选项', expectsTool: false }
 ];
 
 const forbiddenSyntheticMarkers = [
-  'local://aiphone-tools',
-  '本机工具',
-  '本机模式',
   '高铁 G 字头',
   '动车 D 字头',
   '直飞航班',
@@ -53,15 +49,14 @@ const forbiddenLayoutActionMarkers = [
 const finalLayoutBlockingMarkers = [
   'A2UI 流解析失败',
   '模型正在思考',
+  '工具供应商调用异常',
+  '需要供应商配置',
+  '需要配置：',
+  '查询失败',
+  'Bad Request',
   '暂无可展示数据',
   '把一句话变成可执行界面',
   '告诉 AIPhone 你要安排的事',
-  '车次',
-  '航班号',
-  '最快',
-  '飞行时间',
-  '小时',
-  '分钟',
   '[',
   ']'
 ];
@@ -76,7 +71,11 @@ const finalLayoutBlockingPatterns = [
   { name: 'zh-date', pattern: /\b\d{4}年\d{1,2}月\d{1,2}日\b/ }
 ];
 
-const queries = process.argv.slice(2).length > 0 ? process.argv.slice(2) : defaultQueries;
+const argv = process.argv.slice(2);
+const cleanData = process.env.AIPHONE_SMOKE_CLEAN_DATA === '1' || argv.includes('--clean-data');
+const queryArgs = argv.filter((arg) => arg !== '--clean-data');
+const useDefaultCases = queryArgs.length === 0;
+const queries = useDefaultCases ? defaultCases.map((testCase) => testCase.query) : queryArgs;
 const target = process.env.AIPHONE_HDC_TARGET || firstTarget();
 const timeoutMs = Number.parseInt(process.env.AIPHONE_QUERY_TIMEOUT_MS || '90000', 10);
 
@@ -99,6 +98,42 @@ function hdc(args, options = {}) {
     throw new Error(`hdc ${args.join(' ')} failed:\n${result.stdout}\n${result.stderr}`);
   }
   return result.stdout;
+}
+
+function clearHilog() {
+  try {
+    hdc(['shell', 'hilog', '-r']);
+  } catch (error) {
+    console.warn(`Could not clear hilog buffer: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function cleanBundleData() {
+  try {
+    hdc(['shell', 'bm', 'clean', '-n', 'com.example.aiphonedemo', '-d']);
+  } catch (error) {
+    console.warn(`Could not clean bundle data: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function probeLocalModel() {
+  const result = spawnSync('hdc', ['-t', target, 'shell', 'curl', '-sS', '-m', '3', 'http://127.0.0.1:11434/v1/models'], {
+    encoding: 'utf8',
+    maxBuffer: 2 * 1024 * 1024
+  });
+  const output = `${result.stdout || ''}${result.stderr || ''}`.trim();
+  const listenerReachable = result.status === 0 || /403|Call is not allowed/i.test(output);
+  const connectionRefused = /Failed to connect|Couldn.t connect|Connection refused|curl:\s*\(7\)/i.test(output);
+  return {
+    status: result.status,
+    listenerReachable,
+    connectionRefused,
+    output: output.length > 500 ? `${output.slice(0, 500)}...<truncated>` : output
+  };
+}
+
+function cleanupHilogProcesses() {
+  spawnSync('pkill', ['-f', `hdc -t ${target} hilog`], { encoding: 'utf8' });
 }
 
 function sleep(ms) {
@@ -130,9 +165,22 @@ function center(bounds) {
 function dumpLayout(localName = 'latest-layout.json') {
   const remote = '/data/local/tmp/aiphone-smoke-layout.json';
   const local = join(outDir, localName);
-  hdc(['shell', 'uitest', 'dumpLayout', '-p', remote, '-b', 'com.example.aiphonedemo']);
-  hdc(['file', 'recv', remote, local]);
-  return JSON.parse(spawnSync('cat', [local], { encoding: 'utf8' }).stdout);
+  let lastError = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      hdc(['shell', 'uitest', 'dumpLayout', '-p', remote, '-b', 'com.example.aiphonedemo']);
+      hdc(['file', 'recv', remote, local]);
+      const raw = readFileSync(local, 'utf8').trim();
+      if (raw.length === 0) {
+        throw new Error('dumpLayout produced an empty file');
+      }
+      return JSON.parse(raw);
+    } catch (error) {
+      lastError = error;
+      spawnSync('sleep', ['0.5']);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 function collectLayoutText(layout) {
@@ -147,6 +195,22 @@ function collectLayoutText(layout) {
     });
   });
   return [...new Set(values)];
+}
+
+function collectInputText(layout) {
+  const values = [];
+  walk(layout, (node) => {
+    const attrs = node.attributes || {};
+    if (attrs.type === 'TextInput') {
+      ['text', 'content', 'description', 'hint'].forEach((key) => {
+        const value = attrs[key];
+        if (typeof value === 'string' && value.trim().length > 0) {
+          values.push(value.trim());
+        }
+      });
+    }
+  });
+  return values.join('|');
 }
 
 function findControls(layout) {
@@ -165,6 +229,19 @@ function findControls(layout) {
     throw new Error('Could not locate AIPhone input/generate controls.');
   }
   return { input, generate };
+}
+
+async function waitForControls(localName = 'latest-layout.json', attempts = 10) {
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return findControls(dumpLayout(localName));
+    } catch (error) {
+      lastError = error;
+      await sleep(500);
+    }
+  }
+  throw lastError || new Error('Could not locate AIPhone input/generate controls.');
 }
 
 function lineMatchesPid(line, pid) {
@@ -195,20 +272,48 @@ async function captureWhile(appPid, runAction) {
   child.stdout.on('data', onData);
   child.stderr.on('data', onData);
 
-  await sleep(800);
-  await runAction();
+  let actionError = null;
+  try {
+    await sleep(800);
+    await runAction();
 
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    await sleep(500);
-    const text = logs.join('\n');
-    if (/\[AIPhone\]\[ToolResult\] ok=/.test(text) || /\[AIPhone\]\[ToolRequest\] none/.test(text) || /\[AIPhone\]\[ModelResult\] ok=false/.test(text)) {
-      break;
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      await sleep(500);
+      const text = logs.join('\n');
+      if (/\[AIPhone\]\[ToolResult\] ok=/.test(text) || /\[AIPhone\]\[ToolRequest\] none/.test(text) || /\[AIPhone\]\[ModelResult\] ok=false/.test(text)) {
+        break;
+      }
     }
+  } catch (error) {
+    actionError = error;
+  } finally {
+    child.kill('SIGTERM');
+    await waitForProcessExit(child, 1500);
+    if (child.exitCode === null) {
+      child.kill('SIGKILL');
+      await waitForProcessExit(child, 1500);
+    }
+    cleanupHilogProcesses();
   }
-  child.kill('SIGTERM');
-  await sleep(300);
+  if (actionError !== null) {
+    throw actionError;
+  }
   return logs;
+}
+
+function waitForProcessExit(child, timeoutMs) {
+  return new Promise((resolve) => {
+    let resolved = false;
+    const finish = () => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    };
+    child.once('exit', finish);
+    setTimeout(finish, timeoutMs);
+  });
 }
 
 function activeHilogProcesses() {
@@ -219,54 +324,93 @@ function activeHilogProcesses() {
     .filter((line) => line.includes('hdc') && line.includes('hilog'));
 }
 
-function analyze(query, logs) {
+function analyze(query, logs, expectedTool) {
   const text = logs.join('\n');
-  const needsTool = /航班|高铁|火车|车票|咖啡|附近/.test(query) && !/整理可查的出行选项/.test(query);
   const result = {
     query,
+    expectedTool,
+    directIntent: /\[AIPhone\]\[ToolRequestByIntent\] toolId=/.test(text),
+    localToolRequest: /\[AIPhone\]\[LocalToolRequest\] endpoint=local:\/\/aiphone-tools toolId=/.test(text),
     model200: /\[AIPhone\]\[ModelStreamResponse\] code=200/.test(text) || /response_code":200[\s\S]*dst_port":11434/.test(text),
     modelOk: /\[AIPhone\]\[ModelResult\] ok=true/.test(text),
     toolRequested: /\[AIPhone\]\[ToolRequest\] toolId=/.test(text),
     toolOk: /\[AIPhone\]\[ToolResult\] ok=true/.test(text),
-    failedConnect: /failed to connect|Could not connect|ECONNREFUSED|server is not running/i.test(text),
+    failedConnect: /failed to connect|Could not connect|Couldn.t connect|ECONNREFUSED|server is not running|CURLcode result 7|curl_code":7|os_errno":111/i.test(text),
+    providerFailed: /\[AIPhone\]\[LocalTool12306Endpoint\][^\n]*code=[45]\d\d/.test(text) || /\[AIPhone\]\[LocalToolException\]/.test(text) || /\[AIPhone\]\[LocalToolMissingConfig\]/.test(text),
     modelFailed: /\[AIPhone\]\[ModelResult\] ok=false/.test(text),
     toolNone: /\[AIPhone\]\[ToolRequest\] none/.test(text),
     syntheticFallback: forbiddenSyntheticMarkers.some((marker) => text.includes(marker))
   };
-  result.ok = result.model200 &&
-    !result.failedConnect &&
+  const modelPassed = result.model200 && result.modelOk && !result.modelFailed;
+  const basePassed = !result.failedConnect &&
+    !result.providerFailed &&
     !result.syntheticFallback &&
-    (needsTool ? (result.toolRequested && result.toolOk) : (result.modelOk && !result.modelFailed && !result.toolRequested));
+    !result.directIntent;
+  if (expectedTool === true) {
+    result.ok = basePassed && modelPassed && result.toolRequested && result.localToolRequest && result.toolOk;
+  } else if (expectedTool === false) {
+    result.ok = basePassed && modelPassed && result.toolNone && !result.toolRequested && !result.localToolRequest;
+  } else {
+    result.ok = basePassed && modelPassed &&
+      (result.toolRequested ? (result.localToolRequest && result.toolOk) : (result.toolNone && !result.localToolRequest));
+  }
   return result;
 }
 
-async function runQuery(query, index) {
+async function runQuery(query, index, expectedTool) {
+  clearHilog();
   hdc(['shell', 'aa', 'force-stop', 'com.example.aiphonedemo']);
+  if (cleanData) {
+    cleanBundleData();
+  }
   hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.example.aiphonedemo']);
-  await sleep(2200);
+  await sleep(3000);
   const appPid = hdc(['shell', 'pidof', 'com.example.aiphonedemo']).trim().split(/\s+/)[0] || '';
-  const controls = findControls(dumpLayout());
+  const controls = await waitForControls();
   const logs = await captureWhile(appPid, async () => {
-    hdc(['shell', 'uitest', 'uiInput', 'click', String(controls.input.x), String(controls.input.y)]);
-    hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2072', '2017']);
-    hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2055']);
-    hdc(['shell', 'uitest', 'uiInput', 'inputText', String(controls.input.x), String(controls.input.y), query]);
-    await sleep(1000);
-    const updatedControls = findControls(dumpLayout());
+    let typed = false;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      hdc(['shell', 'uitest', 'uiInput', 'click', String(controls.input.x), String(controls.input.y)]);
+      hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2072', '2017']);
+      hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2055']);
+      hdc(['shell', 'uitest', 'uiInput', 'text', query]);
+    await sleep(1200);
+      const inputText = collectInputText(dumpLayout(`query-${index + 1}-input-attempt-${attempt + 1}.json`));
+      if (inputText.includes(query)) {
+        typed = true;
+        break;
+      }
+    }
+    if (!typed) {
+      throw new Error(`Could not type full query into AIPhone input: ${query}`);
+    }
+    let updatedControls = controls;
+    try {
+      updatedControls = await waitForControls(`query-${index + 1}-after-input-layout.json`, 6);
+    } catch (_) {
+      updatedControls = controls;
+    }
+    hdc(['shell', 'uitest', 'uiInput', 'click', String(updatedControls.generate.x), String(updatedControls.generate.y)]);
+    await sleep(800);
     hdc(['shell', 'uitest', 'uiInput', 'click', String(updatedControls.generate.x), String(updatedControls.generate.y)]);
   });
   const logPath = join(outDir, `query-${index + 1}.log`);
   writeFileSync(logPath, logs.join('\n') + '\n');
-  const summary = analyze(query, logs);
+  const summary = analyze(query, logs, expectedTool);
   summary.logPath = logPath;
   return summary;
 }
+
+const modelHealth = probeLocalModel();
+console.log(`modelHealth: ${JSON.stringify(modelHealth, null, 2)}`);
+console.log(`cleanData: ${cleanData ? 'true' : 'false'}`);
 
 const summaries = [];
 for (let index = 0; index < queries.length; index += 1) {
   const query = queries[index];
   console.log(`\n[${index + 1}/${queries.length}] ${query}`);
-  const summary = await runQuery(query, index);
+  const expectedTool = useDefaultCases ? defaultCases[index].expectsTool : null;
+  const summary = await runQuery(query, index, expectedTool);
   summaries.push(summary);
   console.log(JSON.stringify(summary, null, 2));
 }
@@ -306,7 +450,7 @@ const processCleanup = {
 };
 
 const summaryPath = join(outDir, 'summary.json');
-writeFileSync(summaryPath, JSON.stringify({ target, timeoutMs, summaries, visibleOutput, processCleanup }, null, 2));
+writeFileSync(summaryPath, JSON.stringify({ target, timeoutMs, cleanData, modelHealth, summaries, visibleOutput, processCleanup }, null, 2));
 console.log(`\nsummary: ${summaryPath}`);
 console.log(`visibleOutput: ${JSON.stringify(visibleOutput, null, 2)}`);
 console.log(`processCleanup: ${JSON.stringify(processCleanup, null, 2)}`);

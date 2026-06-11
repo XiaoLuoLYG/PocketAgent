@@ -78,7 +78,7 @@ export default function a2uiParserTest() {
       const content =
         '<think>private reasoning</think>\n' +
         '```json\n' +
-        '{"createSurface":{"surfaceId":"s","root":"root","title":"你好"}}\n' +
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"s","root":"root","title":"你好"}}\n' +
         '```\n' +
         'done\n';
       const extracted = extractA2uiJsonlFromModelChunk(content);

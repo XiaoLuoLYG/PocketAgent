@@ -1,6 +1,8 @@
 # AIPhone Tool Gateway
 
-This small local gateway gives the HarmonyOS demo one stable backend endpoint for tool calls.
+This optional local gateway gives the HarmonyOS demo a stable HTTP endpoint for development-time tool-call smoke tests.
+
+The app does not need this service for its default runtime path. Current HAP builds keep `flight.search`, `train.search`, and `food.search` on `local://aiphone-tools`; the device calls 12306, VariFlight, and Amap directly. Use `scripts/sync-provider-config.mjs` before installation to package provider keys into the ignored HAP rawfile.
 
 ## Start
 
@@ -19,13 +21,13 @@ launchctl submit -l com.aiphone.toolgateway \
   -- /opt/homebrew/bin/node /Users/luoyige/DevEcoStudioProjects/AIPhoneDemo/tool-gateway/server.mjs
 ```
 
-For device testing through HDC reverse port:
+For explicit HTTP gateway testing through HDC reverse port:
 
 ```bash
 hdc -t 45N0124A19000274 rport tcp:8787 tcp:8787
 ```
 
-The app can then call `http://127.0.0.1:8787` from the HarmonyOS device.
+Only use this if you have intentionally switched the app to an HTTP gateway for development. The default HAP does not call `http://127.0.0.1:8787`.
 
 Stop the launchd job:
 
@@ -63,7 +65,11 @@ Responses use `application/a2ui+json` JSONL:
 {"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_train_search","path":"/trains","value":[{"trainCode":"G1","from":"北京南","to":"上海虹桥","depart":"09:00","arrive":"13:28","duration":"4小时28分","seats":"二等座有票","status":"success"}]}}
 ```
 
-Copy `tool-gateway/.env.example` to `tool-gateway/.env.local`, then fill the keys you have. `.env.local` is ignored by git.
+Copy `tool-gateway/.env.example` to `tool-gateway/.env.local`, then fill the keys you have. `.env.local` is ignored by git. For the app runtime path, run this from the repo root before building:
+
+```bash
+node scripts/sync-provider-config.mjs
+```
 
 ## Recommended Real Providers
 

@@ -87,7 +87,8 @@ export interface ModelThinkChunk {
 }
 
 const SYSTEM_PROMPT: string =
-  '你是 AIPhone 的本地模型。必须只输出 A2UI v0.9.1 JSONL；如需思考，只能放在 <think>...</think>，不要输出普通中文分析，不要 Markdown，不要代码块，不要自然语言前后缀。' +
+  '你是 AIPhone 的本地模型。必须使用 no_think 模式，禁止输出 <think>、推理过程、普通中文分析、Markdown、代码块或自然语言前后缀；第一字符必须是 {。' +
+  '必须只输出 A2UI v0.9.1 JSONL。每一行都是完整 JSON envelope；不要解释为什么这样选工具。' +
   'A2UI 正文每一行都是一个 JSON envelope，只能使用 createSurface, updateComponents, updateDataModel, deleteSurface 四种消息。' +
   '第一行必须 createSurface，字段包含 surfaceId, root, title, intent, status, sendDataModel。' +
   '组件使用 flat component map，通过 SurfaceRoot.child 或 Column/Row.children 组成邻接树。' +
@@ -97,11 +98,11 @@ const SYSTEM_PROMPT: string =
   '数据必须通过 updateDataModel 写入 JSON Pointer 路径，组件用 dataPath 读取，不要把大量结果直接塞进 body。' +
   '思考态用 ThinkingStream；真实班次/航班/店铺结果只能由工具网关返回，你在模型阶段禁止输出 TrainOptions、FlightBoard、FoodChoices 以及 /trains、/flights、/foods。' +
   '先判断用户意图，再选唯一输出形态：' +
-  '1) 实时查询：用户需要 live 库存、可订班次、附近店铺等当前可查结果 → createSurface(status=calling_tool)；updateComponents 含 ThinkingStream(dataPath=/thoughts)；updateDataModel /thoughts；updateDataModel /toolRequest 后立即停止，禁止继续输出。' +
+  '1) 实时查询：用户需要 live 库存、可订班次、附近店铺等当前可查结果 → 必须连续输出 createSurface(status=calling_tool)、updateComponents(含 ThinkingStream)、updateDataModel /thoughts、updateDataModel /toolRequest 四类 envelope 后立即停止；禁止只输出 createSurface 就结束。' +
   '2) 非实时整理：用户要方案、比较、方向梳理，不要求立刻查 live 库存 → SurfaceRoot + InfoRows(dataPath=/rows) + updateDataModel /rows，禁止 /toolRequest。' +
   '3) 寒暄或说明 → SurfaceRoot + Text 或简短 InfoRows。' +
-  'toolId 映射：铁路/高铁/动车/12306 → train.search；航空/航班/机票 → flight.search；餐饮/外卖/附近 POI → food.search。' +
-  '/toolRequest 是唯一合法路径，禁止 /toolRequests；值必须是 {"toolId":"train.search|flight.search|food.search","prompt":"原始中文请求","actionId":"model_tool_request"}。' +
+  '可用工具：train.search 用于查询铁路车次和余票；flight.search 用于查询航班；food.search 用于查询周边餐饮和 POI。必须由你根据完整用户意图选择是否需要工具以及唯一 toolId。' +
+  '如果你选择 status=calling_tool，同一次响应中必须包含 /toolRequest；/toolRequest 是唯一合法路径，禁止 /toolRequests；值必须是 {"toolId":"train.search|flight.search|food.search","prompt":"原始中文请求","actionId":"model_tool_request"}。' +
   '整理类 /rows 的 value 必须是 [{"label":"...","value":"..."}]；只写用户已给信息与下一步确认项，不要编造精确班次、价格、耗时、库存、营业状态。' +
   '订票、下单、支付、抢票不能自动执行；交易请求只用 Text 或 ErrorNotice 告知需用户自行确认。' +
   '示例 A，寒暄：' +
@@ -137,6 +138,65 @@ function logSnippet(text: string): string {
     return cleaned;
   }
   return cleaned.substring(0, 420) + '...<truncated>';
+}
+
+function describeThrown(error: Error | Object | string | number | boolean | null | undefined): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (typeof error === 'number' || typeof error === 'boolean') {
+    return error.toString();
+  }
+  const json = JSON.stringify(error);
+  if (json.length > 0 && json !== '{}') {
+    return json;
+  }
+  return String(error);
+}
+
+function isLocalModelConnectionFailure(settings: LocalModelSettings, message: string): boolean {
+  if (!isLocalBaseUrl(settings.baseUrl)) {
+    return false;
+  }
+  const lower = message.toLowerCase();
+  return lower.indexOf('failed to connect') >= 0 ||
+    lower.indexOf('couldn') >= 0 ||
+    lower.indexOf('connection refused') >= 0 ||
+    lower.indexOf('curl code 7') >= 0 ||
+    lower.indexOf('curl_code":7') >= 0 ||
+    lower.indexOf('os_errno":111') >= 0 ||
+    lower.indexOf('2300007') >= 0;
+}
+
+function modelTransportErrorTitle(settings: LocalModelSettings, message: string, fallbackTitle: string): string {
+  if (isLocalModelConnectionFailure(settings, message)) {
+    return '本地模型服务不可用';
+  }
+  return fallbackTitle;
+}
+
+function describeModelTransportError(settings: LocalModelSettings, endpoint: string, error: Error | Object | string | number | boolean | null | undefined): string {
+  const message = describeThrown(error);
+  if (isLocalModelConnectionFailure(settings, message)) {
+    return message + '。请求地址=' + endpoint + '。这表示设备本机 127.0.0.1:11434 没有可用模型服务监听；不是 Mac tool-gateway，也不是 12306/飞常准/高德 key 异常。';
+  }
+  if (message.length > 0) {
+    return message;
+  }
+  return 'unknown model transport error';
+}
+
+function shouldRetryLocalModelTransport(settings: LocalModelSettings, result: A2uiCallResult): boolean {
+  return !result.ok && isLocalModelConnectionFailure(settings, result.error);
+}
+
+function waitBeforeLocalModelRetry(): Promise<void> {
+  return new Promise<void>((resolve: () => void) => {
+    setTimeout(resolve, 1500);
+  });
 }
 
 export function buildChatCompletionsUrl(baseUrl: string): string {
@@ -1264,8 +1324,10 @@ async function callNonStreamingModel(settings: LocalModelSettings, body: OpenAiR
       surface: store.getSurface()
     };
   } catch (error) {
-    const message = JSON.stringify(error);
-    store.applyError('模型调用异常', message);
+    const message = describeModelTransportError(settings, endpoint, error);
+    aiLogError('[AIPhone][ModelException] endpoint=' + endpoint + ' error=' + logSnippet(message) +
+      ' rawChars=' + rawResponse.length.toString() + ' assistantChars=' + assistantDebug.length.toString());
+    store.applyError(modelTransportErrorTitle(settings, message, '模型调用异常'), message);
     return {
       ok: false,
       raw: rawResponse,
@@ -1484,8 +1546,10 @@ async function callStreamingModel(settings: LocalModelSettings, body: OpenAiRequ
       surface: store.getSurface()
     };
   } catch (error) {
-    const message = JSON.stringify(error);
-    store.applyError('模型流式调用异常', message);
+    const message = describeModelTransportError(settings, endpoint, error);
+    aiLogError('[AIPhone][ModelStreamException] endpoint=' + endpoint + ' error=' + logSnippet(message) +
+      ' rawChars=' + rawResponse.length.toString() + ' assistantChars=' + assistantDebug.length.toString());
+    store.applyError(modelTransportErrorTitle(settings, message, '模型流式调用异常'), message);
     const finalizedAssistantDebug = finalizeAssistantDebug(assistantDebug, reasoningOpenInAssistantDebug);
     return {
       ok: false,
@@ -1520,10 +1584,17 @@ export async function callLocalModel(settings: LocalModelSettings, prompt: strin
   });
   aiLogInfo('[AIPhone][A2UIModelRequest] ' + truncateDebugText(requestDebug));
 
-  if (shouldStream) {
-    return callStreamingModel(settings, body, requestDebug, onSurface);
+  const result = shouldStream ?
+    await callStreamingModel(settings, body, requestDebug, onSurface) :
+    await callNonStreamingModel(settings, body, requestDebug);
+  if (!shouldRetryLocalModelTransport(settings, result)) {
+    return result;
   }
-  return callNonStreamingModel(settings, body, requestDebug);
+  aiLogInfo('[AIPhone][ModelRetry] reason=local_model_transport baseUrl=' + settings.baseUrl + ' delayMs=1500');
+  await waitBeforeLocalModelRetry();
+  return shouldStream ?
+    callStreamingModel(settings, body, requestDebug, onSurface) :
+    callNonStreamingModel(settings, body, requestDebug);
 }
 
 export function emptyA2uiModelResult(error: string): A2uiCallResult {

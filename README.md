@@ -15,7 +15,7 @@ PocketAgent is intentionally query-only. It can summarize choices and render con
 ## What is inside
 
 - `entry/`: HarmonyOS ArkTS app, A2UI renderer, model client, and unit tests.
-- `tool-gateway/`: Local Node.js gateway that exposes stable tool endpoints to the app.
+- `tool-gateway/`: Optional Node.js compatibility gateway and provider smoke harness.
 - `local-model-whitelist/`: Model whitelist snapshots used while testing local model integrations.
 - `docs/a2ui.md`: Public notes for the A2UI message protocol used by this prototype.
 
@@ -27,7 +27,7 @@ User command
   -> OpenAI-compatible local/cloud model endpoint
   -> A2UI JSONL stream
   -> Native ArkUI task surface
-  -> Optional local tool gateway call
+  -> In-app local tool call
   -> Query-only provider adapter
 ```
 
@@ -40,7 +40,27 @@ The app supports an OpenAI-compatible chat completion endpoint and streams A2UI 
 - Optional provider keys for flight and food search.
 - Optional local model runtime exposing an OpenAI-compatible API, such as a local chat completion server.
 
-## Run the tool gateway
+## Tool execution
+
+By default the HAP uses one tool route for every registered tool:
+
+```text
+flight.search -> local://aiphone-tools
+train.search -> local://aiphone-tools
+food.search -> local://aiphone-tools
+```
+
+The app calls 12306, VariFlight, and Amap directly from the HarmonyOS device. You do not need to keep a Mac-side `tool-gateway` service running after the HAP is installed.
+
+Flight and food search need provider keys inside the installed HAP. Before building or installing, sync the ignored local env file into an ignored rawfile resource:
+
+```bash
+node scripts/sync-provider-config.mjs
+```
+
+This writes `entry/src/main/resources/rawfile/aiphone_provider_config.json`, which is packaged into the HAP and read by `EntryAbility` at startup. The generated file is ignored by git and should not be committed.
+
+## Optional HTTP tool gateway
 
 ```bash
 cd tool-gateway
@@ -48,7 +68,7 @@ cp .env.example .env.local
 npm start
 ```
 
-By default the gateway listens on `http://127.0.0.1:8787`.
+The compatibility gateway listens on `http://127.0.0.1:8787`, but the app does not use it by default.
 
 Useful endpoints:
 
@@ -57,7 +77,7 @@ Useful endpoints:
 - `POST /api/aiphone/tool`
 - `POST /mcp/call`
 
-For device testing, reverse the gateway port with HDC:
+If you explicitly switch the app back to the HTTP gateway for development, reverse the gateway port with HDC:
 
 ```bash
 hdc rport tcp:8787 tcp:8787
@@ -68,12 +88,13 @@ hdc rport tcp:8787 tcp:8787
 1. Open this repository in DevEco Studio.
 2. Let DevEco restore OHPM dependencies.
 3. Configure your own signing profile if DevEco does not create one automatically.
-4. Run the `entry` module on a HarmonyOS device or simulator.
-5. In the app settings, point the tool gateway to `http://127.0.0.1:8787` or the reachable device-forwarded address.
+4. Fill `tool-gateway/.env.local`, then run `node scripts/sync-provider-config.mjs`.
+5. Run the `entry` module on a HarmonyOS device or simulator.
+6. The default tool route stays in-app for flight, train, and food search. No Mac-side gateway is required at runtime.
 
 ## Provider configuration
 
-Copy `tool-gateway/.env.example` to `tool-gateway/.env.local` and fill only the providers you want to enable.
+Copy `tool-gateway/.env.example` to `tool-gateway/.env.local` and fill only the providers you want to enable. Then sync it into the HAP rawfile before installation.
 
 ```bash
 FLIGHT_MCP_KEY=
