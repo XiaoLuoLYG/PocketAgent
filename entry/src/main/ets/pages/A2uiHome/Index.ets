@@ -3,6 +3,7 @@ import { A2uiAction, A2uiCallResult, A2uiComponent, A2uiMessage, A2uiSurfaceStat
 import { A2uiStreamMeta, callLocalModel, modelThinkCloseSeen } from '../../model/LocalModelClient';
 import { createSeedA2uiSurface } from '../../model/A2uiSurfaceStore';
 import { aiLogError, aiLogInfo } from '../../model/AiphoneLogger';
+import { callToolGateway, defaultToolGatewayUrl, isRegisteredToolId } from '../../model/ToolGatewayClient';
 import { HomePage } from './components/HomePage';
 import { ConfigPage } from './components/ConfigPage';
 import {
@@ -10,8 +11,10 @@ import {
   createInitialConnectionPanelState,
   updateConnectionPanelState
 } from './A2uiHomeState';
+import { A2uiHomeResolvedToolRequest, resolveA2uiHomeToolRequest } from './A2uiHomeToolRequest';
 
 const CONNECTION_TEST_PROMPT: string = '连接检查：请返回 A2UI v0.9.1 setup surface，说明 Local API 已可用。';
+const TOOL_GATEWAY_URL: string = defaultToolGatewayUrl();
 const initialConnectionState: ConnectionPanelState = createInitialConnectionPanelState();
 const initialSurface: A2uiSurfaceState = createSeedA2uiSurface();
 const LOG_SNIPPET_LIMIT: number = 1200;
@@ -41,7 +44,7 @@ struct Index {
   @State refreshTick: number = initialConnectionState.refreshTick;
   @State currentSurface: A2uiSurfaceState = initialSurface;
   @State surfaceRenderTick: number = 0;
-  @State inputText: string = '用 A2UI 简短介绍你能做什么';
+  @State inputText: string = '帮我查询明天北京到上海的航班';
   @State messages: A2uiMessage[] = [];
 
   private getSettings(): LocalModelSettings {
@@ -149,7 +152,7 @@ struct Index {
     this.messages = next;
   }
 
-  private async submitPrompt(prompt: string, visibleText: string): Promise<void> {
+  private async submitPrompt(prompt: string, visibleText: string, actionId: string = ''): Promise<void> {
     const trimmed = prompt.trim();
     if (trimmed.length === 0 || this.isBusy) {
       return;
@@ -209,6 +212,7 @@ struct Index {
       }));
       if (result.ok) {
         this.appendMessage('assistant', result.assistantDebug.length > 0 ? result.assistantDebug : result.surface.title);
+        await this.callModelRequestedTool(result.surface, trimmed, actionId);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : JSON.stringify(error);
@@ -231,7 +235,88 @@ struct Index {
   }
 
   private async sendAction(action: A2uiAction): Promise<void> {
-    await this.submitPrompt(action.prompt, action.label);
+    await this.submitPrompt(action.prompt, action.label, action.id);
+  }
+
+  private toolSurfaceId(): string {
+    if (this.currentSurface.surfaceId.length === 0 || this.currentSurface.status === 'error') {
+      return 'surface_model';
+    }
+    return this.currentSurface.surfaceId;
+  }
+
+  private async callModelRequestedTool(surface: A2uiSurfaceState, fallbackPrompt: string, fallbackActionId: string): Promise<void> {
+    const request: A2uiHomeResolvedToolRequest = resolveA2uiHomeToolRequest(surface, fallbackPrompt, fallbackActionId);
+    if (!request.hasTool) {
+      aiLogInfo('[AIPhone][A2uiHomeToolRequest] none');
+      return;
+    }
+    aiLogInfo('[AIPhone][A2uiHomeToolRequestFromModel] toolId=' + request.toolId +
+      ' modelPromptChars=' + request.modelPromptChars.toString() +
+      ' userPromptChars=' + fallbackPrompt.length.toString() +
+      ' sentPromptChars=' + request.prompt.length.toString());
+    await this.callToolById(request.toolId, request.prompt, request.actionId);
+  }
+
+  private async callToolById(toolId: string, prompt: string, actionId: string): Promise<boolean> {
+    if (!isRegisteredToolId(toolId)) {
+      const message = '模型请求了未注册工具：' + toolId;
+      aiLogError('[AIPhone][A2uiHomeToolRequestInvalid] toolId=' + toolId);
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: false,
+        status: 'error',
+        message: message,
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: message
+      }));
+      return false;
+    }
+
+    aiLogInfo('[AIPhone][A2uiHomeToolRequest] toolId=' + toolId +
+      ' promptChars=' + prompt.length.toString() +
+      ' actionId=' + actionId +
+      ' gateway=' + TOOL_GATEWAY_URL);
+    this.markChecking('正在调用工具：' + toolId);
+    const result: A2uiCallResult = await callToolGateway(
+      TOOL_GATEWAY_URL,
+      toolId,
+      prompt,
+      this.toolSurfaceId(),
+      actionId,
+      (surface: A2uiSurfaceState, raw: string) => {
+        this.applySurface(surface);
+        this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+          ok: true,
+          status: 'checking',
+          message: '工具流式更新：' + surface.title,
+          requestDebug: this.lastModelRequest,
+          assistantDebug: raw,
+          error: ''
+        }));
+      },
+      this.currentSurface
+    );
+
+    aiLogInfo('[AIPhone][A2uiHomeToolResult] ok=' + (result.ok ? 'true' : 'false') +
+      ' errorChars=' + result.error.length.toString() +
+      ' rawChars=' + result.raw.length.toString());
+    aiLogInfo('[AIPhone][A2uiHomeToolOutput] ' + logSnippet(result.raw));
+    this.applySurface(result.surface);
+    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+      ok: result.ok,
+      status: result.ok ? 'ready' : 'error',
+      message: result.ok ? result.surface.title + ' 已返回工具结果。' : '工具返回异常，请到配置页查看详情。',
+      requestDebug: this.lastModelRequest,
+      assistantDebug: result.raw.length > 0 ? result.raw : this.lastModelOutput,
+      error: result.error
+    }));
+    if (!result.ok) {
+      this.appendMessage('assistant', '工具返回异常：' + result.error);
+      return false;
+    }
+    this.appendMessage('assistant', result.surface.title + ' 已返回 A2UI 结果。');
+    return true;
   }
 
   private async testConnection(): Promise<void> {

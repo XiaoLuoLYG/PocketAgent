@@ -4,6 +4,8 @@ import localModelClientTest from './LocalModelClient.test';
 import toolGatewayClientTest from './ToolGatewayClient.test';
 import a2uiHomeStateTest from './A2uiHomeState.test';
 import a2uiRenderDataTest from './A2uiRenderData.test';
+import a2uiHomeToolRequestTest from './A2uiHomeToolRequest.test';
+import a2uiBusinessDataTest from './A2uiBusinessData.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -12,4 +14,6 @@ export default function testsuite() {
   toolGatewayClientTest();
   a2uiHomeStateTest();
   a2uiRenderDataTest();
+  a2uiHomeToolRequestTest();
+  a2uiBusinessDataTest();
 }

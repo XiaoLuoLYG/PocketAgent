@@ -1236,8 +1236,9 @@ function flightResultA2ui(surfaceId: string, title: string, body: string, summar
             status: 'ready',
             dataPath: dataPathForTool('flight.search'),
             actions: [
-              { id: 'flight_change_date', label: '换个日期', prompt: '换个日期查询航班', kind: 'prompt', variant: 'secondary' },
-              { id: 'flight_change_city', label: '换个城市', prompt: '换个城市查询航班', kind: 'prompt', variant: 'secondary' }
+              { id: 'flight_change_date', label: '换个日期', prompt: '换个日期查询航班', kind: 'prompt', variant: 'secondary' }
+              // 换城市需要城市选择控件，先不暴露半成品入口。
+              // { id: 'flight_change_city', label: '换个城市', prompt: '换个城市查询航班', kind: 'prompt', variant: 'secondary' }
             ]
           }
         ]

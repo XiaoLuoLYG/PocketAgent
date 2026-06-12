@@ -1,4 +1,5 @@
 import { A2uiComponent, A2uiSurfaceState } from '../../model/A2uiTypes';
+import { resolveData } from '../../model/A2uiData';
 
 export function rootComponentIdOf(surface: A2uiSurfaceState): string {
   return surface.rootId.length > 0 ? surface.rootId : 'root';
@@ -68,4 +69,21 @@ export function componentToneOf(component: A2uiComponent): string {
     return component.tone;
   }
   return '';
+}
+
+export function thinkingTextOf(surface: A2uiSurfaceState, component: A2uiComponent): string {
+  let thoughts: string[] = [];
+  if (component.dataPath === '/thoughts') {
+    const data = resolveData(surface, component.dataPath);
+    if (Array.isArray(data)) {
+      thoughts = data as string[];
+    }
+  }
+  if (thoughts.length === 0) {
+    return componentTextOf(component);
+  }
+  if (thoughts.length === 1 && thoughts[0] === '等待模型响应') {
+    return '';
+  }
+  return thoughts.join('\n');
 }

@@ -61,7 +61,7 @@ export struct A2uiSurfaceView {
               .fontSize(18)
               .fontWeight(FontWeight.Bold)
               .fontColor(COLOR_INK)
-            Text('输入一句话生成 A2UI。当前第一版只渲染 SurfaceRoot / Column / Row / Text / InfoRows / ActionBar。')
+            Text('输入一句话生成 A2UI。')
               .fontSize(13)
               .fontColor(COLOR_TEXT)
               .lineHeight(20)

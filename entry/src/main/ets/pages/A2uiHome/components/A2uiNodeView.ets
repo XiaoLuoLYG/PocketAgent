@@ -1,10 +1,16 @@
 import {
   A2UI_COMPONENT_ACTION_BAR,
   A2UI_COMPONENT_COLUMN,
+  A2UI_COMPONENT_ERROR_NOTICE,
+  A2UI_COMPONENT_FLIGHT_BOARD,
+  A2UI_COMPONENT_FOOD_CHOICES,
   A2UI_COMPONENT_INFO_ROWS,
   A2UI_COMPONENT_ROW,
   A2UI_COMPONENT_SURFACE_ROOT,
   A2UI_COMPONENT_TEXT,
+  A2UI_COMPONENT_THINKING_CARD,
+  A2UI_COMPONENT_THINKING_STREAM,
+  A2UI_COMPONENT_TRAIN_OPTIONS,
   A2uiAction,
   A2uiComponent,
   A2uiSurfaceState,
@@ -27,7 +33,12 @@ import {
   findA2uiComponent
 } from '../A2uiRenderData';
 import { ActionBarView } from './ActionBarView';
+import { ErrorNoticeView } from './ErrorNoticeView';
+import { FlightBoardView } from './FlightBoardView';
+import { FoodChoicesView } from './FoodChoicesView';
 import { InfoRowsView } from './InfoRowsView';
+import { ThinkingStreamView } from './ThinkingStreamView';
+import { TrainOptionsView } from './TrainOptionsView';
 
 @Component
 export struct A2uiNodeView {
@@ -115,11 +126,50 @@ export struct A2uiNodeView {
           isBusy: this.isBusy,
           onAction: this.onAction
         })
+      } else if (this.component()?.component === A2UI_COMPONENT_TRAIN_OPTIONS) {
+        TrainOptionsView({
+          surface: this.surface,
+          component: this.component() as A2uiComponent,
+          renderTick: this.renderTick,
+          isBusy: this.isBusy,
+          onAction: this.onAction
+        })
+      } else if (this.component()?.component === A2UI_COMPONENT_FLIGHT_BOARD) {
+        FlightBoardView({
+          surface: this.surface,
+          component: this.component() as A2uiComponent,
+          renderTick: this.renderTick,
+          isBusy: this.isBusy,
+          onAction: this.onAction
+        })
+      } else if (this.component()?.component === A2UI_COMPONENT_FOOD_CHOICES) {
+        FoodChoicesView({
+          surface: this.surface,
+          component: this.component() as A2uiComponent,
+          renderTick: this.renderTick,
+          isBusy: this.isBusy,
+          onAction: this.onAction
+        })
       } else if (this.component()?.component === A2UI_COMPONENT_ACTION_BAR) {
         ActionBarView({
           actions: actionsOf(this.component() as A2uiComponent),
           isBusy: this.isBusy,
           onAction: this.onAction
+        })
+      } else if (this.component()?.component === A2UI_COMPONENT_ERROR_NOTICE) {
+        ErrorNoticeView({
+          surface: this.surface,
+          component: this.component() as A2uiComponent,
+          renderTick: this.renderTick,
+          isBusy: this.isBusy,
+          onAction: this.onAction
+        })
+      } else if (this.component()?.component === A2UI_COMPONENT_THINKING_STREAM || this.component()?.component === A2UI_COMPONENT_THINKING_CARD) {
+        ThinkingStreamView({
+          surface: this.surface,
+          component: this.component() as A2uiComponent,
+          renderTick: this.renderTick,
+          isBusy: this.isBusy
         })
       } else {
         Column() {

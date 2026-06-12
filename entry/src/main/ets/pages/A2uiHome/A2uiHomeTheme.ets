@@ -29,6 +29,9 @@ export function statusColor(status: string): string {
   if (status === 'checking') {
     return '#4FDBCA';
   }
+  if (status === 'thinking' || status === 'calling_tool') {
+    return COLOR_ACCENT_DARK;
+  }
   if (status === 'error') {
     return COLOR_ERROR;
   }
@@ -41,6 +44,9 @@ export function statusBackground(status: string): string {
   }
   if (status === 'checking') {
     return '#123039';
+  }
+  if (status === 'thinking' || status === 'calling_tool') {
+    return COLOR_ACCENT_SOFT;
   }
   if (status === 'error') {
     return COLOR_ERROR_SOFT;
