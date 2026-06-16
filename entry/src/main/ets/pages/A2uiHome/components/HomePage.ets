@@ -1,76 +1,171 @@
 import {
   COLOR_ACCENT,
   COLOR_ACCENT_DEEP,
-  COLOR_BUTTON_TEXT,
   COLOR_CARD_EDGE,
   COLOR_CARD_GLOW,
-  COLOR_CARD_RAISED,
   COLOR_INK,
   COLOR_MUTED,
   COLOR_PAGE,
-  COLOR_PANEL,
-  COLOR_PANEL_SHADOW,
   COLOR_TEXT,
-} from '../A2uiHomeTheme';
-import { A2uiAction, A2uiSurfaceState, emptyA2uiSurface } from '../../../model/A2uiTypes';
+} from '../style/A2uiHomeTheme';
+import { A2uiAction, A2uiMessage, A2uiSurfaceState, emptyA2uiSurface } from '../../../model/A2uiTypes';
+import { A2uiButtonView } from './common/A2uiButtonView';
+import { HistoryPanelView } from './HistoryPanelView';
 import { A2uiSurfaceView } from './A2uiSurfaceView';
-import { StatusBadgeView } from './StatusBadgeView';
+import { A2UI_MOTION_CURVE, A2UI_MOTION_NORMAL_MS } from '../style/A2uiHomeMotion';
+
+const A2UI_HISTORY_EMPTY_HEIGHT: number = 108;
+const A2UI_HISTORY_ROW_HEIGHT: number = 76;
+const A2UI_HISTORY_MAX_HEIGHT: number = 254;
+const A2UI_SEND_SPINNER_INTERVAL_MS: number = 90;
+const A2UI_SEND_SPINNER_STEP_DEG: number = 24;
 
 @Component
 export struct HomePage {
   @Link inputText: string;
-  @Prop connectionStatus: string = 'idle';
-  @Prop connectionMessage: string = '';
-  @Prop selectedModel: string = '';
-  @Prop baseUrl: string = '';
   @Prop isBusy: boolean = false;
-  @Prop refreshTick: number = 0;
+  @Prop showHistory: boolean = false;
+  @Prop messages: A2uiMessage[] = [];
   @Prop currentSurface: A2uiSurfaceState = emptyA2uiSurface();
   @Prop surfaceRenderTick: number = 0;
+  @Prop inputPlaceholder: string = '告诉 PocketAgent 你想完成什么';
+  @State sendSpinnerRotation: number = 0;
+  private sendSpinnerTimerId: number = -1;
+  onToggleHistory: () => void = () => {};
+  onOpenSocial: () => void = () => {};
   onOpenConfig: () => void = () => {};
+  onOpenStyleLab: () => void = () => {};
   onSendPrompt: () => void = () => {};
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
+
+  aboutToAppear(): void {
+    this.startSendSpinnerTimer();
+  }
+
+  aboutToDisappear(): void {
+    this.stopSendSpinnerTimer();
+  }
+
+  private startSendSpinnerTimer(): void {
+    if (this.sendSpinnerTimerId >= 0) {
+      return;
+    }
+    this.sendSpinnerTimerId = setInterval(() => {
+      if (this.isBusy) {
+        this.sendSpinnerRotation = (this.sendSpinnerRotation + A2UI_SEND_SPINNER_STEP_DEG) % 360;
+      } else if (this.sendSpinnerRotation !== 0) {
+        this.sendSpinnerRotation = 0;
+      }
+    }, A2UI_SEND_SPINNER_INTERVAL_MS);
+  }
+
+  private stopSendSpinnerTimer(): void {
+    if (this.sendSpinnerTimerId < 0) {
+      return;
+    }
+    clearInterval(this.sendSpinnerTimerId);
+    this.sendSpinnerTimerId = -1;
+  }
+
+  private historyPanelHeight(): number {
+    if (!this.showHistory) {
+      return 0;
+    }
+    if (this.messages.length === 0) {
+      return A2UI_HISTORY_EMPTY_HEIGHT;
+    }
+    const contentHeight = A2UI_HISTORY_EMPTY_HEIGHT + this.messages.length * A2UI_HISTORY_ROW_HEIGHT;
+    return Math.min(contentHeight, A2UI_HISTORY_MAX_HEIGHT);
+  }
 
   build() {
     Column() {
       Row() {
-        Column() {
+        Row() {
           Text('PocketAgent')
-            .fontSize(28)
+            .minFontSize(20)
+            .maxFontSize(28)
             .fontWeight(FontWeight.Bold)
             .fontColor(COLOR_INK)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
           Text('A2UI Home 最小刷新实验')
+            .minFontSize(10)
+            .maxFontSize(13)
             .fontSize(13)
             .fontColor(COLOR_MUTED)
-            .margin({ top: 5 })
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .margin({ left: 8 })
+            .layoutWeight(1)
         }
-        .alignItems(HorizontalAlign.Start)
+        .alignItems(VerticalAlign.Center)
         .layoutWeight(1)
+        .constraintSize({ maxWidth: 150 })
 
-        StatusBadgeView({
-          status: this.connectionStatus,
-          label: ''
+        A2uiButtonView({
+          icon: $r('app.media.icon_history'),
+          hasIcon: true,
+          shape: 'circle',
+          tone: 'secondary',
+          active: this.showHistory
         })
-
-        Button('配置')
-          .height(40)
-          .width(78)
-          .fontSize(13)
-          .fontColor(COLOR_INK)
-          .backgroundColor(COLOR_CARD_RAISED)
-          .borderRadius(10)
-          .border({ width: 1, color: COLOR_CARD_EDGE })
+          .onClick(() => {
+            this.onToggleHistory();
+          })
           .margin({ left: 10 })
+
+        A2uiButtonView({
+          label: '社',
+          shape: 'circle',
+          tone: 'secondary',
+          active: this.currentSurface.intent === 'social'
+        })
+          .onClick(() => {
+            this.onOpenSocial();
+          })
+          .margin({ left: 8 })
+
+        A2uiButtonView({
+          icon: $r('app.media.icon_settings'),
+          hasIcon: true,
+          shape: 'circle',
+          tone: 'secondary'
+        })
           .onClick(() => {
             this.onOpenConfig();
           })
+          .margin({ left: 8 })
+
+        A2uiButtonView({
+          icon: $r('app.media.icon_lab'),
+          hasIcon: true,
+          shape: 'circle',
+          tone: 'secondary'
+        })
+          .onClick(() => {
+            this.onOpenStyleLab();
+          })
+          .margin({ left: 8 })
       }
       .width('100%')
+      .alignItems(VerticalAlign.Center)
       .padding({ left: 18, right: 18, top: 16, bottom: 14 })
-      .backgroundColor(COLOR_PANEL)
-      .borderRadius(20)
-      .border({ width: 1, color: COLOR_CARD_EDGE })
-      .shadow({ radius: 24, color: COLOR_PANEL_SHADOW, offsetX: 0, offsetY: 12 })
+
+      Column() {
+        if (this.showHistory) {
+          HistoryPanelView({
+            messages: this.messages
+          })
+          .height('100%')
+        }
+      }
+      .width('100%')
+      .height(this.historyPanelHeight())
+      .opacity(this.showHistory ? 1 : 0)
+      .clip(true)
+      .margin({ top: this.showHistory ? 14 : 0 })
+      .animation({ duration: A2UI_MOTION_NORMAL_MS, curve: A2UI_MOTION_CURVE })
 
       A2uiSurfaceView({
         surface: this.currentSurface,
@@ -84,7 +179,7 @@ export struct HomePage {
       Column() {
         Row() {
           TextInput({
-            placeholder: '告诉 PocketAgent 你想完成什么',
+            placeholder: this.inputPlaceholder,
             text: this.inputText
           })
             .height(52)
@@ -101,23 +196,38 @@ export struct HomePage {
               this.inputText = value;
             })
             .onSubmit(() => {
-              if (!this.isBusy) {
-                this.onSendPrompt();
+              if (this.isBusy) {
+                return;
               }
+              this.onSendPrompt();
             })
 
-          Button(this.isBusy ? '生成中' : '生成')
-            .enabled(!this.isBusy)
-            .height(52)
-            .width(98)
-            .fontSize(15)
-            .fontColor(COLOR_BUTTON_TEXT)
+          Stack() {
+            if (this.isBusy) {
+              Image($r('app.media.icon_wait_spinner'))
+                .width(25)
+                .height(25)
+                .objectFit(ImageFit.Contain)
+                .rotate({ angle: this.sendSpinnerRotation })
+                .animation({ duration: A2UI_SEND_SPINNER_INTERVAL_MS, curve: Curve.Linear })
+            } else {
+              Image($r('app.media.arrow_up'))
+                .width(27)
+                .height(27)
+                .objectFit(ImageFit.Contain)
+            }
+          }
+            .width(46)
+            .height(46)
             .backgroundColor(COLOR_ACCENT_DEEP)
-            .borderRadius(15)
+            .borderRadius(23)
             .border({ width: 1, color: COLOR_ACCENT })
             .shadow({ radius: 14, color: COLOR_CARD_GLOW, offsetX: 0, offsetY: 7 })
-            .margin({ left: 10 })
+            .margin({ left: 8, right: 2 })
             .onClick(() => {
+              if (this.isBusy) {
+                return;
+              }
               this.onSendPrompt();
             })
         }
@@ -125,15 +235,10 @@ export struct HomePage {
         .alignItems(VerticalAlign.Center)
 
         Row() {
-          Text(this.connectionMessage)
-            .fontSize(11)
-            .fontColor(COLOR_MUTED)
-            .layoutWeight(1)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-          Text('panel=' + this.refreshTick.toString() + ' surface=' + this.surfaceRenderTick.toString())
+          Text('surface=' + this.surfaceRenderTick.toString())
             .fontSize(11)
             .fontColor(COLOR_ACCENT)
+            .layoutWeight(1)
         }
         .width('100%')
         .margin({ top: 8 })

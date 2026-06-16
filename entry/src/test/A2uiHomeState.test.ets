@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { createInitialConnectionPanelState, updateConnectionPanelState } from '../main/ets/pages/A2uiHome/A2uiHomeState';
+import { createInitialConnectionPanelState, updateConnectionPanelState } from '../main/ets/pages/A2uiHome/state/A2uiHomeState';
 
 export default function a2uiHomeStateTest() {
   describe('a2uiHomeState', () => {

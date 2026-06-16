@@ -3,7 +3,7 @@ import {
   COLOR_FIELD,
   COLOR_MUTED,
   COLOR_TEXT
-} from '../A2uiHomeTheme';
+} from '../style/A2uiHomeTheme';
 
 @Component
 export struct DebugTextPanel {

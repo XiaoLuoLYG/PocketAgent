@@ -17,7 +17,18 @@ const providerKeys = [
   'AMAP_KEY',
   'AMAP_DEFAULT_LOCATION',
   'FOOD_DEFAULT_LOCATION',
-  'AMAP_RADIUS'
+  'AMAP_RADIUS',
+  'TENCENT_MAP_KEY',
+  'TENCENT_MAP_API_URL',
+  'BAIDU_MAP_AK',
+  'BAIDU_MAP_API_URL',
+  'MEITUAN_UNION_APP_KEY',
+  'MEITUAN_UNION_APP_SECRET',
+  'MEITUAN_UNION_API_URL',
+  'TAOBAO_APP_KEY',
+  'TAOBAO_APP_SECRET',
+  'TAOBAO_FLASH_PID',
+  'TAOBAO_API_URL'
 ];
 
 function unquote(value) {
@@ -73,4 +84,14 @@ mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, JSON.stringify(config, null, 2) + '\n');
 
 console.log(`Wrote ${outPath}`);
-console.log(maskedStatus(config, ['FLIGHT_MCP_KEY', 'VARIFLIGHT_API_KEY', 'AMAP_KEY', 'AMAP_DEFAULT_LOCATION']));
+console.log(maskedStatus(config, [
+  'FLIGHT_MCP_KEY',
+  'VARIFLIGHT_API_KEY',
+  'AMAP_KEY',
+  'TENCENT_MAP_KEY',
+  'BAIDU_MAP_AK',
+  'AMAP_DEFAULT_LOCATION',
+  'MEITUAN_UNION_APP_KEY',
+  'TAOBAO_APP_KEY',
+  'TAOBAO_FLASH_PID'
+]));

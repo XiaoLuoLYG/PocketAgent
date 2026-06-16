@@ -11,7 +11,9 @@ export const A2UI_COMPONENT_THINKING_STREAM: string = 'ThinkingStream';
 export const A2UI_COMPONENT_THINKING_CARD: string = 'ThinkingCard';
 export const A2UI_COMPONENT_TRAIN_OPTIONS: string = 'TrainOptions';
 export const A2UI_COMPONENT_FLIGHT_BOARD: string = 'FlightBoard';
+export const A2UI_COMPONENT_TRAVEL_OPTIONS: string = 'TravelOptions';
 export const A2UI_COMPONENT_FOOD_CHOICES: string = 'FoodChoices';
+export const A2UI_COMPONENT_SOCIAL_INBOX: string = 'SocialInbox';
 export const A2UI_COMPONENT_CONFIRM_PANEL: string = 'ConfirmPanel';
 export const A2UI_COMPONENT_INFO_ROWS: string = 'InfoRows';
 
@@ -56,11 +58,58 @@ export interface A2uiFlightData {
   price: string;
 }
 
+export interface A2uiTravelOptionData {
+  id: string;
+  source: string;
+  sourceTag: string;
+  title: string;
+  from: string;
+  to: string;
+  depart: string;
+  arrive: string;
+  duration: string;
+  price: string;
+  availability: string;
+  status: string;
+  detail: string;
+}
+
 export interface A2uiFoodData {
   name: string;
   category: string;
   address: string;
   distance: string;
+  location?: string;
+  sourceTags?: string[];
+}
+
+export interface A2uiSocialMessageData {
+  id: string;
+  platform: string;
+  conversationId: string;
+  conversationTitle: string;
+  senderName: string;
+  preview: string;
+  receivedAt: string;
+  source: string;
+  status: string;
+}
+
+export interface A2uiSocialReplyData {
+  id: string;
+  targetMessageId: string;
+  platform: string;
+  conversationId: string;
+  text: string;
+  status: string;
+  error: string;
+  sentAt: string;
+}
+
+export interface A2uiSocialData {
+  messages: A2uiSocialMessageData[];
+  replies: A2uiSocialReplyData[];
+  diagnostics: A2uiLabelValueData[];
 }
 
 export interface A2uiSummaryData {
@@ -90,7 +139,9 @@ export interface A2uiRuntimeDataModel {
   rows: A2uiLabelValueData[];
   trains: A2uiTrainData[];
   flights: A2uiFlightData[];
+  travelOptions: A2uiTravelOptionData[];
   foods: A2uiFoodData[];
+  social: A2uiSocialData;
   thoughts: string[];
   summary: A2uiSummaryData;
   trip: A2uiTripData;
@@ -104,7 +155,11 @@ export type A2uiDataValue =
   A2uiLabelValueData[] |
   A2uiTrainData[] |
   A2uiFlightData[] |
+  A2uiTravelOptionData[] |
   A2uiFoodData[] |
+  A2uiSocialMessageData[] |
+  A2uiSocialReplyData[] |
+  A2uiSocialData |
   string[] |
   A2uiSummaryData |
   A2uiTripData |
@@ -242,7 +297,9 @@ export function defaultA2uiCapabilities(): A2uiClientCapabilities {
       A2UI_COMPONENT_THINKING_CARD,
       A2UI_COMPONENT_TRAIN_OPTIONS,
       A2UI_COMPONENT_FLIGHT_BOARD,
+      A2UI_COMPONENT_TRAVEL_OPTIONS,
       A2UI_COMPONENT_FOOD_CHOICES,
+      A2UI_COMPONENT_SOCIAL_INBOX,
       A2UI_COMPONENT_CONFIRM_PANEL,
       A2UI_COMPONENT_INFO_ROWS
     ],

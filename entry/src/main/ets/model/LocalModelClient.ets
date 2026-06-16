@@ -104,7 +104,7 @@ function buildComponentCatalogPrompt(): string {
   } catch (error) {
     const message = error instanceof Error ? error.message : JSON.stringify(error);
     aiLogError('[AIPhone][ComponentCatalogPrompt] failed to parse catalog: ' + message);
-    return '可用 AIPhone catalog 组件：SurfaceRoot（布局组件）、Column（布局组件）、Row（布局组件）、Text（内容组件）、InfoRows（内容组件）、ActionBar（交互组件）、ErrorNotice（内容组件）、ThinkingStream（状态组件）、TrainOptions（业务组件）、FlightBoard（业务组件）、FoodChoices（业务组件）；ConfirmPanel 当前不要主动生成。';
+    return '可用 AIPhone catalog 组件：SurfaceRoot（布局组件）、Column（布局组件）、Row（布局组件）、Text（内容组件）、InfoRows（内容组件）、ActionBar（交互组件）、ErrorNotice（内容组件）、ThinkingStream（状态组件）、SocialInbox（业务组件）、TravelOptions（业务组件）、TrainOptions（业务组件）、FlightBoard（业务组件）、FoodChoices（业务组件）；ConfirmPanel 当前不要主动生成。';
   }
 }
 
@@ -119,14 +119,17 @@ const SYSTEM_PROMPT: string =
   'child/children 只能引用 updateComponents.components 中真实存在的组件 id，禁止把数据值或按钮文案直接放进 children。' +
   'actions 必须是 [{"id":"稳定英文 id","label":"短按钮文案","prompt":"点击后发送给模型的完整中文指令","variant":"primary|secondary|danger"}]。' +
   '数据必须通过 updateDataModel 写入 JSON Pointer 路径，组件用 dataPath 读取，不要把大量结果直接塞进 body。' +
-  '思考态用 ThinkingStream；真实班次/航班/店铺结果只能由工具网关返回，你在模型阶段禁止输出 TrainOptions、FlightBoard、FoodChoices 以及 /trains、/flights、/foods。' +
+  '思考态用 ThinkingStream；真实班次/航班/店铺/社交消息结果只能由工具网关或客户端桥接返回，你在模型阶段禁止输出 SocialInbox、TravelOptions、TrainOptions、FlightBoard、FoodChoices 以及 /social、/travelOptions、/trains、/flights、/foods。' +
   '先判断用户意图，再选唯一输出形态：' +
-  '1) 实时查询：用户需要 live 库存、可订班次、附近店铺等当前可查结果 → 必须连续输出 createSurface(status=calling_tool)、updateComponents(含 ThinkingStream)、updateDataModel /thoughts、updateDataModel /toolRequest 四类 envelope 后立即停止；禁止只输出 createSurface 就结束。' +
-  '2) 非实时整理：用户要方案、比较、方向梳理，不要求立刻查 live 库存 → SurfaceRoot + InfoRows(dataPath=/rows) + updateDataModel /rows，禁止 /toolRequest。' +
+  '1) 实时查询：用户需要 live 库存、可订班次、附近店铺等当前可查结果，或包含“查、查询、搜索、帮我搜、可查、票、余票、附近、周边、航班、机票、高铁、火车票、外卖、餐饮、咖啡、奶茶、肯德基”等当前结果词 → 必须连续输出 createSurface(status=calling_tool)、updateComponents(含 ThinkingStream)、updateDataModel /thoughts、updateDataModel /toolRequest 四类 envelope 后立即停止；禁止只输出 createSurface，禁止 status=ready，禁止 InfoRows，禁止 /rows。' +
+  '泛化出行实时查询尤其严格：只要用户给出日期、出发地、目的地，并要求“出行方案、搜索出行方案、怎么去、比较、可查选项”，必须调用 travel.search；不要把“方案、整理、比较、选项”当成非实时整理。' +
+  '2) 非实时整理：仅当用户没有查、查询、搜索、可查、票、附近、周边等当前结果词，且缺少实时查询所需字段时，才使用 SurfaceRoot + InfoRows(dataPath=/rows) + updateDataModel /rows，禁止 /toolRequest。' +
   '3) 寒暄或说明 → SurfaceRoot + Text 或简短 InfoRows。' +
-  '可用工具：train.search 用于查询铁路车次和余票；flight.search 用于查询航班；food.search 用于查询周边餐饮和 POI。必须由你根据完整用户意图选择是否需要工具以及唯一 toolId。' +
-  '如果你选择 status=calling_tool，同一次响应中必须包含 /toolRequest；/toolRequest 是唯一合法路径，禁止 /toolRequests；值必须是 {"toolId":"train.search|flight.search|food.search","prompt":"原始中文请求","actionId":"model_tool_request"}。' +
-  '整理类 /rows 的 value 必须是 [{"label":"...","value":"..."}]；只写用户已给信息与下一步确认项，不要编造精确班次、价格、耗时、库存、营业状态。' +
+  '可用工具：travel.search 用于同时查询并混排高铁和航班出行方案；train.search 用于用户明确只查铁路车次和余票；flight.search 用于用户明确只查航班或机票；food.search 用于查询周边餐饮和 POI。社交消息入口和 social.reply.send 由客户端在选中真实消息后处理，模型禁止编造社交消息或联系人。必须由你根据完整用户意图选择是否需要工具以及唯一 toolId。' +
+  '泛化出行搜索，例如“从北京去上海帮我搜索出行方案”“明天北京到上海怎么去”“帮我比较出行方案”，只要日期、出发地、目的地明确，就必须选择 travel.search；如果明确说只查高铁/火车/动车，选择 train.search；如果明确说只查飞机/航班/机票，选择 flight.search。' +
+  '如果出行查询缺少出发地、目的地或日期，禁止调用工具，只输出 InfoRows 说明需要补充的字段。' +
+  '如果你选择 status=calling_tool，同一次响应中必须包含 /toolRequest；/toolRequest 是唯一合法路径，禁止 /toolRequests；值必须是 {"toolId":"travel.search|train.search|flight.search|food.search","prompt":"原始中文请求","actionId":"model_tool_request"}。' +
+  '整理类 /rows 的 value 必须是 [{"label":"...","value":"..."}]；只写用户已给信息与下一步确认项，严禁编造精确班次、航班号、价格、耗时、库存、营业状态；尤其不要输出 G123、MU5101、自驾耗时等示例式假数据。' +
   '订票、下单、支付、抢票不能自动执行；交易请求只用 Text 或 ErrorNotice 告知需用户自行确认。' +
   '示例 A，寒暄：' +
   '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"AIPhone","intent":"general","status":"ready","sendDataModel":true}}' + '\n' +
@@ -136,10 +139,15 @@ const SYSTEM_PROMPT: string =
   '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在准备查询","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"AIPhone 正在处理","body":"正在把请求交给工具","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
   '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在识别出行约束","正在准备调用查询工具","正在等待工具返回"]}}' + '\n' +
   '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/toolRequest","value":{"toolId":"train.search","prompt":"帮我查询明天北京到上海高铁票","actionId":"model_tool_request"}}}' + '\n' +
-  '示例 C，非实时整理出行选项：' +
-  '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"出行选项整理","intent":"travel","status":"ready","sendDataModel":true}}' + '\n' +
-  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"plan","title":"出行选项整理","status":"ready"},{"id":"plan","component":"InfoRows","title":"可查方向","dataPath":"/rows","status":"ready","actions":[]}]}}' + '\n' +
-  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/rows","value":[{"label":"高铁","value":"可进一步查询具体班次与余票"},{"label":"航班","value":"可进一步查询具体航班与票价"},{"label":"下一步","value":"告诉我出发日期后可发起实时查询"}]}}' + '\n' +
+  '示例 C，非实时整理规划思路（没有日期或明确实时查询词）：' +
+  '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"规划思路","intent":"travel","status":"ready","sendDataModel":true}}' + '\n' +
+  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"plan","title":"规划思路","status":"ready"},{"id":"plan","component":"InfoRows","title":"需要补充的信息","dataPath":"/rows","status":"ready","actions":[]}]}}' + '\n' +
+  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/rows","value":[{"label":"时间","value":"需要出发日期或大致时段"},{"label":"地点","value":"需要出发地和目的地"},{"label":"下一步","value":"补充日期和城市后再发起实时查询"}]}}' + '\n' +
+  '示例 D，实时搜索综合出行方案（到 /toolRequest 结束）：' +
+  '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"正在搜索出行方案","intent":"travel","status":"calling_tool","sendDataModel":true}}' + '\n' +
+  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在搜索出行方案","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"AIPhone 正在处理","body":"正在同时查询高铁和航班","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
+  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在识别出发地、目的地和日期","正在准备调用综合出行工具","正在等待真实工具返回"]}}' + '\n' +
+  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/toolRequest","value":{"toolId":"travel.search","prompt":"我明天要从北京去上海，帮我搜索出行方案","actionId":"model_tool_request"}}}' + '\n' +
   '旧 aiphone.ui.v1 或 aiphone.ui.v2 格式不再受支持，绝不能输出。' +
   '客户端能力如下：' + JSON.stringify(defaultA2uiCapabilities()) + '。';
 

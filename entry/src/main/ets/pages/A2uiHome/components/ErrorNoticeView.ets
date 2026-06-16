@@ -7,8 +7,9 @@ import {
   COLOR_INK,
   COLOR_MUTED,
   COLOR_TEXT
-} from '../A2uiHomeTheme';
-import { componentBodyOf, componentTitleOf } from '../A2uiRenderData';
+} from '../style/A2uiHomeTheme';
+import { componentBodyOf, componentTitleOf } from '../render/A2uiRenderData';
+import { a2uiEnterTransition } from '../style/A2uiHomeMotion';
 import { ActionBarView } from './ActionBarView';
 
 @Component
@@ -52,6 +53,7 @@ export struct ErrorNoticeView {
             .width('100%')
             .alignItems(VerticalAlign.Top)
             .padding({ top: index === 0 ? 0 : 8, bottom: 2 })
+            .transition(a2uiEnterTransition())
           }, (row: A2uiLabelValue, index: number) => row.label + row.value + index.toString() + '-' + this.renderTick.toString())
         }
         .width('100%')
@@ -76,5 +78,6 @@ export struct ErrorNoticeView {
     .borderRadius(18)
     .border({ width: 1, color: COLOR_ERROR_LINE })
     .margin({ bottom: 12 })
+    .transition(a2uiEnterTransition())
   }
 }

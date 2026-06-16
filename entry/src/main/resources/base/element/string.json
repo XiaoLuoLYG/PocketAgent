@@ -11,6 +11,14 @@
     {
       "name": "EntryAbility_label",
       "value": "PocketAgent"
+    },
+    {
+      "name": "NotificationSubscriberExtAbility_desc",
+      "value": "AIPhone social notification subscriber"
+    },
+    {
+      "name": "NotificationSubscriberExtAbility_label",
+      "value": "AIPhone Social"
     }
   ]
 }

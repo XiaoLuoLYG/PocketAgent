@@ -52,6 +52,13 @@ const TRAIN_CLIENT_ACTIONS = [
   { id: 'client_filter_available', label: '只看有票', prompt: 'client_filter_available', kind: 'client', variant: 'secondary' },
   { id: 'client_edit_query', label: '修改查询', prompt: 'client_edit_query', kind: 'input', variant: 'secondary' }
 ];
+const TRAVEL_CLIENT_ACTIONS = [
+  { id: 'travel_show_all', label: '全部', prompt: 'travel_show_all', kind: 'client', variant: 'secondary' },
+  { id: 'travel_filter_train', label: '只看高铁', prompt: 'travel_filter_train', kind: 'client', variant: 'secondary' },
+  { id: 'travel_filter_flight', label: '只看飞机', prompt: 'travel_filter_flight', kind: 'client', variant: 'secondary' },
+  { id: 'travel_change_date', label: '换日期', prompt: '换日期重新查询出行方案', kind: 'input', variant: 'secondary' },
+  { id: 'travel_retry', label: '重新查询', prompt: '重新查询出行方案', kind: 'prompt', variant: 'primary' }
+];
 
 process.on('uncaughtException', error => {
   console.error('[uncaughtException]', error);
@@ -62,6 +69,14 @@ process.on('unhandledRejection', reason => {
 });
 
 const TOOL_DEFS = {
+  'travel.search': {
+    title: '综合出行方案查询',
+    envPrefix: 'TRAVEL',
+    providerHint: '同时查询 12306 高铁余票和飞常准航班，并按出发时间混排',
+    requiredArgs: ['departure_city', 'arrival_city', 'date'],
+    configItems: ['12306 无需注册', '航班需要 FLIGHT_MCP_KEY 或 VARIFLIGHT_API_KEY'],
+    actions: ['换日期', '只看高铁', '只看飞机', '重新查询']
+  },
   'flight.search': {
     title: '国内航班查询',
     envPrefix: 'FLIGHT',
@@ -79,12 +94,20 @@ const TOOL_DEFS = {
     actions: ['多展示一些', '选最快的', '修改查询']
   },
   'food.search': {
-    title: '附近餐饮查询',
+    title: '外卖聚合搜索',
     envPrefix: 'FOOD',
-    providerHint: '高德 Web 服务 POI 搜索（仅查询餐饮地点）',
+    providerHint: '高德 Web 服务 POI、美团联盟商品查询、淘宝闪购联盟店铺推广查询（仅查询展示）',
     requiredArgs: ['location', 'keyword'],
-    configItems: ['AMAP_KEY', 'AMAP_DEFAULT_LOCATION=经度,纬度'],
-    actions: ['配置高德 Web 服务 Key', '设置默认坐标', '只查询不下单']
+    configItems: ['AMAP_KEY', 'AMAP_DEFAULT_LOCATION=经度,纬度', 'MEITUAN_UNION_APP_KEY/SECRET', 'TAOBAO_APP_KEY/SECRET/TAOBAO_FLASH_PID'],
+    actions: ['配置外卖来源 Key', '设置默认坐标', '只查询不下单']
+  },
+  'social.reply.send': {
+    title: '微信回复发送',
+    envPrefix: 'SOCIAL',
+    providerHint: 'AIPhone 设备侧通知/辅助桥接和真实微信发送执行器',
+    requiredArgs: ['target_message_id', 'conversation_id', 'text'],
+    configItems: ['系统/特权通知桥接或用户授权辅助捕获', '真实微信辅助发送执行器'],
+    actions: ['打开社交权限诊断']
   }
 };
 
@@ -253,6 +276,12 @@ function textOf(value) {
 
 function normalizeToolId(name) {
   const value = textOf(name).trim().toLowerCase().replaceAll('_', '.');
+  if (value === 'social.reply.send' || value.includes('social.reply') || value.includes('微信回复') || value.includes('社交回复')) {
+    return 'social.reply.send';
+  }
+  if (value === 'travel.search' || value.includes('travel') || value.includes('出行方案') || value.includes('搜索出行') || value.includes('综合出行')) {
+    return 'travel.search';
+  }
   if (value.includes('flight') || value.includes('航班') || value.includes('机票') || value.includes('飞机')) {
     return 'flight.search';
   }
@@ -356,6 +385,12 @@ function safeId(value) {
 }
 
 function surfaceIdForTool(toolName) {
+  if (toolName === 'social.reply.send') {
+    return 'surface_social';
+  }
+  if (toolName === 'travel.search') {
+    return 'surface_travel';
+  }
   if (toolName === 'train.search') {
     return 'surface_train';
   }
@@ -369,10 +404,13 @@ function surfaceIdForTool(toolName) {
 }
 
 function intentForTool(toolName) {
+  if (toolName === 'social.reply.send') {
+    return 'social';
+  }
   if (toolName === 'food.search') {
     return 'food';
   }
-  if (toolName === 'train.search' || toolName === 'flight.search') {
+  if (toolName === 'travel.search' || toolName === 'train.search' || toolName === 'flight.search') {
     return 'travel';
   }
   return 'general';
@@ -384,6 +422,9 @@ function componentForTool(toolName, card) {
   }
   if (toolName === 'train.search') {
     return 'TrainOptions';
+  }
+  if (toolName === 'travel.search') {
+    return 'TravelOptions';
   }
   if (toolName === 'flight.search') {
     return 'FlightBoard';
@@ -459,7 +500,8 @@ function parseFoodItem(item) {
     name,
     category: secondSpace > 0 ? rest.slice(0, secondSpace) : '',
     address: secondSpace > 0 ? rest.slice(secondSpace + 1) : rest,
-    distance
+    distance,
+    sourceTags: ['高德']
   };
 }
 
@@ -480,12 +522,27 @@ function dataForCard(toolName, card) {
     return card.bullets.map(parseFlightItem);
   }
   if (toolName === 'food.search') {
-    return card.bullets.map(parseFoodItem);
+    const sourceItems = Array.isArray(card.rawItems) && card.rawItems.length > 0 ? card.rawItems : card.bullets;
+    return sourceItems.map(item => {
+      if (typeof item === 'object' && item !== null && textOf(item.name).length > 0) {
+        return {
+          name: textOf(item.name),
+          category: textOf(item.category || item.type),
+          address: textOf(item.address),
+          distance: textOf(item.distance),
+          sourceTags: Array.isArray(item.sourceTags) ? item.sourceTags.map(textOf).filter(tag => tag.length > 0) : ['高德']
+        };
+      }
+      return parseFoodItem(item);
+    });
   }
   return normalizeRowsForInfo(card.bullets);
 }
 
 function dataPathForTool(toolName) {
+  if (toolName === 'travel.search') {
+    return '/travelOptions';
+  }
   if (toolName === 'train.search') {
     return '/trains';
   }
@@ -499,6 +556,9 @@ function dataPathForTool(toolName) {
 }
 
 function dataLabelForTool(toolName) {
+  if (toolName === 'travel.search') {
+    return 'travelOptions';
+  }
   if (toolName === 'train.search') {
     return 'trains';
   }
@@ -514,9 +574,11 @@ function dataLabelForTool(toolName) {
 function pendingA2ui(toolName, prompt) {
   const surfaceId = surfaceIdForTool(toolName);
   const title = TOOL_DEFS[toolName]?.title || '工具调用';
-  const message = toolName === 'train.search'
+  const message = toolName === 'travel.search'
+    ? '正在同时等待 12306 和飞常准返回'
+    : toolName === 'train.search'
     ? '正在等待 12306 返回'
-    : (toolName === 'flight.search' ? '正在等待飞常准返回' : (toolName === 'food.search' ? '正在等待高德 POI 返回' : '正在调用工具'));
+    : (toolName === 'flight.search' ? '正在等待飞常准返回' : (toolName === 'food.search' ? '正在等待外卖聚合来源返回' : '正在调用工具'));
   return a2uiJsonl([
     {
       createSurface: {
@@ -584,6 +646,296 @@ function toolExceptionResponse(toolName, error) {
       }
     ]
   );
+}
+
+function parseJsonlEnvelopes(text) {
+  const envelopes = [];
+  const errors = [];
+  text.split(/\r?\n/).forEach((line, index) => {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      return;
+    }
+    try {
+      envelopes.push(JSON.parse(trimmed));
+    } catch (error) {
+      errors.push(`line ${index + 1}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
+  return { envelopes, errors };
+}
+
+function snapshotFromA2ui(raw) {
+  const parsed = parseJsonlEnvelopes(raw);
+  const snapshot = {
+    title: '',
+    summary: '',
+    error: parsed.errors.join('; '),
+    trains: [],
+    flights: [],
+    rows: []
+  };
+  parsed.envelopes.forEach(envelope => {
+    if (envelope.createSurface) {
+      snapshot.title = textOf(envelope.createSurface.title) || snapshot.title;
+    }
+    if (envelope.updateComponents && Array.isArray(envelope.updateComponents.components)) {
+      envelope.updateComponents.components.forEach(component => {
+        if (component.component === 'ErrorNotice') {
+          snapshot.error = `${textOf(component.title)} ${textOf(component.body)}`.trim();
+        }
+      });
+    }
+    if (envelope.updateDataModel) {
+      const update = envelope.updateDataModel;
+      if (update.path === '/trains' && Array.isArray(update.value)) {
+        snapshot.trains = update.value;
+      } else if (update.path === '/flights' && Array.isArray(update.value)) {
+        snapshot.flights = update.value;
+      } else if (update.path === '/rows' && Array.isArray(update.value)) {
+        snapshot.rows = update.value;
+      } else if (update.path === '/summary' && update.value && typeof update.value === 'object') {
+        snapshot.summary = textOf(update.value.text);
+      }
+    }
+  });
+  return snapshot;
+}
+
+function compactTime(value) {
+  const text = textOf(value).trim();
+  const match = text.match(/(\d{1,2}):(\d{2})/);
+  if (match) {
+    return `${String(Number.parseInt(match[1], 10)).padStart(2, '0')}:${match[2]}`;
+  }
+  return text;
+}
+
+function parseTravelDurationMinutes(duration) {
+  const text = textOf(duration).trim();
+  const colon = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (colon) {
+    return Number.parseInt(colon[1], 10) * 60 + Number.parseInt(colon[2], 10);
+  }
+  let hours = 0;
+  let minutes = 0;
+  const hourMatch = text.match(/(\d+)\s*小时/);
+  const minuteMatch = text.match(/(\d+)\s*分/);
+  if (hourMatch) {
+    hours = Number.parseInt(hourMatch[1], 10);
+  }
+  if (minuteMatch) {
+    minutes = Number.parseInt(minuteMatch[1], 10);
+  }
+  return hours > 0 || minutes > 0 ? hours * 60 + minutes : 99999;
+}
+
+function durationFromTimes(depart, arrive) {
+  const start = Date.parse(textOf(depart));
+  const end = Date.parse(textOf(arrive));
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
+    return '';
+  }
+  const minutes = Math.floor((end - start) / 60000);
+  if (minutes <= 0 || minutes > 48 * 60) {
+    return '';
+  }
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return hours > 0 ? `${hours}小时${rest}分` : `${rest}分`;
+}
+
+function clockScore(value) {
+  const match = textOf(value).match(/(\d{1,2}):(\d{2})/);
+  return match ? Number.parseInt(match[1], 10) * 60 + Number.parseInt(match[2], 10) : 9999;
+}
+
+function travelSourceSortOrder(source) {
+  if (source === 'train') return 0;
+  if (source === 'flight') return 1;
+  return 2;
+}
+
+function sortTravelOptionsByDeparture(options) {
+  return options.slice().sort((left, right) => {
+    const departDelta = clockScore(left.depart) - clockScore(right.depart);
+    if (departDelta !== 0) return departDelta;
+    const arriveDelta = clockScore(left.arrive) - clockScore(right.arrive);
+    if (arriveDelta !== 0) return arriveDelta;
+    return travelSourceSortOrder(left.source) - travelSourceSortOrder(right.source);
+  });
+}
+
+function trainToTravelOption(item, index) {
+  return {
+    id: `train-${textOf(item.trainCode) || index}-${textOf(item.depart)}`,
+    source: 'train',
+    sourceTag: '高铁 · 12306',
+    title: textOf(item.trainCode),
+    from: textOf(item.from),
+    to: textOf(item.to),
+    depart: compactTime(item.depart),
+    arrive: compactTime(item.arrive),
+    duration: textOf(item.duration),
+    price: '',
+    availability: textOf(item.seats),
+    status: textOf(item.status) || '可查',
+    detail: ''
+  };
+}
+
+function flightToTravelOption(item, index) {
+  return {
+    id: `flight-${textOf(item.flightNo) || index}-${compactTime(item.depTime)}`,
+    source: 'flight',
+    sourceTag: '飞机 · 飞常准',
+    title: textOf(item.flightNo) || textOf(item.airline),
+    from: textOf(item.dep),
+    to: textOf(item.arr),
+    depart: compactTime(item.depTime),
+    arrive: compactTime(item.arrTime),
+    duration: durationFromTimes(item.depTime, item.arrTime),
+    price: textOf(item.price),
+    availability: '',
+    status: textOf(item.status) || '计划',
+    detail: textOf(item.airline)
+  };
+}
+
+function travelIssueRow(label, snapshot, emptyText) {
+  return {
+    label,
+    value: snapshot.error || snapshot.summary || emptyText
+  };
+}
+
+function travelResultA2ui(options, rows, prompt) {
+  const surfaceId = surfaceIdForTool('travel.search');
+  const components = [
+    {
+      id: 'root',
+      component: 'SurfaceRoot',
+      child: rows.length > 0 ? 'layout' : 'results',
+      title: '出行方案查询',
+      body: '已查询高铁和航班工具。',
+      status: 'ready'
+    }
+  ];
+  if (rows.length > 0) {
+    components.push({
+      id: 'layout',
+      component: 'Column',
+      children: ['summary', 'results'],
+      status: 'ready'
+    });
+    components.push({
+      id: 'summary',
+      component: 'InfoRows',
+      title: '来源状态',
+      body: '以下只展示真实工具返回；失败来源不会生成占位结果。',
+      status: 'ready',
+      dataPath: '/rows',
+      actions: []
+    });
+  }
+  components.push({
+    id: 'results',
+    component: 'TravelOptions',
+    title: '出行方案查询',
+    body: `用户请求：${textOf(prompt).slice(0, 120)}`,
+    status: 'ready',
+    dataPath: '/travelOptions',
+    actions: [
+      ...TRAVEL_CLIENT_ACTIONS
+    ]
+  });
+
+  return a2uiJsonl([
+    {
+      createSurface: {
+        surfaceId,
+        root: 'root',
+        title: '出行方案查询',
+        intent: 'travel',
+        status: 'ready',
+        sendDataModel: true
+      }
+    },
+    {
+      updateComponents: {
+        surfaceId,
+        components
+      }
+    },
+    {
+      updateDataModel: {
+        surfaceId,
+        path: '/travelOptions',
+        value: options
+      }
+    },
+    {
+      updateDataModel: {
+        surfaceId,
+        path: '/rows',
+        value: rows
+      }
+    },
+    {
+      updateDataModel: {
+        surfaceId,
+        path: '/summary',
+        value: {
+          text: `已查询高铁和航班，共 ${options.length} 个可展示方案。`,
+          toolName: 'travel.search',
+          dataLabel: 'travelOptions',
+          count: options.length
+        }
+      }
+    }
+  ]);
+}
+
+async function callTravelSearch(args) {
+  const source = joinedArgs(args);
+  const trainPrompt = /高铁|动车|\bG\d+|\bD\d+/i.test(source) ? source : `${source} 高铁`;
+  const flightPrompt = /航班|机票|飞机/.test(source) ? source : `${source} 航班`;
+  const [trainRaw, flightRaw] = await Promise.all([
+    call12306TrainSearch({ ...args, prompt: trainPrompt }),
+    callVariFlightSearch({ ...args, prompt: flightPrompt })
+  ]);
+  const trainSnapshot = snapshotFromA2ui(trainRaw);
+  const flightSnapshot = snapshotFromA2ui(flightRaw);
+  let options = [
+    ...trainSnapshot.trains.map(trainToTravelOption),
+    ...flightSnapshot.flights.map(flightToTravelOption)
+  ];
+  options = sortTravelOptionsByDeparture(options);
+
+  const rows = [];
+  if (trainSnapshot.error || trainSnapshot.trains.length === 0) {
+    rows.push(travelIssueRow('高铁 · 12306', trainSnapshot, '12306 没有返回可展示车次。'));
+  }
+  if (flightSnapshot.error || flightSnapshot.flights.length === 0) {
+    rows.push(travelIssueRow('飞机 · 飞常准', flightSnapshot, '飞常准没有返回可展示航班。'));
+  }
+  if (options.length === 0) {
+    return generated(
+      '高铁和航班工具都没有返回可展示结果。为避免编造行程，当前只展示真实错误或空结果说明。',
+      [
+        {
+          type: 'tool_required',
+          title: '出行方案查询失败',
+          body: '高铁和航班工具都没有返回可展示结果。',
+          toolName: 'travel.search',
+          rows,
+          items: rows.map(row => `${row.label}：${row.value}`),
+          actions: ['换日期或城市', '只查高铁', '只查飞机']
+        }
+      ]
+    );
+  }
+  return travelResultA2ui(options, rows, args.prompt || source);
 }
 
 function generated(text, cards) {
@@ -1675,7 +2027,13 @@ async function callAmapFoodSearch(args) {
         title: '附近餐饮选择',
         body: '以下为高德周边餐饮结果。',
         toolName: 'food.search',
-        items: pois.map(poi => `${poi.name} ${poi.type || ''} ${poi.address || ''} ${poi.distance ? `${poi.distance}米` : ''}`),
+        items: pois.map(poi => ({
+          name: textOf(poi.name),
+          category: textOf(poi.type),
+          address: textOf(poi.address),
+          distance: poi.distance ? `${poi.distance}米` : '',
+          sourceTags: ['高德']
+        })),
         actions: ['换关键词', '换位置']
       }
     ]
@@ -1849,6 +2207,24 @@ async function callTool(toolName, args) {
     );
   }
 
+  if (toolName === 'travel.search') {
+    return callTravelSearch(args);
+  }
+  if (toolName === 'social.reply.send') {
+    return generated(
+      '微信回复未发送。',
+      [
+        {
+          type: 'tool_required',
+          title: '微信回复未发送',
+          body: 'social.reply.send 已注册为真实动作，但 HTTP 兼容网关没有设备侧通知/辅助桥接和微信发送执行器；不会假装发送成功。',
+          toolName,
+          items: ['缺少真实微信辅助发送执行器', '请在 AIPhone HAP 内授权并接入设备侧桥接'],
+          actions: ['打开社交权限诊断']
+        }
+      ]
+    );
+  }
   const config = providerConfig(toolName);
   if (config.mcpUrl.length > 0) {
     return callHttpMcp(toolName, args, config);

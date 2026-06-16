@@ -5,7 +5,7 @@ import {
   findA2uiComponent,
   rootComponentIdOf,
   thinkingTextOf
-} from '../main/ets/pages/A2uiHome/A2uiRenderData';
+} from '../main/ets/pages/A2uiHome/render/A2uiRenderData';
 import { A2uiComponent, A2uiSurfaceState } from '../main/ets/model/A2uiTypes';
 
 function sampleSurface(): A2uiSurfaceState {

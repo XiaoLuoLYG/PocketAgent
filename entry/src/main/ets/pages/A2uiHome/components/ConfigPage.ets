@@ -18,8 +18,8 @@ import {
   COLOR_TEXT,
   statusBackground,
   statusColor
-} from '../A2uiHomeTheme';
-import { connectionStatusLabel } from '../A2uiHomeState';
+} from '../style/A2uiHomeTheme';
+import { connectionStatusLabel } from '../state/A2uiHomeState';
 import { DebugTextPanel } from './DebugTextPanel';
 
 @Component

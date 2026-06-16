@@ -14,6 +14,9 @@
     "requestPermissions": [
       {
         "name": "ohos.permission.INTERNET"
+      },
+      {
+        "name": "ohos.permission.SUBSCRIBE_NOTIFICATION"
       }
     ],
     "pages": "$profile:main_pages",
@@ -40,6 +43,15 @@
       }
     ],
     "extensionAbilities": [
+      {
+        "name": "NotificationSubscriberExtAbility",
+        "srcEntry": "./ets/extensionability/NotificationSubscriberExtAbility.ets",
+        "type": "notificationSubscriber",
+        "description": "$string:NotificationSubscriberExtAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:NotificationSubscriberExtAbility_label",
+        "exported": true
+      },
       {
         "name": "EntryBackupAbility",
         "srcEntry": "./ets/entrybackupability/EntryBackupAbility.ets",

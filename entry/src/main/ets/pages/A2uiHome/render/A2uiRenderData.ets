@@ -1,5 +1,5 @@
-import { A2uiComponent, A2uiSurfaceState } from '../../model/A2uiTypes';
-import { resolveData } from '../../model/A2uiData';
+import { A2uiComponent, A2uiSurfaceState } from '../../../model/A2uiTypes';
+import { resolveData } from '../../../model/A2uiData';
 
 export function rootComponentIdOf(surface: A2uiSurfaceState): string {
   return surface.rootId.length > 0 ? surface.rootId : 'root';

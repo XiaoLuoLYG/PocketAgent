@@ -4,13 +4,15 @@ PocketAgent is a HarmonyOS prototype for an agentic phone experience. It turns a
 
 ![PocketAgent running on HarmonyOS](docs/assets/pocketagent-current.jpeg)
 
-The current demo focuses on three real-world assistant tasks:
+The current demo focuses on five real-world assistant tasks:
 
+- Unified travel plan search that queries high-speed rail and flights together.
 - Train search through the 12306 public availability endpoint.
 - Flight search through a configurable VariFlight or compatible provider.
-- Food and place search through Amap Web Service POI.
+- Food aggregation search through Amap POI, Meituan Union, and Taobao Flash/Ele.me Union provider adapters.
+- Social inbox for real captured WeChat messages, with notification/accessibility diagnostics and failure-closed reply dispatch.
 
-PocketAgent is intentionally query-only. It can summarize choices and render confirmation boundaries, but it does not book tickets, pay, grab seats, place delivery orders, or automate regulated transactions.
+PocketAgent keeps regulated commerce query-only. It can summarize choices and render confirmation boundaries, but it does not book tickets, pay, grab seats, or place delivery orders. Social replies are only sent through a real device-side WeChat automation executor; if that executor or the required permissions are missing, the app shows an explicit failure instead of pretending a message was sent.
 
 ## What is inside
 
@@ -47,10 +49,16 @@ By default the HAP uses one tool route for every registered tool:
 ```text
 flight.search -> local://aiphone-tools
 train.search -> local://aiphone-tools
+travel.search -> local://aiphone-tools
 food.search -> local://aiphone-tools
+social.reply.send -> local://aiphone-tools
 ```
 
-The app calls 12306, VariFlight, and Amap directly from the HarmonyOS device. You do not need to keep a Mac-side `tool-gateway` service running after the HAP is installed.
+The app calls 12306, VariFlight, Amap, Tencent Maps, Baidu Maps, Meituan Union, and Taobao Flash/Ele.me Union from the HarmonyOS provider adapters when the matching provider keys are configured. `travel.search` runs the train and flight query adapters, sorts the mixed rows by departure time, and `food.search` runs the enabled food provider adapters, then each aggregate tool merges only real returned rows into one result surface. You do not need to keep a Mac-side `tool-gateway` service running after the HAP is installed.
+
+`social.reply.send` is a local social action. The first WeChat build exposes the A2UI surface, local short-term inbox model, permission diagnostics, and exact user-text reply path. It does not fabricate WeChat messages or report send success unless a real notification/accessibility bridge and WeChat automation executor are available.
+
+For the WeChat notification-center path, apply for `ohos.permission.SUBSCRIBE_NOTIFICATION` and update the HAP Profile before testing on device. The project-side checklist is in [docs/social-notification-permission.md](docs/social-notification-permission.md).
 
 Flight and food search need provider keys inside the installed HAP. Before building or installing, sync the ignored local env file into an ignored rawfile resource:
 
@@ -59,6 +67,22 @@ node scripts/sync-provider-config.mjs
 ```
 
 This writes `entry/src/main/resources/rawfile/aiphone_provider_config.json`, which is packaged into the HAP and read by `EntryAbility` at startup. The generated file is ignored by git and should not be committed.
+
+For food aggregation, configure any subset of these query-only providers:
+
+```bash
+AMAP_KEY="..."
+AMAP_DEFAULT_LOCATION="116.397428,39.90923"
+TENCENT_MAP_KEY="..."
+BAIDU_MAP_AK="..."
+MEITUAN_UNION_APP_KEY="..."
+MEITUAN_UNION_APP_SECRET="..."
+TAOBAO_APP_KEY="..."
+TAOBAO_APP_SECRET="..."
+TAOBAO_FLASH_PID="..."
+```
+
+The map POI providers (`AMAP_KEY`, `TENCENT_MAP_KEY`, `BAIDU_MAP_AK`) are the simplest query-only sources for nearby restaurants and shops. The Meituan and Taobao Flash providers remain available for platform-specific union results, but they require the matching union developer keys and permissions. Missing keys, provider authorization errors, HTTP errors, and empty provider responses are rendered as source status rows. The app does not place orders, create carts, pay, or invent cross-platform prices.
 
 ## Optional HTTP tool gateway
 
@@ -90,7 +114,7 @@ hdc rport tcp:8787 tcp:8787
 3. Configure your own signing profile if DevEco does not create one automatically.
 4. Fill `tool-gateway/.env.local`, then run `node scripts/sync-provider-config.mjs`.
 5. Run the `entry` module on a HarmonyOS device or simulator.
-6. The default tool route stays in-app for flight, train, and food search. No Mac-side gateway is required at runtime.
+6. The default tool route stays in-app for flight, train, food, travel aggregation, and social reply dispatch. No Mac-side gateway is required at runtime.
 
 ## Provider configuration
 
@@ -101,6 +125,8 @@ FLIGHT_MCP_KEY=
 VARIFLIGHT_API_KEY=
 AMAP_KEY=
 AMAP_DEFAULT_LOCATION=116.397428,39.90923
+TENCENT_MAP_KEY=
+BAIDU_MAP_AK=
 ```
 
 `.env.local` is ignored by git. Do not commit real provider keys, signing files, or local model credentials.
@@ -114,15 +140,16 @@ A2UI messages are newline-delimited JSON envelopes. The app currently accepts:
 - `updateDataModel`
 - `deleteSurface`
 
-The first catalog includes `SurfaceRoot`, `Column`, `Row`, `Text`, `ActionBar`, `ErrorNotice`, `ThinkingStream`, `TrainOptions`, `FlightBoard`, `FoodChoices`, `ConfirmPanel`, and `InfoRows`.
+The first catalog includes `SurfaceRoot`, `Column`, `Row`, `Text`, `ActionBar`, `ErrorNotice`, `ThinkingStream`, `SocialInbox`, `TravelOptions`, `TrainOptions`, `FlightBoard`, `FoodChoices`, `ConfirmPanel`, and `InfoRows`.
 
 See [docs/a2ui.md](docs/a2ui.md) for more detail.
 
 ## Security notes
 
 - The renderer never executes model-generated HTML or JavaScript.
-- Tool calls are limited to registered query adapters.
-- Booking, payment, ticket grabbing, order placement, and account automation are outside the current boundary.
+- Tool calls are limited to registered provider adapters and explicit local social actions.
+- The social inbox never creates test contacts or synthetic messages; empty permission states are rendered as diagnostics.
+- Booking, payment, ticket grabbing, order placement, and commerce account automation are outside the current boundary.
 - Public example configuration uses placeholders only.
 
 ## License

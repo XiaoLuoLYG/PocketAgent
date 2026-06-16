@@ -7,8 +7,9 @@ import {
   COLOR_INK,
   COLOR_MUTED,
   COLOR_TEXT
-} from '../A2uiHomeTheme';
-import { componentBodyOf, componentStatusOf, componentTitleOf } from '../A2uiRenderData';
+} from '../style/A2uiHomeTheme';
+import { componentBodyOf, componentStatusOf, componentTitleOf } from '../render/A2uiRenderData';
+import { a2uiEnterTransition } from '../style/A2uiHomeMotion';
 import { ActionBarView } from './ActionBarView';
 import { StatusBadgeView } from './StatusBadgeView';
 
@@ -73,6 +74,7 @@ export struct InfoRowsView {
           .alignItems(VerticalAlign.Top)
           .padding({ top: index === 0 ? 14 : 10, bottom: 4 })
           .border({ width: { bottom: 1 }, color: COLOR_CARD_EDGE })
+          .transition(a2uiEnterTransition())
         }, (row: A2uiLabelValue, index: number) => row.label + row.value + index.toString() + '-' + this.renderTick.toString())
       }
 
@@ -90,5 +92,6 @@ export struct InfoRowsView {
     .border({ width: 1, color: COLOR_CARD_EDGE })
     .shadow({ radius: 22, color: COLOR_CARD_GLOW, offsetX: 0, offsetY: 10 })
     .margin({ bottom: 12 })
+    .transition(a2uiEnterTransition())
   }
 }

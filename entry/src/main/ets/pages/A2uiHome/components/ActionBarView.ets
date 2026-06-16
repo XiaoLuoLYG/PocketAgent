@@ -1,14 +1,11 @@
 import { A2uiAction } from '../../../model/A2uiTypes';
 import {
-  COLOR_ACCENT,
-  COLOR_ACCENT_DEEP,
-  COLOR_BUTTON_TEXT,
-  COLOR_CARD_EDGE,
-  COLOR_CARD_RAISED,
-  COLOR_ERROR,
-  COLOR_ERROR_SOFT,
-  COLOR_INK
-} from '../A2uiHomeTheme';
+  A2UI_DIALOG_ACTION_GAP,
+  A2UI_DIALOG_ACTION_SIDE_PADDING,
+  usesDialogActionLayout
+} from '../style/A2uiActionBarLayout';
+import { a2uiEnterTransition } from '../style/A2uiHomeMotion';
+import { A2uiButtonView } from './common/A2uiButtonView';
 
 @Component
 export struct ActionBarView {
@@ -16,57 +13,71 @@ export struct ActionBarView {
   @Prop isBusy: boolean = false;
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
 
-  private actionBackground(variant: string): string {
-    if (variant === 'primary') {
-      return COLOR_ACCENT_DEEP;
-    }
-    if (variant === 'danger') {
-      return COLOR_ERROR_SOFT;
-    }
-    return COLOR_CARD_RAISED;
+  private useDialogLayout(): boolean {
+    return usesDialogActionLayout(this.actions.length);
   }
 
-  private actionBorder(variant: string): string {
-    if (variant === 'primary') {
-      return COLOR_ACCENT;
+  private actionTone(action: A2uiAction): string {
+    if (action.variant === 'activated' || action.variant === 'deactivated') {
+      return action.variant;
     }
-    if (variant === 'danger') {
-      return COLOR_ERROR;
-    }
-    return COLOR_CARD_EDGE;
+    return action.variant;
   }
 
-  private actionTextColor(variant: string): string {
-    if (variant === 'primary') {
-      return COLOR_BUTTON_TEXT;
-    }
-    if (variant === 'danger') {
-      return COLOR_ERROR;
-    }
-    return COLOR_INK;
+  private actionActive(action: A2uiAction): boolean {
+    return action.variant === 'activated';
   }
 
   build() {
     if (this.actions.length > 0) {
-      Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap }) {
-        ForEach(this.actions, (action: A2uiAction) => {
-          Button(action.label)
-            .enabled(!this.isBusy)
-            .height(38)
-            .fontSize(13)
-            .fontColor(this.actionTextColor(action.variant))
-            .backgroundColor(this.actionBackground(action.variant))
-            .borderRadius(11)
-            .border({ width: 1, color: this.actionBorder(action.variant) })
-            .padding({ left: 14, right: 14 })
-            .margin({ right: 8, top: 10 })
-            .onClick(() => {
-              this.onAction(action);
+      if (this.useDialogLayout()) {
+        Row() {
+          ForEach(this.actions, (action: A2uiAction, index: number) => {
+            A2uiButtonView({
+              label: action.label,
+              shape: 'pill',
+              tone: this.actionTone(action),
+              active: this.actionActive(action),
+              isEnabled: !this.isBusy,
+              fill: true
             })
-        }, (action: A2uiAction) => action.id + action.label)
+              .onClick(() => {
+                if (this.isBusy) {
+                  return;
+                }
+                this.onAction(action);
+              })
+              .layoutWeight(1)
+              .margin({ right: index === 0 ? A2UI_DIALOG_ACTION_GAP : 0 })
+          }, (action: A2uiAction) => action.id + action.label)
+        }
+        .width('100%')
+        .padding({ left: A2UI_DIALOG_ACTION_SIDE_PADDING, right: A2UI_DIALOG_ACTION_SIDE_PADDING })
+        .margin({ top: 12 })
+        .transition(a2uiEnterTransition())
+      } else {
+        Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap }) {
+          ForEach(this.actions, (action: A2uiAction) => {
+            A2uiButtonView({
+              label: action.label,
+              shape: 'pill',
+              tone: this.actionTone(action),
+              active: this.actionActive(action),
+              isEnabled: !this.isBusy
+            })
+              .onClick(() => {
+                if (this.isBusy) {
+                  return;
+                }
+                this.onAction(action);
+              })
+              .margin({ right: 8, top: 10 })
+          }, (action: A2uiAction) => action.id + action.label)
+        }
+        .width('100%')
+        .margin({ top: 4 })
+        .transition(a2uiEnterTransition())
       }
-      .width('100%')
-      .margin({ top: 4 })
     }
   }
 }

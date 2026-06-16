@@ -1,3 +1,6 @@
+import { common, Want } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { notificationExtensionSubscription } from '@kit.NotificationKit';
 import { LocalModelSettings, defaultLocalModelSettings } from '../model/LocalModelSettings';
 import {
   A2UI_COMPONENT_ACTION_BAR,
@@ -8,35 +11,53 @@ import {
   A2UI_COMPONENT_FOOD_CHOICES,
   A2UI_COMPONENT_INFO_ROWS,
   A2UI_COMPONENT_ROW,
+  A2UI_COMPONENT_SOCIAL_INBOX,
   A2UI_COMPONENT_SURFACE_ROOT,
   A2UI_COMPONENT_TEXT,
   A2UI_COMPONENT_THINKING_STREAM,
   A2UI_COMPONENT_THINKING_CARD,
   A2UI_COMPONENT_TRAIN_OPTIONS,
+  A2UI_COMPONENT_TRAVEL_OPTIONS,
   A2uiAction,
   A2uiComponent,
   A2uiMessage,
   A2uiRuntimeDataModel,
+  A2uiSocialMessageData,
+  A2uiSocialReplyData,
   A2uiSurfaceState
 } from '../model/A2uiTypes';
 import {
   A2uiFlightOption,
   A2uiFoodOption,
   A2uiLabelValue,
+  A2uiSocialMessage,
   A2uiTrainOption,
+  A2uiTravelOption,
   actionsOf,
   componentById,
   flightOptions,
   foodOptions,
   labelValues,
   resolveData,
+  socialDiagnostics,
+  socialMessages,
   toolRequest,
+  travelOptions,
   trainOptions
 } from '../model/A2uiData';
-import { createSeedA2uiSurface } from '../model/A2uiSurfaceStore';
+import { A2uiSurfaceStore, createSeedA2uiSurface } from '../model/A2uiSurfaceStore';
 import { A2uiStreamMeta, buildChatCompletionsUrl, callLocalModel, modelThinkCloseSeen } from '../model/LocalModelClient';
-import { callToolGateway, defaultToolGatewayUrl, isLocalToolGatewayUrl, isRegisteredToolId, localProviderConfigDebugSummary } from '../model/ToolGatewayClient';
+import { callToolGateway, defaultToolGatewayUrl, foodDistanceMeters, isLocalToolGatewayUrl, isRegisteredToolId, localProviderConfigDebugSummary } from '../model/ToolGatewayClient';
 import { aiLogError, aiLogInfo } from '../model/AiphoneLogger';
+import {
+  AccessibilityIngestProvider,
+  NotificationIngestProvider,
+  SocialMessageStore,
+  WechatReplyAutomation,
+  buildSocialDiagnosticsRows,
+  probeSocialCapabilities
+} from '../model/SocialBridge';
+import { readNotificationCaptureArchive, SocialNotificationArchiveRead } from '../model/SocialNotificationArchive';
 
 const MODEL_LOCAL_QWEN: string = 'Qwen3-8B';
 const MODEL_CLOUD_QWEN: string = 'qwen3-8b';
@@ -48,6 +69,7 @@ const CUSTOM_PARAMETERS_QWEN_CLOUD: string = '{"enable_thinking":false}';
 const TOOL_GATEWAY_URL: string = defaultToolGatewayUrl();
 const STREAM_SOURCE_MODEL: string = 'model';
 const STREAM_SOURCE_TOOL: string = 'tool';
+const STREAM_SOURCE_SOCIAL: string = 'social';
 const DEBUG_SCROLL_MAX_HEIGHT: number = 120;
 const DEBUG_SCROLL_MIN_HEIGHT: number = 56;
 
@@ -77,6 +99,46 @@ const COLOR_PROCESS: string = '#4FDBCA';
 const COLOR_PROCESS_SOFT: string = '#123039';
 const COLOR_PROCESS_TINT: string = '#0D171E';
 const COLOR_PROCESS_LINE: string = '#2B7A72';
+const COLOR_TRAVEL_TRAIN: string = '#72E59D';
+const COLOR_TRAVEL_TRAIN_SOFT: string = '#132D22';
+const COLOR_TRAVEL_TRAIN_LINE: string = '#347B54';
+const COLOR_TRAVEL_TRAIN_CARD: string = '#121F18';
+const COLOR_TRAVEL_TRAIN_GLOW: string = '#0D3A2280';
+const COLOR_TRAVEL_FLIGHT: string = '#7AA7FF';
+const COLOR_TRAVEL_FLIGHT_SOFT: string = '#142545';
+const COLOR_TRAVEL_FLIGHT_LINE: string = '#456DAE';
+const COLOR_TRAVEL_FLIGHT_CARD: string = '#111A2B';
+const COLOR_TRAVEL_FLIGHT_GLOW: string = '#102B6680';
+const COLOR_SOCIAL: string = '#F1C76A';
+const COLOR_SOCIAL_SOFT: string = '#322819';
+const COLOR_SOCIAL_LINE: string = '#8B6B2A';
+const COLOR_SOCIAL_CARD: string = '#1D1B15';
+const COLOR_SOCIAL_GLOW: string = '#5A3E0F66';
+const COLOR_FOOD_AMAP: string = '#53E08A';
+const COLOR_FOOD_AMAP_SOFT: string = '#122D22';
+const COLOR_FOOD_AMAP_LINE: string = '#348B5A';
+const COLOR_FOOD_AMAP_CARD: string = '#122218';
+const COLOR_FOOD_AMAP_GLOW: string = '#0A402680';
+const COLOR_FOOD_TENCENT: string = '#68C7FF';
+const COLOR_FOOD_TENCENT_SOFT: string = '#102B3B';
+const COLOR_FOOD_TENCENT_LINE: string = '#367DA6';
+const COLOR_FOOD_TENCENT_CARD: string = '#10202C';
+const COLOR_FOOD_TENCENT_GLOW: string = '#0C385B80';
+const COLOR_FOOD_BAIDU: string = '#FF7C8D';
+const COLOR_FOOD_BAIDU_SOFT: string = '#341A22';
+const COLOR_FOOD_BAIDU_LINE: string = '#A84856';
+const COLOR_FOOD_BAIDU_CARD: string = '#21141A';
+const COLOR_FOOD_BAIDU_GLOW: string = '#61202A66';
+const COLOR_FOOD_MEITUAN: string = '#F5C84C';
+const COLOR_FOOD_MEITUAN_SOFT: string = '#32280F';
+const COLOR_FOOD_MEITUAN_LINE: string = '#94742A';
+const COLOR_FOOD_MEITUAN_CARD: string = '#221C0E';
+const COLOR_FOOD_MEITUAN_GLOW: string = '#61481066';
+const COLOR_FOOD_TAOBAO: string = '#B58BFF';
+const COLOR_FOOD_TAOBAO_SOFT: string = '#251B3D';
+const COLOR_FOOD_TAOBAO_LINE: string = '#6E52AF';
+const COLOR_FOOD_TAOBAO_CARD: string = '#191329';
+const COLOR_FOOD_TAOBAO_GLOW: string = '#3D267066';
 const COLOR_CARD_SHADOW: string = '#020B10D0';
 const COLOR_PANEL_SHADOW: string = '#020B10C8';
 const COLOR_ERROR: string = '#FF8A84';
@@ -94,6 +156,15 @@ const COLOR_ERROR_SOFT: string = '#351B1D';
 const COLOR_CHROME: string = '#1B2A33';
 const TRAIN_INITIAL_VISIBLE: number = 6;
 const TRAIN_EDIT_QUERY_PLACEHOLDER: string = '请输入具体车站和时间，如：深圳北 18:00 后 到香港西九龙';
+const SYSTEM_MAP_BUNDLE: string = 'com.huawei.hmos.maps.app';
+const SYSTEM_MAP_ABILITY: string = 'EntryAbility';
+const SOCIAL_REPLY_UNAVAILABLE: string = '辅助自动化未授权或未接入真实微信发送器';
+const SOCIAL_MESSAGE_STORE: SocialMessageStore = new SocialMessageStore();
+
+interface FoodNavigationTarget {
+  name: string;
+  want: Want;
+}
 
 function messageId(): string {
   return Date.now().toString() + '-' + Math.random().toString();
@@ -152,7 +223,17 @@ struct Index {
   @State trainSortMode: string = 'default';
   @State trainFilterAvailable: boolean = false;
   @State expandedTrainKey: string = '';
+  @State expandedFlightKey: string = '';
+  @State travelFilterMode: string = 'all';
+  @State expandedTravelKey: string = '';
+  @State foodFilterMode: string = 'all';
+  @State expandedFoodKey: string = '';
+  @State foodNavigationStatus: string = '';
   @State inputPlaceholder: string = '告诉 AIPhone 你想完成什么';
+  @State selectedSocialMessageId: string = '';
+  @State selectedSocialConversationTitle: string = '';
+  @State socialLastCapture: string = '无真实消息';
+  @State socialLastSend: string = '未发送';
 
   aboutToAppear(): void {
     this.startStandbyAnimation();
@@ -301,6 +382,12 @@ struct Index {
   }
 
   private hasTaskContent(): boolean {
+    if (this.hasSocialDataInModel()) {
+      return true;
+    }
+    if (this.hasTravelOptionsDataInModel()) {
+      return true;
+    }
     if (this.hasTrainDataInModel()) {
       return true;
     }
@@ -366,6 +453,9 @@ struct Index {
     if (intent === 'food') {
       return '餐饮';
     }
+    if (intent === 'social') {
+      return '社交';
+    }
     if (intent === 'setup') {
       return '连接';
     }
@@ -415,6 +505,166 @@ struct Index {
       return COLOR_ACCENT_SOFT;
     }
     return COLOR_ACCENT_SOFT;
+  }
+
+  private travelSourceAccent(source: string): string {
+    if (source === 'flight') {
+      return COLOR_TRAVEL_FLIGHT;
+    }
+    return COLOR_TRAVEL_TRAIN;
+  }
+
+  private travelSourceSoft(source: string): string {
+    if (source === 'flight') {
+      return COLOR_TRAVEL_FLIGHT_SOFT;
+    }
+    return COLOR_TRAVEL_TRAIN_SOFT;
+  }
+
+  private travelSourceLine(source: string): string {
+    if (source === 'flight') {
+      return COLOR_TRAVEL_FLIGHT_LINE;
+    }
+    return COLOR_TRAVEL_TRAIN_LINE;
+  }
+
+  private travelSourceCard(source: string): string {
+    if (source === 'flight') {
+      return COLOR_TRAVEL_FLIGHT_CARD;
+    }
+    return COLOR_TRAVEL_TRAIN_CARD;
+  }
+
+  private travelSourceGlow(source: string): string {
+    if (source === 'flight') {
+      return COLOR_TRAVEL_FLIGHT_GLOW;
+    }
+    return COLOR_TRAVEL_TRAIN_GLOW;
+  }
+
+  private socialSourceLabel(source: string): string {
+    if (source === 'notification') {
+      return '通知中心';
+    }
+    if (source === 'accessibility') {
+      return '辅助捕获';
+    }
+    if (source === 'official') {
+      return '官方渠道';
+    }
+    return source.length > 0 ? source : '未知来源';
+  }
+
+  private socialStatusLabel(status: string): string {
+    if (status === 'sent' || status === 'replied') {
+      return '已回复';
+    }
+    if (status === 'failed') {
+      return '失败';
+    }
+    if (status === 'sending' || status === 'queued') {
+      return '发送中';
+    }
+    if (status === 'selected') {
+      return '正在回复';
+    }
+    return '未读';
+  }
+
+  private socialStatusColor(status: string): string {
+    if (status === 'failed') {
+      return COLOR_ERROR;
+    }
+    if (status === 'sent' || status === 'replied') {
+      return COLOR_ACCENT_DARK;
+    }
+    if (status === 'sending' || status === 'queued' || status === 'selected') {
+      return COLOR_PROCESS;
+    }
+    return COLOR_SOCIAL;
+  }
+
+  private socialReplyText(messageId: string): string {
+    const reply = this.replyForSocialMessage(messageId);
+    if (reply === null) {
+      return '';
+    }
+    return reply.text;
+  }
+
+  private socialReplyError(messageId: string): string {
+    const reply = this.replyForSocialMessage(messageId);
+    if (reply === null) {
+      return '';
+    }
+    return reply.error;
+  }
+
+  private isActionSelected(action: A2uiAction): boolean {
+    if (action.id === 'travel_show_all') {
+      return this.travelFilterMode === 'all';
+    }
+    if (action.id === 'travel_filter_train') {
+      return this.travelFilterMode === 'train';
+    }
+    if (action.id === 'travel_filter_flight') {
+      return this.travelFilterMode === 'flight';
+    }
+    if (action.id === 'food_show_all') {
+      return this.foodFilterMode === 'all';
+    }
+    if (action.id === 'food_filter_1km') {
+      return this.foodFilterMode === 'within_1km';
+    }
+    return false;
+  }
+
+  private actionBackgroundFor(action: A2uiAction): string {
+    if (this.isActionSelected(action)) {
+      if (action.id === 'travel_filter_train') {
+        return COLOR_TRAVEL_TRAIN_SOFT;
+      }
+      if (action.id === 'travel_filter_flight') {
+        return COLOR_TRAVEL_FLIGHT_SOFT;
+      }
+      if (action.id === 'food_filter_1km') {
+        return COLOR_ACCENT_SOFT;
+      }
+      return COLOR_CARD_TOP;
+    }
+    return this.actionBackground(action.variant);
+  }
+
+  private actionTextColorFor(action: A2uiAction): string {
+    if (this.isActionSelected(action)) {
+      if (action.id === 'travel_filter_train') {
+        return COLOR_TRAVEL_TRAIN;
+      }
+      if (action.id === 'travel_filter_flight') {
+        return COLOR_TRAVEL_FLIGHT;
+      }
+      if (action.id === 'food_filter_1km') {
+        return COLOR_ACCENT_DARK;
+      }
+      return COLOR_ACCENT_DARK;
+    }
+    return this.actionTextColor(action.variant);
+  }
+
+  private actionBorderFor(action: A2uiAction): string {
+    if (this.isActionSelected(action)) {
+      if (action.id === 'travel_filter_train') {
+        return COLOR_TRAVEL_TRAIN_LINE;
+      }
+      if (action.id === 'travel_filter_flight') {
+        return COLOR_TRAVEL_FLIGHT_LINE;
+      }
+      if (action.id === 'food_filter_1km') {
+        return COLOR_ACCENT;
+      }
+      return COLOR_EDGE_LIGHT;
+    }
+    return this.actionBorder(action.variant);
   }
 
   private actionBackground(variant: string): string {
@@ -525,6 +775,15 @@ struct Index {
       if (nextSurface.dataModelJson.indexOf('"trainCode"') >= 0) {
         this.resetTrainViewState();
       }
+      if (nextSurface.dataModelJson.indexOf('"foods"') >= 0) {
+        this.resetFoodViewState();
+      }
+      if (nextSurface.dataModelJson.indexOf('"flightNo"') >= 0) {
+        this.resetFlightViewState();
+      }
+      if (nextSurface.dataModelJson.indexOf('"travelOptions"') >= 0) {
+        this.resetTravelViewState();
+      }
     }
     this.statusText = this.statusLabel(nextSurface.status);
     // #region agent log
@@ -603,7 +862,7 @@ struct Index {
       title: this.currentSurface.title,
       body: '',
       status: this.currentSurface.status,
-      dataPath: componentType === A2UI_COMPONENT_TRAIN_OPTIONS ? '/trains' : (componentType === A2UI_COMPONENT_FLIGHT_BOARD ? '/flights' : (componentType === A2UI_COMPONENT_FOOD_CHOICES ? '/foods' : '/rows')),
+      dataPath: componentType === A2UI_COMPONENT_SOCIAL_INBOX ? '/social/messages' : (componentType === A2UI_COMPONENT_TRAVEL_OPTIONS ? '/travelOptions' : (componentType === A2UI_COMPONENT_TRAIN_OPTIONS ? '/trains' : (componentType === A2UI_COMPONENT_FLIGHT_BOARD ? '/flights' : (componentType === A2UI_COMPONENT_FOOD_CHOICES ? '/foods' : '/rows')))),
       actions: []
     };
   }
@@ -633,6 +892,20 @@ struct Index {
     return model !== null && Array.isArray(model.trains) && model.trains.length > 0;
   }
 
+  private hasTravelOptionsDataInModel(): boolean {
+    const model = this.parsedDataModel();
+    return model !== null && Array.isArray(model.travelOptions) && model.travelOptions.length > 0;
+  }
+
+  private hasSocialDataInModel(): boolean {
+    const model = this.parsedDataModel();
+    if (model === null || model.social === undefined || model.social === null) {
+      return false;
+    }
+    return (Array.isArray(model.social.messages) && model.social.messages.length > 0) ||
+      (Array.isArray(model.social.diagnostics) && model.social.diagnostics.length > 0);
+  }
+
   private hasFlightDataInModel(): boolean {
     const model = this.parsedDataModel();
     return model !== null && Array.isArray(model.flights) && model.flights.length > 0;
@@ -652,6 +925,12 @@ struct Index {
   }
 
   private debugUiRouteTag(): string {
+    if (this.hasSocialDataInModel()) {
+      return 'social';
+    }
+    if (this.hasTravelOptionsDataInModel()) {
+      return 'travel';
+    }
     if (this.hasTrainDataInModel()) {
       return 'train';
     }
@@ -713,6 +992,236 @@ struct Index {
       return component.tone;
     }
     return '';
+  }
+
+  private foodSourceTags(item: A2uiFoodOption): string[] {
+    if (item.sourceTags === undefined || item.sourceTags === null) {
+      return [];
+    }
+    const tags: string[] = [];
+    const rawTags: string[] = item.sourceTags;
+    if (!Array.isArray(rawTags)) {
+      return [];
+    }
+    rawTags.forEach((tag: string) => {
+      if (tag.length > 0 && tags.indexOf(tag) < 0) {
+        tags.push(tag);
+      }
+    });
+    return tags;
+  }
+
+  private foodPrimarySource(item: A2uiFoodOption): string {
+    const tags = this.foodSourceTags(item);
+    if (tags.length === 1) {
+      return tags[0];
+    }
+    return '';
+  }
+
+  private foodSourceAccent(source: string): string {
+    if (source === '高德') {
+      return COLOR_FOOD_AMAP;
+    }
+    if (source === '腾讯地图') {
+      return COLOR_FOOD_TENCENT;
+    }
+    if (source === '百度地图') {
+      return COLOR_FOOD_BAIDU;
+    }
+    if (source === '美团') {
+      return COLOR_FOOD_MEITUAN;
+    }
+    if (source === '淘宝闪购') {
+      return COLOR_FOOD_TAOBAO;
+    }
+    return COLOR_ACCENT_DARK;
+  }
+
+  private foodSourceSoft(source: string): string {
+    if (source === '高德') {
+      return COLOR_FOOD_AMAP_SOFT;
+    }
+    if (source === '腾讯地图') {
+      return COLOR_FOOD_TENCENT_SOFT;
+    }
+    if (source === '百度地图') {
+      return COLOR_FOOD_BAIDU_SOFT;
+    }
+    if (source === '美团') {
+      return COLOR_FOOD_MEITUAN_SOFT;
+    }
+    if (source === '淘宝闪购') {
+      return COLOR_FOOD_TAOBAO_SOFT;
+    }
+    return COLOR_ACCENT_SOFT;
+  }
+
+  private foodSourceLine(source: string): string {
+    if (source === '高德') {
+      return COLOR_FOOD_AMAP_LINE;
+    }
+    if (source === '腾讯地图') {
+      return COLOR_FOOD_TENCENT_LINE;
+    }
+    if (source === '百度地图') {
+      return COLOR_FOOD_BAIDU_LINE;
+    }
+    if (source === '美团') {
+      return COLOR_FOOD_MEITUAN_LINE;
+    }
+    if (source === '淘宝闪购') {
+      return COLOR_FOOD_TAOBAO_LINE;
+    }
+    return COLOR_CARD_EDGE;
+  }
+
+  private foodSourceCard(source: string): string {
+    if (source === '高德') {
+      return COLOR_FOOD_AMAP_CARD;
+    }
+    if (source === '腾讯地图') {
+      return COLOR_FOOD_TENCENT_CARD;
+    }
+    if (source === '百度地图') {
+      return COLOR_FOOD_BAIDU_CARD;
+    }
+    if (source === '美团') {
+      return COLOR_FOOD_MEITUAN_CARD;
+    }
+    if (source === '淘宝闪购') {
+      return COLOR_FOOD_TAOBAO_CARD;
+    }
+    return COLOR_CARD;
+  }
+
+  private foodSourceGlow(source: string): string {
+    if (source === '高德') {
+      return COLOR_FOOD_AMAP_GLOW;
+    }
+    if (source === '腾讯地图') {
+      return COLOR_FOOD_TENCENT_GLOW;
+    }
+    if (source === '百度地图') {
+      return COLOR_FOOD_BAIDU_GLOW;
+    }
+    if (source === '美团') {
+      return COLOR_FOOD_MEITUAN_GLOW;
+    }
+    if (source === '淘宝闪购') {
+      return COLOR_FOOD_TAOBAO_GLOW;
+    }
+    return COLOR_CARD_GLOW;
+  }
+
+  private foodCardBackground(item: A2uiFoodOption): string {
+    return this.foodSourceCard(this.foodPrimarySource(item));
+  }
+
+  private foodCardBorder(item: A2uiFoodOption): string {
+    return this.foodSourceLine(this.foodPrimarySource(item));
+  }
+
+  private foodCardGlow(item: A2uiFoodOption): string {
+    return this.foodSourceGlow(this.foodPrimarySource(item));
+  }
+
+  private foodCardAccent(item: A2uiFoodOption): string {
+    return this.foodSourceAccent(this.foodPrimarySource(item));
+  }
+
+  private foodLocationText(item: A2uiFoodOption): string {
+    if (item.location === undefined || item.location === null) {
+      return '';
+    }
+    return item.location.trim();
+  }
+
+  private foodLocationParts(item: A2uiFoodOption): string[] {
+    const location = this.foodLocationText(item);
+    if (location.length === 0) {
+      return [];
+    }
+    const parts = location.split(',');
+    if (parts.length < 2) {
+      return [];
+    }
+    const longitude = parts[0].trim();
+    const latitude = parts[1].trim();
+    if (longitude.length === 0 || latitude.length === 0) {
+      return [];
+    }
+    return [latitude, longitude];
+  }
+
+  private foodCanNavigate(item: A2uiFoodOption): boolean {
+    return this.foodLocationParts(item).length === 2;
+  }
+
+  private foodNavigationUnavailableText(item: A2uiFoodOption): string {
+    if (this.foodLocationParts(item).length !== 2) {
+      return '缺少真实坐标，不能导航';
+    }
+    return '';
+  }
+
+  private systemFoodNavigationUri(item: A2uiFoodOption): string {
+    const parts = this.foodLocationParts(item);
+    if (parts.length !== 2) {
+      return '';
+    }
+    return 'maps://navigation?saddr=&daddr=' + parts[0] + ',' + parts[1] + '&type=walk';
+  }
+
+  private foodNavigationWant(uri: string): Want {
+    return {
+      bundleName: SYSTEM_MAP_BUNDLE,
+      abilityName: SYSTEM_MAP_ABILITY,
+      action: 'ohos.want.action.viewData',
+      entities: ['entity.system.browsable'],
+      uri: uri
+    };
+  }
+
+  private foodNavigationTargets(item: A2uiFoodOption): FoodNavigationTarget[] {
+    const targets: FoodNavigationTarget[] = [];
+    const systemUri = this.systemFoodNavigationUri(item);
+    if (systemUri.length > 0) {
+      targets.push({ name: '系统地图', want: this.foodNavigationWant(systemUri) });
+    }
+    return targets;
+  }
+
+  private async openFoodNavigation(item: A2uiFoodOption): Promise<void> {
+    const targets = this.foodNavigationTargets(item);
+    if (targets.length === 0) {
+      const reason = this.foodNavigationUnavailableText(item);
+      this.foodNavigationStatus = reason;
+      this.statusText = reason;
+      return;
+    }
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    let lastError = '';
+    for (let index = 0; index < targets.length; index++) {
+      const target = targets[index];
+      try {
+        await context.startAbility(target.want);
+        this.foodNavigationStatus = '已请求' + target.name + '从当前位置导航';
+        this.statusText = '已请求系统地图导航';
+        const uri: string = target.want.uri === undefined ? '' : target.want.uri;
+        aiLogInfo('[AIPhone][FoodNavigation] provider=' + target.name + ' uriChars=' + uri.length.toString() + ' name=' + item.name);
+        return;
+      } catch (error) {
+        const businessError = error as BusinessError;
+        lastError = target.name + '：' + businessError.message;
+        const code = businessError.code === undefined || businessError.code === null ? 'unknown' : businessError.code.toString();
+        aiLogError('[AIPhone][FoodNavigation] failed provider=' + target.name + ' code=' + code + ' message=' + businessError.message);
+      }
+    }
+    const message = '导航打开失败：' + lastError;
+    this.foodNavigationStatus = message;
+    this.lastError = message;
+    this.statusText = '导航不可用';
   }
 
   private processingCardBackground(status: string): string {
@@ -952,7 +1461,323 @@ struct Index {
     }
   }
 
+  private shouldOpenSocialPrompt(prompt: string): boolean {
+    return prompt.indexOf('社交') >= 0 ||
+      prompt.indexOf('微信消息') >= 0 ||
+      prompt.indexOf('微信收件箱') >= 0 ||
+      prompt.indexOf('打开微信') >= 0;
+  }
+
+  private currentSocialMessages(): A2uiSocialMessageData[] {
+    const model = this.parsedDataModel();
+    if (model === null || model.social === undefined || model.social === null || !Array.isArray(model.social.messages)) {
+      return [];
+    }
+    return model.social.messages;
+  }
+
+  private currentSocialReplies(): A2uiSocialReplyData[] {
+    const model = this.parsedDataModel();
+    if (model === null || model.social === undefined || model.social === null || !Array.isArray(model.social.replies)) {
+      return [];
+    }
+    return model.social.replies;
+  }
+
+  private selectedSocialMessage(): A2uiSocialMessageData | null {
+    const messages = this.currentSocialMessages();
+    for (let index = 0; index < messages.length; index++) {
+      if (messages[index].id === this.selectedSocialMessageId) {
+        return messages[index];
+      }
+    }
+    return null;
+  }
+
+  private replyForSocialMessage(messageId: string): A2uiSocialReplyData | null {
+    const replies = this.currentSocialReplies();
+    for (let index = replies.length - 1; index >= 0; index--) {
+      if (replies[index].targetMessageId === messageId) {
+        return replies[index];
+      }
+    }
+    return null;
+  }
+
+  private isSocialReplyMode(): boolean {
+    return this.selectedSocialMessageId.length > 0 && this.currentSurface.intent === 'social';
+  }
+
+  private inputActionLabel(): string {
+    if (this.isSocialReplyMode()) {
+      return '发送';
+    }
+    return '生成';
+  }
+
+  private emptySocialModel(): A2uiRuntimeDataModel {
+    return {
+      rows: [],
+      trains: [],
+      flights: [],
+      travelOptions: [],
+      foods: [],
+      social: {
+        messages: [],
+        replies: [],
+        diagnostics: []
+      },
+      thoughts: [],
+      summary: {
+        text: '',
+        toolName: '',
+        dataLabel: '',
+        count: 0
+      },
+      trip: {
+        rows: []
+      },
+      rowGroups: {
+        train: [],
+        flight: [],
+        food: []
+      },
+      toolRequest: {
+        toolId: '',
+        prompt: '',
+        actionId: ''
+      }
+    };
+  }
+
+  private replaceCurrentSocialData(messages: A2uiSocialMessageData[], replies: A2uiSocialReplyData[]): void {
+    let model = this.parsedDataModel();
+    if (model === null) {
+      model = this.emptySocialModel();
+    }
+    if (model.social === undefined || model.social === null) {
+      model.social = {
+        messages: [],
+        replies: [],
+        diagnostics: []
+      };
+    }
+    model.social.messages = messages;
+    model.social.replies = replies;
+    const nextSurface = this.surfaceSnapshot(this.currentSurface);
+    nextSurface.dataModelJson = JSON.stringify(model);
+    nextSurface.sequence = nextSurface.sequence + 1;
+    this.currentSurface = nextSurface;
+    this.surfaceComponents = nextSurface.components;
+    this.surfaceDataModelJson = nextSurface.dataModelJson;
+    this.renderRevision = this.renderRevision + 1;
+  }
+
+  private markSocialMessageStatus(messageId: string, status: string): A2uiSocialMessageData[] {
+    const messages = this.currentSocialMessages();
+    const next: A2uiSocialMessageData[] = [];
+    for (let index = 0; index < messages.length; index++) {
+      const item = messages[index];
+      next.push({
+        id: item.id,
+        platform: item.platform,
+        conversationId: item.conversationId,
+        conversationTitle: item.conversationTitle,
+        senderName: item.senderName,
+        preview: item.preview,
+        receivedAt: item.receivedAt,
+        source: item.source,
+        status: item.id === messageId ? status : item.status
+      });
+    }
+    return next;
+  }
+
+  private selectSocialMessage(message: A2uiSocialMessageData): void {
+    this.selectedSocialMessageId = message.id;
+    this.selectedSocialConversationTitle = message.conversationTitle;
+    this.inputText = '';
+    this.inputPlaceholder = '回复 微信 · ' + message.conversationTitle;
+    this.statusText = '正在回复 ' + message.conversationTitle;
+    this.replaceCurrentSocialData(this.markSocialMessageStatus(message.id, 'selected'), this.currentSocialReplies());
+  }
+
+  private readSocialNotificationArchive(): SocialNotificationArchiveRead {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    return readNotificationCaptureArchive(context);
+  }
+
+  private async openSocialNotificationSubscriptionSettings(): Promise<void> {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      await notificationExtensionSubscription.openSubscriptionSettings(context);
+      this.statusText = '已打开通知订阅授权';
+      this.socialLastCapture = '已请求系统通知订阅授权';
+      aiLogInfo('[AIPhone][SocialNotificationSettings] opened');
+    } catch (error) {
+      const businessError = error as BusinessError;
+      const message = '通知订阅授权页打开失败：' + businessError.message;
+      this.lastError = message;
+      this.statusText = '通知授权不可用';
+      this.socialLastCapture = message;
+      const code = businessError.code === undefined || businessError.code === null ? 'unknown' : businessError.code.toString();
+      aiLogError('[AIPhone][SocialNotificationSettingsError] code=' + code +
+        ' message=' + businessError.message);
+    }
+  }
+
+  private openSocialInbox(): void {
+    const archive = this.readSocialNotificationArchive();
+    const notificationCandidates = archive.ok ? archive.candidates : [];
+    const notificationUnavailable = archive.ok ?
+      '未捕获到真实微信通知：请确认 ACL/Profile、系统通知订阅授权和微信通知预览' :
+      ('通知中心缓存读取失败：' + archive.error);
+    const notification = new NotificationIngestProvider(notificationCandidates.length > 0, notificationUnavailable, notificationCandidates).capture();
+    const accessibility = new AccessibilityIngestProvider(false, '辅助捕获未授权或未接入').capture();
+    this.socialLastCapture = notification.ok ? '通知中心返回 ' + notification.messages.length.toString() + ' 条' :
+      (accessibility.ok ? '辅助捕获返回 ' + accessibility.messages.length.toString() + ' 条' : '无真实消息：' + notification.error + '；' + accessibility.error);
+    notification.messages.forEach(candidate => {
+      SOCIAL_MESSAGE_STORE.ingest(candidate);
+    });
+    accessibility.messages.forEach(candidate => {
+      SOCIAL_MESSAGE_STORE.ingest(candidate);
+    });
+    const capabilities = probeSocialCapabilities({
+      notificationBridgeAvailable: notification.ok,
+      accessibilityAvailable: accessibility.ok,
+      wechatInstalled: notification.messages.length > 0,
+      lastCapture: this.socialLastCapture,
+      lastSend: this.socialLastSend
+    });
+    const store = new A2uiSurfaceStore();
+    store.apply({
+      version: 'v0.9.1',
+      createSurface: {
+        surfaceId: 'surface_social',
+        root: 'root',
+        title: '社交收件箱',
+        intent: 'social',
+        status: 'ready',
+        sendDataModel: true
+      }
+    });
+    store.apply({
+      version: 'v0.9.1',
+      updateComponents: {
+        surfaceId: 'surface_social',
+        components: [
+          {
+            id: 'root',
+            component: A2UI_COMPONENT_SURFACE_ROOT,
+            child: 'social_inbox',
+            title: '社交收件箱',
+            status: 'ready'
+          },
+          {
+            id: 'social_inbox',
+            component: A2UI_COMPONENT_SOCIAL_INBOX,
+            title: '微信消息',
+            body: '只展示真实捕获的新消息；当前不会生成测试消息。',
+            status: 'ready',
+            dataPath: '/social/messages',
+            actions: []
+          }
+        ]
+      }
+    });
+    store.apply({
+      version: 'v0.9.1',
+      updateDataModel: {
+        surfaceId: 'surface_social',
+        path: '/social/messages',
+        value: SOCIAL_MESSAGE_STORE.messages()
+      }
+    });
+    store.apply({
+      version: 'v0.9.1',
+      updateDataModel: {
+        surfaceId: 'surface_social',
+        path: '/social/replies',
+        value: this.currentSocialReplies()
+      }
+    });
+    store.apply({
+      version: 'v0.9.1',
+      updateDataModel: {
+        surfaceId: 'surface_social',
+        path: '/social/diagnostics',
+        value: buildSocialDiagnosticsRows(capabilities)
+      }
+    });
+    this.selectedSocialMessageId = '';
+    this.selectedSocialConversationTitle = '';
+    this.inputPlaceholder = '选择微信消息后在这里回复';
+    this.inputText = '';
+    this.updateSurfaceFromStream(store.getSurface(), '', STREAM_SOURCE_SOCIAL);
+    this.appendMessage('assistant', '社交收件箱已打开：当前只显示真实捕获的新消息。');
+  }
+
+  private async sendSelectedSocialReply(): Promise<void> {
+    const text = this.inputText.trim();
+    if (text.length === 0 || this.isBusy) {
+      return;
+    }
+    const message = this.selectedSocialMessage();
+    if (message === null) {
+      this.lastError = '请先选择一条微信消息。';
+      this.statusText = '缺少会话';
+      return;
+    }
+    this.isBusy = true;
+    this.statusText = '正在发送微信回复';
+    this.lastError = '';
+    this.inputText = '';
+    this.replaceCurrentSocialData(this.markSocialMessageStatus(message.id, 'sending'), this.currentSocialReplies());
+    aiLogInfo('[AIPhone][SocialReplyRequest] messageId=' + message.id +
+      ' platform=' + message.platform +
+      ' target=' + message.conversationTitle +
+      ' textChars=' + text.length.toString());
+    try {
+      const automation = new WechatReplyAutomation(false, SOCIAL_REPLY_UNAVAILABLE);
+      const reply = automation.send({
+        targetMessageId: message.id,
+        platform: message.platform,
+        conversationId: message.conversationId,
+        text
+      });
+      const replies = this.currentSocialReplies();
+      const nextReplies = replies.slice();
+      nextReplies.push(reply);
+      const nextStatus = reply.status === 'sent' ? 'replied' : 'failed';
+      this.replaceCurrentSocialData(this.markSocialMessageStatus(message.id, nextStatus), nextReplies);
+      this.socialLastSend = reply.status === 'sent' ? '已发送 ' + text.length.toString() + ' 字' : '失败：' + reply.error;
+      aiLogInfo('[AIPhone][SocialReplyResult] messageId=' + message.id +
+        ' platform=' + message.platform +
+        ' status=' + reply.status +
+        ' failureStep=' + reply.error);
+      if (reply.status === 'sent') {
+        this.statusText = '微信回复已发送';
+        this.appendMessage('assistant', '微信回复已发送。');
+      } else {
+        this.lastError = reply.error;
+        this.statusText = '微信回复失败';
+        this.appendMessage('assistant', '微信回复失败：' + reply.error);
+      }
+    } finally {
+      this.isBusy = false;
+    }
+  }
+
   private async sendPrompt(): Promise<void> {
+    if (this.isSocialReplyMode()) {
+      await this.sendSelectedSocialReply();
+      return;
+    }
+    if (this.shouldOpenSocialPrompt(this.inputText)) {
+      this.appendMessage('user', this.inputText);
+      this.openSocialInbox();
+      return;
+    }
     await this.submitPrompt(this.inputText, this.inputText);
   }
 
@@ -963,8 +1788,96 @@ struct Index {
     this.expandedTrainKey = '';
   }
 
+  private resetTravelViewState(): void {
+    this.travelFilterMode = 'all';
+    this.expandedTravelKey = '';
+  }
+
+  private resetFlightViewState(): void {
+    this.expandedFlightKey = '';
+  }
+
+  private resetFoodViewState(): void {
+    this.foodFilterMode = 'all';
+    this.expandedFoodKey = '';
+    this.foodNavigationStatus = '';
+  }
+
   private trainRowKey(item: A2uiTrainOption): string {
     return item.trainCode + '|' + item.depart + '|' + item.from;
+  }
+
+  private flightRowKey(item: A2uiFlightOption): string {
+    return item.flightNo + '|' + item.depTime + '|' + item.dep;
+  }
+
+  private travelRowKey(item: A2uiTravelOption): string {
+    return item.id + '|' + item.source + '|' + item.depart + '|' + item.from;
+  }
+
+  private foodRowKey(item: A2uiFoodOption): string {
+    const location = item.location === undefined || item.location === null ? '' : item.location;
+    return item.name + '|' + item.address + '|' + item.distance + '|' + location;
+  }
+
+  private parseClockMinutes(value: string): number {
+    const match = value.match(/(\d{1,2}):(\d{2})/);
+    if (match !== null) {
+      return Number.parseInt(match[1], 10) * 60 + Number.parseInt(match[2], 10);
+    }
+    return 99999;
+  }
+
+  private travelSourceOrder(source: string): number {
+    if (source === 'train') {
+      return 0;
+    }
+    if (source === 'flight') {
+      return 1;
+    }
+    return 2;
+  }
+
+  private sortTravelByDeparture(rows: A2uiTravelOption[]): A2uiTravelOption[] {
+    const copy = rows.slice();
+    copy.sort((left: A2uiTravelOption, right: A2uiTravelOption) => {
+      const departDelta = this.parseClockMinutes(left.depart) - this.parseClockMinutes(right.depart);
+      if (departDelta !== 0) {
+        return departDelta;
+      }
+      const arriveDelta = this.parseClockMinutes(left.arrive) - this.parseClockMinutes(right.arrive);
+      if (arriveDelta !== 0) {
+        return arriveDelta;
+      }
+      return this.travelSourceOrder(left.source) - this.travelSourceOrder(right.source);
+    });
+    return copy;
+  }
+
+  private displayedTravelOptions(component: A2uiComponent): A2uiTravelOption[] {
+    let rows = travelOptions(this.surfaceForRender(), component);
+    if (this.travelFilterMode === 'train') {
+      rows = rows.filter((item: A2uiTravelOption) => item.source === 'train');
+    } else if (this.travelFilterMode === 'flight') {
+      rows = rows.filter((item: A2uiTravelOption) => item.source === 'flight');
+    }
+    return this.sortTravelByDeparture(rows);
+  }
+
+  private hasTravelSourceRows(): boolean {
+    return labelValues(this.surfaceForRender(), this.directRowsComponent()).length > 0;
+  }
+
+  private hasFoodSourceRows(): boolean {
+    return labelValues(this.surfaceForRender(), this.directRowsComponent()).length > 0;
+  }
+
+  private displayedFoodOptions(component: A2uiComponent): A2uiFoodOption[] {
+    let rows = foodOptions(this.surfaceForRender(), component);
+    if (this.foodFilterMode === 'within_1km') {
+      rows = rows.filter((item: A2uiFoodOption) => foodDistanceMeters(item.distance) <= 1000);
+    }
+    return rows;
   }
 
   private parseDurationMinutes(duration: string): number {
@@ -1054,10 +1967,46 @@ struct Index {
     if (action.id === 'client_filter_available') {
       this.trainFilterAvailable = true;
       this.renderRevision = this.renderRevision + 1;
+      return;
+    }
+    if (action.id === 'travel_show_all') {
+      this.travelFilterMode = 'all';
+      this.statusText = '已显示全部出行方案';
+      this.renderRevision = this.renderRevision + 1;
+      return;
+    }
+    if (action.id === 'travel_filter_train') {
+      this.travelFilterMode = 'train';
+      this.statusText = '已筛选高铁方案';
+      this.renderRevision = this.renderRevision + 1;
+      return;
+    }
+    if (action.id === 'travel_filter_flight') {
+      this.travelFilterMode = 'flight';
+      this.statusText = '已筛选飞机方案';
+      this.renderRevision = this.renderRevision + 1;
+      return;
+    }
+    if (action.id === 'food_show_all') {
+      this.foodFilterMode = 'all';
+      this.statusText = '已显示全部附近餐饮';
+      this.renderRevision = this.renderRevision + 1;
+      return;
+    }
+    if (action.id === 'food_filter_1km') {
+      this.foodFilterMode = 'within_1km';
+      this.statusText = '已筛选 1 公里内餐饮';
+      this.renderRevision = this.renderRevision + 1;
     }
   }
 
-  private focusEditQuery(): void {
+  private focusEditQuery(actionId: string = ''): void {
+    if (actionId === 'travel_change_date') {
+      this.inputPlaceholder = '请输入新的日期或路线，如：后天北京到上海出行方案';
+      this.inputText = '';
+      this.statusText = '请在输入框补充新的日期或路线';
+      return;
+    }
     this.inputPlaceholder = TRAIN_EDIT_QUERY_PLACEHOLDER;
     this.inputText = '';
     this.statusText = '请在输入框补充具体查询条件';
@@ -1070,7 +2019,7 @@ struct Index {
       return;
     }
     if (kind === 'input') {
-      this.focusEditQuery();
+      this.focusEditQuery(action.id);
       return;
     }
     await this.submitPrompt(action.prompt, action.label, action.id);
@@ -1165,6 +2114,19 @@ struct Index {
           this.showHistory = !this.showHistory;
         })
 
+      Button('社交')
+        .height(40)
+        .width(70)
+        .fontSize(13)
+        .fontColor(COLOR_SOCIAL)
+        .backgroundColor(COLOR_SOCIAL_SOFT)
+        .borderRadius(10)
+        .border({ width: 1, color: COLOR_SOCIAL_LINE })
+        .margin({ left: 8 })
+        .onClick(() => {
+          this.openSocialInbox();
+        })
+
       Button('配置')
         .height(40)
         .width(78)
@@ -1195,10 +2157,10 @@ struct Index {
             .enabled(!this.isBusy)
             .height(38)
             .fontSize(13)
-            .fontColor(this.actionTextColor(action.variant))
-            .backgroundColor(this.actionBackground(action.variant))
+            .fontColor(this.actionTextColorFor(action))
+            .backgroundColor(this.actionBackgroundFor(action))
             .borderRadius(11)
-            .border({ width: 1, color: this.actionBorder(action.variant) })
+            .border({ width: 1, color: this.actionBorderFor(action) })
             .padding({ left: 14, right: 14 })
             .margin({ right: 8, top: 10 })
             .shadow({ radius: 10, color: action.variant === 'primary' ? COLOR_ACCENT_SHADOW : COLOR_CARD_SHADOW, offsetX: 0, offsetY: 5 })
@@ -1225,7 +2187,11 @@ struct Index {
           if (this.shouldShowThinkingPanel()) {
             this.ThinkingPanel(this.surfaceForRender().sequence)
           }
-          if (this.hasTrainDataInModel()) {
+          if (this.hasSocialDataInModel()) {
+            this.SocialInbox(this.surfaceForRender(), this.componentWithType(A2UI_COMPONENT_SOCIAL_INBOX, 'social_direct'), this.surfaceForRender().sequence)
+          } else if (this.hasTravelOptionsDataInModel()) {
+            this.TravelOptions(this.surfaceForRender(), this.componentWithType(A2UI_COMPONENT_TRAVEL_OPTIONS, 'travel_direct'), this.surfaceForRender().sequence)
+          } else if (this.hasTrainDataInModel()) {
             this.TrainOptions(this.surfaceForRender(), this.componentWithType(A2UI_COMPONENT_TRAIN_OPTIONS, 'train_direct'), this.surfaceForRender().sequence)
           } else if (this.hasFlightDataInModel()) {
             this.FlightBoard(this.surfaceForRender(), this.componentWithType(A2UI_COMPONENT_FLIGHT_BOARD, 'flight_direct'), this.surfaceForRender().sequence)
@@ -1465,8 +2431,12 @@ struct Index {
       this.TrainOptions(surface, component, revision)
     } else if (component.component === A2UI_COMPONENT_FLIGHT_BOARD) {
       this.FlightBoard(surface, component, revision)
+    } else if (component.component === A2UI_COMPONENT_TRAVEL_OPTIONS) {
+      this.TravelOptions(surface, component, revision)
     } else if (component.component === A2UI_COMPONENT_FOOD_CHOICES) {
       this.FoodChoices(surface, component, revision)
+    } else if (component.component === A2UI_COMPONENT_SOCIAL_INBOX) {
+      this.SocialInbox(surface, component, revision)
     } else if (component.component === A2UI_COMPONENT_CONFIRM_PANEL) {
       Blank()
         .height(0)
@@ -2021,6 +2991,430 @@ struct Index {
   }
 
   @Builder
+  TravelDetailPanel(item: A2uiTravelOption) {
+    Column() {
+      this.TrainDetailRow('来源', item.sourceTag.length > 0 ? item.sourceTag : (item.source === 'flight' ? '飞机 · 飞常准' : '高铁 · 12306'))
+      this.TrainDetailRow('线路', (item.from.length > 0 ? item.from : '--') + ' → ' + (item.to.length > 0 ? item.to : '--'))
+      this.TrainDetailRow('时间', (item.depart.length > 0 ? item.depart : '--') + ' → ' + (item.arrive.length > 0 ? item.arrive : '--'))
+      if (item.duration.length > 0) {
+        this.TrainDetailRow('耗时', item.duration)
+      }
+      if (item.price.length > 0) {
+        this.TrainDetailRow('价格', item.price)
+      }
+      if (item.availability.length > 0) {
+        this.TrainDetailRow('余票', item.availability)
+      }
+      if (item.status.length > 0) {
+        this.TrainDetailRow('状态', item.status)
+      }
+      if (item.detail.length > 0) {
+        this.TrainDetailRow('详情', item.detail)
+      }
+      Text(item.source === 'flight' ? '以飞常准返回为准，不支持订票' : '以 12306 返回为准，不支持订票')
+        .fontSize(12)
+        .fontColor(COLOR_MUTED)
+        .lineHeight(18)
+        .margin({ top: 8 })
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 12, right: 12, top: 12, bottom: 12 })
+    .backgroundColor(COLOR_CARD_INSET)
+    .borderRadius(10)
+    .border({ width: { left: 3 }, color: this.travelSourceLine(item.source) })
+    .margin({ top: 10 })
+  }
+
+  @Builder
+  FlightDetailPanel(item: A2uiFlightOption) {
+    Column() {
+      if (item.airline.length > 0) {
+        this.TrainDetailRow('航司', item.airline)
+      }
+      this.TrainDetailRow('航线', (item.dep.length > 0 ? item.dep : '--') + ' → ' + (item.arr.length > 0 ? item.arr : '--'))
+      this.TrainDetailRow('时间', (item.depTime.length > 0 ? item.depTime : '--') + ' → ' + (item.arrTime.length > 0 ? item.arrTime : '--'))
+      if (item.price.length > 0) {
+        this.TrainDetailRow('价格', item.price)
+      }
+      if (item.status.length > 0) {
+        this.TrainDetailRow('状态', item.status)
+      }
+      Text('以飞常准返回为准，不支持订票')
+        .fontSize(12)
+        .fontColor(COLOR_MUTED)
+        .lineHeight(18)
+        .margin({ top: 8 })
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 12, right: 12, top: 12, bottom: 12 })
+    .backgroundColor(COLOR_CARD_INSET)
+    .borderRadius(10)
+    .border({ width: { left: 3 }, color: COLOR_TRAVEL_FLIGHT_LINE })
+    .margin({ top: 10 })
+  }
+
+  @Builder
+  TravelSourceStatusRows(revision: number) {
+    Column() {
+      Text('来源状态')
+        .fontSize(12)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(COLOR_MUTED)
+        .margin({ bottom: 2 })
+      this.LabelValueRows(this.surfaceForRender(), this.directRowsComponent(), revision)
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 12, right: 12, top: 10, bottom: 8 })
+    .backgroundColor(COLOR_CARD_INSET)
+    .borderRadius(12)
+    .border({ width: 1, color: COLOR_CARD_EDGE })
+    .margin({ top: 10 })
+  }
+
+  @Builder
+  FoodSourceStatusRows(revision: number) {
+    Column() {
+      Text('来源状态')
+        .fontSize(12)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(COLOR_MUTED)
+        .margin({ bottom: 2 })
+      this.LabelValueRows(this.surfaceForRender(), this.directRowsComponent(), revision)
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 12, right: 12, top: 10, bottom: 8 })
+    .backgroundColor(COLOR_CARD_INSET)
+    .borderRadius(12)
+    .border({ width: 1, color: COLOR_CARD_EDGE })
+    .margin({ top: 10 })
+  }
+
+
+  @Builder
+  SocialInbox(surface: A2uiSurfaceState, component: A2uiComponent, revision: number) {
+    Column() {
+      this.CardGlint()
+      this.ModuleHeader(this.componentTitle(component, '微信消息'), this.componentBody(component), this.componentStatus(component))
+      Row() {
+        Text('微信')
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(COLOR_SOCIAL)
+          .padding({ left: 9, right: 9, top: 5, bottom: 5 })
+          .backgroundColor(COLOR_SOCIAL_SOFT)
+          .borderRadius(8)
+          .border({ width: 1, color: COLOR_SOCIAL_LINE })
+        Text('新消息收件箱')
+          .fontSize(12)
+          .fontColor(COLOR_MUTED)
+          .margin({ left: 8 })
+      }
+      .width('100%')
+      .margin({ top: 10 })
+
+      if (socialMessages(surface, component).length === 0) {
+        Column() {
+          Text('还没有真实捕获到微信新消息')
+            .fontSize(17)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(COLOR_INK)
+          Text('AIPhone 不会生成测试联系人或测试消息。需要通知中心桥接或辅助捕获可用后，真实微信消息才会出现在这里。')
+            .fontSize(13)
+            .fontColor(COLOR_MUTED)
+            .lineHeight(20)
+            .margin({ top: 8 })
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+        .padding(16)
+        .backgroundColor(COLOR_CARD_INSET)
+        .borderRadius(14)
+        .border({ width: 1, color: COLOR_CARD_EDGE })
+        .margin({ top: 12 })
+      }
+
+      ForEach(socialMessages(surface, component), (item: A2uiSocialMessage) => {
+        Column() {
+          Row() {
+            Text(this.socialSourceLabel(item.source))
+              .fontSize(12)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(COLOR_SOCIAL)
+              .padding({ left: 9, right: 9, top: 5, bottom: 5 })
+              .backgroundColor(COLOR_SOCIAL_SOFT)
+              .borderRadius(8)
+              .border({ width: 1, color: COLOR_SOCIAL_LINE })
+            Blank()
+              .layoutWeight(1)
+            Text(this.socialStatusLabel(item.status))
+              .fontSize(12)
+              .fontColor(this.socialStatusColor(item.status))
+          }
+          .width('100%')
+
+          Text(item.conversationTitle.length > 0 ? item.conversationTitle : '微信会话')
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(COLOR_INK)
+            .margin({ top: 12 })
+          Text(item.senderName.length > 0 ? item.senderName : item.conversationTitle)
+            .fontSize(12)
+            .fontColor(COLOR_MUTED)
+            .margin({ top: 4 })
+          Text(item.preview)
+            .fontSize(15)
+            .fontColor(COLOR_TEXT)
+            .lineHeight(22)
+            .margin({ top: 10 })
+          Text(item.receivedAt)
+            .fontSize(11)
+            .fontColor(COLOR_MUTED)
+            .margin({ top: 8 })
+          if (this.socialReplyText(item.id).length > 0) {
+            Column() {
+              Text('AIPhone 回复')
+                .fontSize(11)
+                .fontColor(COLOR_MUTED)
+              Text(this.socialReplyText(item.id))
+                .fontSize(13)
+                .fontColor(COLOR_TEXT)
+                .lineHeight(20)
+                .margin({ top: 5 })
+              if (this.socialReplyError(item.id).length > 0) {
+                Text(this.socialReplyError(item.id))
+                  .fontSize(12)
+                  .fontColor(COLOR_ERROR)
+                  .lineHeight(18)
+                  .margin({ top: 6 })
+              }
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+            .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+            .backgroundColor(COLOR_CARD_INSET)
+            .borderRadius(12)
+            .border({ width: 1, color: this.socialReplyError(item.id).length > 0 ? COLOR_ERROR_LINE : COLOR_CARD_EDGE })
+            .margin({ top: 12 })
+          }
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+        .padding(16)
+        .backgroundColor(this.selectedSocialMessageId === item.id ? COLOR_SOCIAL_SOFT : COLOR_SOCIAL_CARD)
+        .borderRadius(16)
+        .border({ width: 1, color: this.selectedSocialMessageId === item.id ? COLOR_SOCIAL : COLOR_SOCIAL_LINE })
+        .shadow({ radius: 20, color: COLOR_SOCIAL_GLOW, offsetX: 0, offsetY: 9 })
+        .margin({ top: 10 })
+        .onClick(() => {
+          this.selectSocialMessage(item);
+        })
+      }, (item: A2uiSocialMessage) => item.id + '-' + revision.toString())
+
+      this.SocialDiagnostics(surface, revision)
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 16, right: 16, top: 18, bottom: 16 })
+    .backgroundColor(COLOR_GLASS)
+    .borderRadius(18)
+    .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: 22, color: COLOR_CARD_GLOW, offsetX: 0, offsetY: 10 })
+    .margin({ bottom: 12 })
+  }
+
+  @Builder
+  SocialDiagnostics(surface: A2uiSurfaceState, revision: number) {
+    Column() {
+      Text('社交权限诊断')
+        .fontSize(15)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(COLOR_INK)
+      ForEach(socialDiagnostics(surface), (row: A2uiLabelValue) => {
+        Row() {
+          Text(row.label)
+            .fontSize(12)
+            .fontColor(COLOR_MUTED)
+            .width(104)
+          Text(row.value)
+            .fontSize(13)
+            .fontColor(row.value.indexOf('不可用') >= 0 || row.value.indexOf('未检测到') >= 0 || row.value.indexOf('失败') >= 0 ? COLOR_ERROR : COLOR_TEXT)
+            .lineHeight(20)
+            .layoutWeight(1)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Top)
+        .padding({ top: 7, bottom: 7 })
+      }, (row: A2uiLabelValue) => row.label + row.value + '-' + revision.toString())
+      Button('打开通知授权')
+        .fontSize(13)
+        .fontColor(COLOR_BUTTON_TEXT)
+        .height(38)
+        .width('100%')
+        .backgroundColor(COLOR_SOCIAL)
+        .borderRadius(10)
+        .margin({ top: 10 })
+        .onClick(() => {
+          this.openSocialNotificationSubscriptionSettings();
+        })
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding(14)
+    .backgroundColor(COLOR_CARD_INSET)
+    .borderRadius(14)
+    .border({ width: 1, color: COLOR_CARD_EDGE })
+    .margin({ top: 14 })
+  }
+
+  @Builder
+  TravelOptions(surface: A2uiSurfaceState, component: A2uiComponent, revision: number) {
+    Column() {
+      this.CardGlint()
+      this.ModuleHeader(this.componentTitle(component, '出行方案'), this.componentBody(component), this.componentStatus(component))
+      Row() {
+        Text('高铁 · 12306')
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(COLOR_TRAVEL_TRAIN)
+          .padding({ left: 9, right: 9, top: 5, bottom: 5 })
+          .backgroundColor(COLOR_TRAVEL_TRAIN_SOFT)
+          .borderRadius(8)
+          .border({ width: 1, color: COLOR_TRAVEL_TRAIN_LINE })
+        Text('飞机 · 飞常准')
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(COLOR_TRAVEL_FLIGHT)
+          .padding({ left: 9, right: 9, top: 5, bottom: 5 })
+          .backgroundColor(COLOR_TRAVEL_FLIGHT_SOFT)
+          .borderRadius(8)
+          .border({ width: 1, color: COLOR_TRAVEL_FLIGHT_LINE })
+          .margin({ left: 8 })
+      }
+      .width('100%')
+      .margin({ top: 10 })
+      this.ActionButtons(actionsOf(component))
+      if (this.hasTravelSourceRows()) {
+        this.TravelSourceStatusRows(revision)
+      }
+      ForEach(this.displayedTravelOptions(component), (item: A2uiTravelOption) => {
+        Column() {
+          Column() {
+            this.CardGlint()
+            Row() {
+              Text(item.sourceTag.length > 0 ? item.sourceTag : (item.source === 'flight' ? '飞机 · 飞常准' : '高铁 · 12306'))
+                .fontSize(12)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(this.travelSourceAccent(item.source))
+                .padding({ left: 9, right: 9, top: 5, bottom: 5 })
+                .backgroundColor(this.travelSourceSoft(item.source))
+                .borderRadius(8)
+                .border({ width: 1, color: this.travelSourceLine(item.source) })
+              Blank()
+                .layoutWeight(1)
+              if (item.status.length > 0) {
+                Text(item.status)
+                  .fontSize(12)
+                  .fontColor(this.statusColor(item.status.indexOf('失败') >= 0 || item.status.indexOf('取消') >= 0 ? 'error' : 'ready'))
+              }
+              Text(this.expandedTravelKey === this.travelRowKey(item) ? '收起' : '详情')
+                .fontSize(12)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(this.travelSourceAccent(item.source))
+                .margin({ left: 10 })
+            }
+            .width('100%')
+
+            Row() {
+              Column() {
+                Text(item.title.length > 0 ? item.title : '出行方案')
+                  .fontSize(22)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor(COLOR_INK)
+                if (item.detail.length > 0) {
+                  Text(item.detail)
+                    .fontSize(12)
+                    .fontColor(COLOR_MUTED)
+                    .lineHeight(18)
+                    .margin({ top: 4 })
+                }
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+
+              Column() {
+                if (item.price.length > 0) {
+                  Text(item.price)
+                    .fontSize(18)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor(this.travelSourceAccent(item.source))
+                } else if (item.availability.length > 0) {
+                  Text(item.availability)
+                    .fontSize(13)
+                    .fontColor(COLOR_TEXT)
+                    .lineHeight(18)
+                }
+                if (item.duration.length > 0) {
+                  Text('耗时 ' + item.duration)
+                    .fontSize(12)
+                    .fontColor(COLOR_MUTED)
+                    .margin({ top: 5 })
+                }
+              }
+              .alignItems(HorizontalAlign.End)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Top)
+            .margin({ top: 12 })
+
+            Row() {
+              this.StationTime(item.from, item.depart)
+              Text('→')
+                .fontSize(18)
+                .fontColor(COLOR_MUTED)
+                .margin({ left: 14, right: 14, top: 8 })
+              this.StationTime(item.to, item.arrive)
+            }
+            .width('100%')
+            .margin({ top: 12 })
+          }
+          .width('100%')
+          .padding(16)
+          .backgroundColor(this.travelSourceCard(item.source))
+          .borderRadius(16)
+          .border({ width: 1, color: this.travelSourceLine(item.source) })
+          .shadow({ radius: 20, color: this.travelSourceGlow(item.source), offsetX: 0, offsetY: 9 })
+          .onClick(() => {
+            const rowKey = this.travelRowKey(item);
+            this.expandedTravelKey = this.expandedTravelKey === rowKey ? '' : rowKey;
+          })
+
+          if (this.expandedTravelKey === this.travelRowKey(item)) {
+            this.TravelDetailPanel(item)
+          }
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+        .margin({ top: 10 })
+      }, (item: A2uiTravelOption) => item.id + '-' + revision.toString())
+      if (this.displayedTravelOptions(component).length === 0 && !this.hasTravelSourceRows()) {
+        this.EmptyRows()
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 16, right: 16, top: 18, bottom: 16 })
+    .backgroundColor(COLOR_GLASS)
+    .borderRadius(18)
+    .border({ width: 1, color: COLOR_CARD_EDGE })
+    .shadow({ radius: 22, color: COLOR_CARD_GLOW, offsetX: 0, offsetY: 10 })
+    .margin({ bottom: 12 })
+  }
+
+  @Builder
   TrainOptions(surface: A2uiSurfaceState, component: A2uiComponent, revision: number) {
     Column() {
       this.CardGlint()
@@ -2121,42 +3515,59 @@ struct Index {
       this.ModuleHeader(this.componentTitle(component, '航班候选'), this.componentBody(component), this.componentStatus(component))
       ForEach(flightOptions(this.surfaceForRender(), component), (item: A2uiFlightOption) => {
         Column() {
-          this.CardGlint()
-          Row() {
-            Column() {
-              Text(item.flightNo)
-                .fontSize(19)
-                .fontWeight(FontWeight.Bold)
-                .fontColor(COLOR_INK)
-              Text(item.airline)
-                .fontSize(12)
-                .fontColor(COLOR_MUTED)
-                .lineHeight(18)
-                .margin({ top: 4 })
+          Column() {
+            this.CardGlint()
+            Row() {
+              Column() {
+                Text(item.flightNo)
+                  .fontSize(19)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor(COLOR_INK)
+                Text(item.airline)
+                  .fontSize(12)
+                  .fontColor(COLOR_MUTED)
+                  .lineHeight(18)
+                  .margin({ top: 4 })
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+              Column() {
+                Text((item.dep.length > 0 ? item.dep : '--') + ' → ' + (item.arr.length > 0 ? item.arr : '--'))
+                  .fontSize(14)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(COLOR_TEXT)
+                Text(item.status.length > 0 ? item.status : '计划')
+                  .fontSize(12)
+                  .fontColor(this.statusColor(item.status === '提前取消' ? 'error' : 'ready'))
+                  .margin({ top: 5 })
+                Text(this.expandedFlightKey === this.flightRowKey(item) ? '收起' : '详情')
+                  .fontSize(12)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(COLOR_TRAVEL_FLIGHT)
+                  .margin({ top: 5 })
+              }
+              .alignItems(HorizontalAlign.End)
             }
-            .alignItems(HorizontalAlign.Start)
-            .layoutWeight(1)
-            Column() {
-              Text((item.dep.length > 0 ? item.dep : '--') + ' → ' + (item.arr.length > 0 ? item.arr : '--'))
-                .fontSize(14)
-                .fontWeight(FontWeight.Medium)
-                .fontColor(COLOR_TEXT)
-              Text(item.status.length > 0 ? item.status : '计划')
-                .fontSize(12)
-                .fontColor(this.statusColor(item.status === '提前取消' ? 'error' : 'ready'))
-                .margin({ top: 5 })
-            }
-            .alignItems(HorizontalAlign.End)
+            .width('100%')
+            .alignItems(VerticalAlign.Top)
           }
           .width('100%')
-          .alignItems(VerticalAlign.Top)
+          .padding(16)
+          .backgroundColor(COLOR_CARD)
+          .borderRadius(16)
+          .border({ width: 1, color: COLOR_CARD_EDGE })
+          .shadow({ radius: 20, color: COLOR_CARD_GLOW, offsetX: 0, offsetY: 9 })
+          .onClick(() => {
+            const rowKey = this.flightRowKey(item);
+            this.expandedFlightKey = this.expandedFlightKey === rowKey ? '' : rowKey;
+          })
+
+          if (this.expandedFlightKey === this.flightRowKey(item)) {
+            this.FlightDetailPanel(item)
+          }
         }
         .width('100%')
-        .padding(16)
-        .backgroundColor(COLOR_CARD)
-        .borderRadius(16)
-        .border({ width: 1, color: COLOR_CARD_EDGE })
-        .shadow({ radius: 20, color: COLOR_CARD_GLOW, offsetX: 0, offsetY: 9 })
+        .alignItems(HorizontalAlign.Start)
         .margin({ top: 10 })
       }, (item: A2uiFlightOption) => item.flightNo + item.depTime + '-' + revision.toString())
       if (flightOptions(this.surfaceForRender(), component).length === 0 && labelValues(this.surfaceForRender(), component).length > 0) {
@@ -2177,57 +3588,181 @@ struct Index {
   }
 
   @Builder
+  FoodDetailPanel(item: A2uiFoodOption) {
+    Column() {
+      this.TrainDetailRow('来源', this.foodSourceTags(item).length > 0 ? this.foodSourceTags(item).join(' / ') : '未知')
+      if (item.category.length > 0) {
+        this.TrainDetailRow('分类', item.category)
+      }
+      if (item.distance.length > 0) {
+        this.TrainDetailRow('距离', item.distance)
+      }
+      this.TrainDetailRow('地址', item.address.length > 0 ? item.address : '暂无地址')
+      if (this.foodLocationText(item).length > 0) {
+        this.TrainDetailRow('坐标', this.foodLocationText(item))
+      } else {
+        this.TrainDetailRow('坐标', 'provider 未返回')
+      }
+      if (this.foodNavigationUnavailableText(item).length > 0) {
+        Text(this.foodNavigationUnavailableText(item))
+          .fontSize(12)
+          .fontColor(COLOR_MUTED)
+          .lineHeight(18)
+          .margin({ top: 8 })
+      }
+      if (this.foodNavigationStatus.length > 0) {
+        Text(this.foodNavigationStatus)
+          .fontSize(12)
+          .fontColor(this.foodNavigationStatus.indexOf('失败') >= 0 || this.foodNavigationStatus.indexOf('缺少') >= 0 ? COLOR_ERROR : COLOR_ACCENT_DARK)
+          .lineHeight(18)
+          .margin({ top: 8 })
+      }
+      Button(this.foodCanNavigate(item) ? '系统地图导航' : '导航不可用')
+        .enabled(this.foodCanNavigate(item) && !this.isBusy)
+        .height(38)
+        .width('100%')
+        .fontSize(13)
+        .fontColor(this.foodCanNavigate(item) ? COLOR_BUTTON_TEXT : COLOR_MUTED)
+        .backgroundColor(this.foodCanNavigate(item) ? COLOR_ACCENT_DEEP : COLOR_CARD_RAISED)
+        .borderRadius(10)
+        .border({ width: 1, color: this.foodCanNavigate(item) ? COLOR_ACCENT : COLOR_CARD_EDGE })
+        .margin({ top: 10 })
+        .onClick(() => {
+          this.openFoodNavigation(item);
+        })
+      Text('只拉起路线规划，不下单不支付')
+        .fontSize(12)
+        .fontColor(COLOR_MUTED)
+        .lineHeight(18)
+        .margin({ top: 8 })
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 12, right: 12, top: 12, bottom: 12 })
+    .backgroundColor(COLOR_CARD_INSET)
+    .borderRadius(10)
+    .border({ width: { left: 3 }, color: this.foodCardBorder(item) })
+    .margin({ top: 10 })
+  }
+
+  @Builder
   FoodChoices(surface: A2uiSurfaceState, component: A2uiComponent, revision: number) {
     Column() {
       this.CardGlint()
       this.ModuleHeader(this.componentTitle(component, '附近餐饮'), this.componentBody(component), this.componentStatus(component))
-      ForEach(foodOptions(this.surfaceForRender(), component), (item: A2uiFoodOption) => {
+      this.ActionButtons(actionsOf(component))
+      if (this.hasFoodSourceRows()) {
+        this.FoodSourceStatusRows(revision)
+      }
+      ForEach(this.displayedFoodOptions(component), (item: A2uiFoodOption) => {
         Column() {
-          this.CardGlint()
-          Row() {
-            Text(item.name)
-              .fontSize(17)
-              .fontWeight(FontWeight.Bold)
-              .fontColor(COLOR_INK)
-              .layoutWeight(1)
-            if (item.distance.length > 0) {
-              Text(item.distance)
-                .fontSize(12)
-                .fontColor(COLOR_ACCENT_DARK)
-                .padding({ left: 9, right: 9, top: 5, bottom: 5 })
-                .backgroundColor(COLOR_ACCENT_SOFT)
-                .borderRadius(8)
+          Column() {
+            this.CardGlint()
+            Row() {
+              Text(item.name)
+                .fontSize(17)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(COLOR_INK)
+                .layoutWeight(1)
+              if (item.distance.length > 0) {
+                Text(item.distance)
+                  .fontSize(12)
+                  .fontColor(this.foodCardAccent(item))
+                  .padding({ left: 9, right: 9, top: 5, bottom: 5 })
+                  .backgroundColor(this.foodSourceSoft(this.foodPrimarySource(item)))
+                  .borderRadius(8)
+                  .border({ width: 1, color: this.foodCardBorder(item) })
+              }
             }
+            .width('100%')
+            if (this.foodSourceTags(item).length > 0) {
+              Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap }) {
+                ForEach(this.foodSourceTags(item), (tag: string) => {
+                  Text(tag)
+                    .fontSize(11)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor(this.foodSourceAccent(tag))
+                    .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+                    .backgroundColor(this.foodSourceSoft(tag))
+                    .borderRadius(7)
+                    .border({ width: 1, color: this.foodSourceLine(tag) })
+                    .margin({ right: 6, top: 7 })
+                }, (tag: string) => item.name + '-' + tag)
+              }
+              .width('100%')
+            }
+            if (item.category.length > 0) {
+              Text(item.category)
+                .fontSize(12)
+                .fontColor(COLOR_MUTED)
+                .lineHeight(18)
+                .margin({ top: 6 })
+            }
+            Text(item.address.length > 0 ? item.address : '暂无地址')
+              .fontSize(13)
+              .fontColor(COLOR_TEXT)
+              .lineHeight(19)
+              .margin({ top: 7 })
+            Row() {
+              Text(this.expandedFoodKey === this.foodRowKey(item) ? '收起' : '详情')
+                .fontSize(12)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(this.foodCardAccent(item))
+              Blank()
+                .layoutWeight(1)
+              if (this.foodCanNavigate(item)) {
+                Text('可导航')
+                  .fontSize(12)
+                  .fontColor(COLOR_ACCENT_DARK)
+              }
+            }
+            .width('100%')
+            .margin({ top: 10 })
           }
           .width('100%')
-          if (item.category.length > 0) {
-            Text(item.category)
-              .fontSize(12)
-              .fontColor(COLOR_MUTED)
-              .lineHeight(18)
-              .margin({ top: 6 })
+          .alignItems(HorizontalAlign.Start)
+          .padding(16)
+          .backgroundColor(this.foodCardBackground(item))
+          .borderRadius(16)
+          .border({ width: 1, color: this.foodCardBorder(item) })
+          .shadow({ radius: 20, color: this.foodCardGlow(item), offsetX: 0, offsetY: 9 })
+          .onClick(() => {
+            const rowKey = this.foodRowKey(item);
+            this.expandedFoodKey = this.expandedFoodKey === rowKey ? '' : rowKey;
+          })
+
+          if (this.expandedFoodKey === this.foodRowKey(item)) {
+            this.FoodDetailPanel(item)
           }
-          Text(item.address.length > 0 ? item.address : '暂无地址')
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+        .margin({ top: 10 })
+      }, (item: A2uiFoodOption) => this.foodRowKey(item) + '-' + revision.toString())
+      if (this.displayedFoodOptions(component).length === 0 && foodOptions(this.surfaceForRender(), component).length > 0 && this.foodFilterMode === 'within_1km') {
+        Column() {
+          Text('1 公里内暂无可展示店铺')
+            .fontSize(17)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(COLOR_INK)
+          Text('当前结果里没有距离字段小于等于 1000 米的真实店铺。')
             .fontSize(13)
-            .fontColor(COLOR_TEXT)
-            .lineHeight(19)
-            .margin({ top: 7 })
+            .fontColor(COLOR_MUTED)
+            .lineHeight(20)
+            .margin({ top: 8 })
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
         .padding(16)
-        .backgroundColor(COLOR_CARD)
-        .borderRadius(16)
+        .backgroundColor(COLOR_CARD_INSET)
+        .borderRadius(14)
         .border({ width: 1, color: COLOR_CARD_EDGE })
-        .shadow({ radius: 20, color: COLOR_CARD_GLOW, offsetX: 0, offsetY: 9 })
         .margin({ top: 10 })
-      }, (item: A2uiFoodOption) => item.name + '|' + item.address + '|' + item.distance)
-      if (foodOptions(this.surfaceForRender(), component).length === 0 && labelValues(this.surfaceForRender(), component).length > 0) {
+      } else if (foodOptions(this.surfaceForRender(), component).length === 0 && labelValues(this.surfaceForRender(), component).length > 0) {
         this.LabelValueRows(this.surfaceForRender(), component, revision)
       } else if (foodOptions(this.surfaceForRender(), component).length === 0) {
         this.EmptyRows()
       }
-      this.ActionButtons(actionsOf(component))
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
@@ -2466,7 +4001,7 @@ struct Index {
           }
         })
 
-      Button(this.isBusy ? '生成中' : '生成')
+      Button(this.isBusy ? '处理中' : this.inputActionLabel())
         .enabled(!this.isBusy)
         .height(52)
         .width(98)
@@ -2764,7 +4299,7 @@ struct Index {
       this.CardGlint()
       this.DiagnosticPhaseShell(
         '工具阶段',
-        '模型在 surface 中发出 toolRequest 后，所有注册工具都由 HAP 本机工具统一执行；航班和餐饮使用 HAP 包内 rawfile 配置直连真实供应商。',
+        '模型在 surface 中发出 toolRequest 后，所有注册工具都由 HAP 内工具统一执行；结果只展示真实供应商返回或明确错误。',
         COLOR_PROCESS
       )
       Column() {

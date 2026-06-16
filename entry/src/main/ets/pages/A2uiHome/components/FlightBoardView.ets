@@ -15,8 +15,8 @@ import {
   COLOR_INK,
   COLOR_MUTED,
   COLOR_TEXT
-} from '../A2uiHomeTheme';
-import { componentBodyOf, componentStatusOf, componentTitleOf } from '../A2uiRenderData';
+} from '../style/A2uiHomeTheme';
+import { componentBodyOf, componentStatusOf, componentTitleOf } from '../render/A2uiRenderData';
 import { ActionBarView } from './ActionBarView';
 import { StatusBadgeView } from './StatusBadgeView';
 

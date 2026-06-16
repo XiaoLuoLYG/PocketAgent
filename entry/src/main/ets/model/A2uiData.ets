@@ -7,15 +7,22 @@ import {
   A2uiLabelValueData,
   A2uiRowGroupsData,
   A2uiRuntimeDataModel,
+  A2uiSocialData,
+  A2uiSocialMessageData,
+  A2uiSocialReplyData,
   A2uiSurfaceState,
   A2uiToolRequestData,
+  A2uiTravelOptionData,
   A2uiTrainData
 } from './A2uiTypes';
 
 export type A2uiLabelValue = A2uiLabelValueData;
 export type A2uiTrainOption = A2uiTrainData;
 export type A2uiFlightOption = A2uiFlightData;
+export type A2uiTravelOption = A2uiTravelOptionData;
 export type A2uiFoodOption = A2uiFoodData;
+export type A2uiSocialMessage = A2uiSocialMessageData;
+export type A2uiSocialReply = A2uiSocialReplyData;
 export type A2uiToolRequest = A2uiToolRequestData;
 
 interface LooseRowData {
@@ -37,7 +44,9 @@ function emptyModel(): A2uiRuntimeDataModel {
     rows: [],
     trains: [],
     flights: [],
+    travelOptions: [],
     foods: [],
+    social: emptySocial(),
     thoughts: [],
     summary: {
       text: '',
@@ -54,6 +63,14 @@ function emptyModel(): A2uiRuntimeDataModel {
       prompt: '',
       actionId: ''
     }
+  };
+}
+
+function emptySocial(): A2uiSocialData {
+  return {
+    messages: [],
+    replies: [],
+    diagnostics: []
   };
 }
 
@@ -86,6 +103,17 @@ function normalizeRowGroups(parsed: A2uiRuntimeDataModel, fallback: A2uiRowGroup
   };
 }
 
+function normalizeSocial(parsed: A2uiRuntimeDataModel, fallback: A2uiSocialData): A2uiSocialData {
+  if (parsed.social === undefined || parsed.social === null) {
+    return fallback;
+  }
+  return {
+    messages: Array.isArray(parsed.social.messages) ? parsed.social.messages : fallback.messages,
+    replies: Array.isArray(parsed.social.replies) ? parsed.social.replies : fallback.replies,
+    diagnostics: Array.isArray(parsed.social.diagnostics) ? parsed.social.diagnostics : fallback.diagnostics
+  };
+}
+
 function parseModel(surface: A2uiSurfaceState): A2uiRuntimeDataModel {
   const fallback = emptyModel();
   try {
@@ -94,7 +122,9 @@ function parseModel(surface: A2uiSurfaceState): A2uiRuntimeDataModel {
       rows: Array.isArray(parsed.rows) ? parsed.rows : fallback.rows,
       trains: Array.isArray(parsed.trains) ? parsed.trains : fallback.trains,
       flights: Array.isArray(parsed.flights) ? parsed.flights : fallback.flights,
+      travelOptions: Array.isArray(parsed.travelOptions) ? parsed.travelOptions : fallback.travelOptions,
       foods: Array.isArray(parsed.foods) ? parsed.foods : fallback.foods,
+      social: normalizeSocial(parsed, fallback.social),
       thoughts: Array.isArray(parsed.thoughts) ? parsed.thoughts : fallback.thoughts,
       summary: parsed.summary === undefined || parsed.summary === null ? fallback.summary : parsed.summary,
       trip: parsed.trip === undefined || parsed.trip === null ? fallback.trip : {
@@ -198,8 +228,23 @@ export function resolveData(surface: A2uiSurfaceState, path: string | undefined)
   if (path === '/flights') {
     return model.flights;
   }
+  if (path === '/travelOptions') {
+    return model.travelOptions;
+  }
   if (path === '/foods') {
     return model.foods;
+  }
+  if (path === '/social') {
+    return model.social;
+  }
+  if (path === '/social/messages') {
+    return model.social.messages;
+  }
+  if (path === '/social/replies') {
+    return model.social.replies;
+  }
+  if (path === '/social/diagnostics') {
+    return model.social.diagnostics;
   }
   if (path === '/thoughts') {
     return model.thoughts;
@@ -242,6 +287,9 @@ export function labelValues(surface: A2uiSurfaceState, component: A2uiComponent)
   if (component.dataPath === '/rows/train' || component.dataPath === '/rows/flight' || component.dataPath === '/rows/food') {
     return data as A2uiLabelValue[];
   }
+  if (component.dataPath === '/social/diagnostics') {
+    return data as A2uiLabelValue[];
+  }
   return labelValuesFromComponentBody(component);
 }
 
@@ -261,12 +309,38 @@ export function flightOptions(surface: A2uiSurfaceState, component: A2uiComponen
   return [];
 }
 
+export function travelOptions(surface: A2uiSurfaceState, component: A2uiComponent): A2uiTravelOption[] {
+  const data = resolveData(surface, component.dataPath);
+  if (component.dataPath === '/travelOptions') {
+    return data as A2uiTravelOption[];
+  }
+  return [];
+}
+
 export function foodOptions(surface: A2uiSurfaceState, component: A2uiComponent): A2uiFoodOption[] {
   const data = resolveData(surface, component.dataPath);
   if (component.dataPath === '/foods') {
     return data as A2uiFoodOption[];
   }
   return [];
+}
+
+export function socialMessages(surface: A2uiSurfaceState, component: A2uiComponent): A2uiSocialMessage[] {
+  const data = resolveData(surface, component.dataPath);
+  if (component.dataPath === '/social/messages') {
+    return data as A2uiSocialMessage[];
+  }
+  return [];
+}
+
+export function socialReplies(surface: A2uiSurfaceState): A2uiSocialReply[] {
+  const data = resolveData(surface, '/social/replies');
+  return data as A2uiSocialReply[];
+}
+
+export function socialDiagnostics(surface: A2uiSurfaceState): A2uiLabelValue[] {
+  const data = resolveData(surface, '/social/diagnostics');
+  return data as A2uiLabelValue[];
 }
 
 export function actionsOf(component: A2uiComponent): A2uiAction[] {
