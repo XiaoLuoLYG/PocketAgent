@@ -7,9 +7,11 @@ import {
   A2uiLabelValueData,
   A2uiRuntimeDataModel,
   A2uiRowGroupsData,
+  A2uiSocialData,
   A2uiSummaryData,
   A2uiSurfaceState,
   A2uiToolRequestData,
+  A2uiTravelOptionData,
   A2uiTrainData,
   A2uiTripData
 } from '../main/ets/model/A2uiTypes';
@@ -31,7 +33,13 @@ function surfaceWithToolRequest(toolId: string, prompt: string, actionId: string
   };
   const trains: A2uiTrainData[] = [];
   const flights: A2uiFlightData[] = [];
+  const travelOptions: A2uiTravelOptionData[] = [];
   const foods: A2uiFoodData[] = [];
+  const social: A2uiSocialData = {
+    messages: [],
+    replies: [],
+    diagnostics: []
+  };
   const summary: A2uiSummaryData = {
     text: '',
     toolName: '',
@@ -47,7 +55,9 @@ function surfaceWithToolRequest(toolId: string, prompt: string, actionId: string
     rows: rows,
     trains: trains,
     flights: flights,
+    travelOptions: travelOptions,
     foods: foods,
+    social: social,
     thoughts: thoughts,
     summary: summary,
     trip: trip,
@@ -101,6 +111,30 @@ export default function a2uiHomeToolRequestTest() {
 
       expect(resolved.hasTool).assertFalse();
       expect(resolved.toolId).assertEqual('');
+    });
+
+    it('infers food search when the model omits a tool request for nearby food', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '帮我搜索深圳坂田华为基地附近的奶茶店',
+        ''
+      );
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('food.search');
+      expect(resolved.prompt).assertEqual('帮我搜索深圳坂田华为基地附近的奶茶店');
+      expect(resolved.actionId).assertEqual('client_intent_fallback');
+    });
+
+    it('infers unified travel search when the model omits a tool request for travel plans', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '我明天要从北京去上海，帮我搜索出行方案',
+        ''
+      );
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('travel.search');
     });
   });
 }

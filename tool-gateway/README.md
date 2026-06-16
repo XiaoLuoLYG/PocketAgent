@@ -2,7 +2,7 @@
 
 This optional local gateway gives the HarmonyOS demo a stable HTTP endpoint for development-time tool-call smoke tests.
 
-The app does not need this service for its default runtime path. Current HAP builds keep `flight.search`, `train.search`, and `food.search` on `local://aiphone-tools`; the device calls 12306, VariFlight, and Amap directly. Use `scripts/sync-provider-config.mjs` before installation to package provider keys into the ignored HAP rawfile.
+The app does not need this service for its default runtime path. Current HAP builds keep `flight.search`, `train.search`, `travel.search`, `food.search`, and `social.reply.send` on `local://aiphone-tools`; the device calls 12306, VariFlight, Amap, Meituan Union, and Taobao Flash/Ele.me Union directly when matching keys are configured. Social reply dispatch stays device-side and only reports success when a real WeChat automation executor is connected. Use `scripts/sync-provider-config.mjs` before installation to package provider keys into the ignored HAP rawfile.
 
 ## Start
 
@@ -45,6 +45,9 @@ launchctl remove com.aiphone.toolgateway
 ## Provider Configuration
 
 Without provider configuration, the gateway returns an A2UI error surface instead of fake live data.
+`travel.search` is the aggregate travel query. It calls the train and flight providers, sorts the mixed rows by departure time, merges only real returned rows into `TravelOptions`, and writes partial provider failures into source-status rows.
+
+`social.reply.send` is registered for compatibility but the Node gateway cannot send WeChat replies. It returns an explicit A2UI unavailable surface unless the HAP has a real notification/accessibility bridge and device-side WeChat executor.
 
 `POST /api/aiphone/tool` accepts:
 
@@ -57,6 +60,15 @@ Without provider configuration, the gateway returns an A2UI error surface instea
 }
 ```
 
+Unified travel search uses the same endpoint with `toolId: "travel.search"`:
+
+```json
+{
+  "toolId": "travel.search",
+  "prompt": "我明天要从北京去上海，帮我搜索出行方案"
+}
+```
+
 Responses use `application/a2ui+json` JSONL:
 
 ```jsonl
@@ -64,6 +76,8 @@ Responses use `application/a2ui+json` JSONL:
 {"version":"v0.9.1","updateComponents":{"surfaceId":"surface_train_search","components":[{"id":"root","component":"SurfaceRoot","child":"layout","title":"12306 余票查询","status":"ready"},{"id":"layout","component":"Column","children":["summary","results","confirm"]},{"id":"summary","component":"InfoRows","title":"查询摘要","dataPath":"/rows"},{"id":"results","component":"TrainOptions","title":"可选车次","dataPath":"/trains","actions":[{"id":"change_train_date","label":"换时间","prompt":"换个时间查询高铁","variant":"secondary"}]},{"id":"confirm","component":"ConfirmPanel","title":"确认边界","body":"我可以继续帮你整理方案，但不会自动订票、支付或抢票。","actions":[{"id":"explain_boundary","label":"说明边界","prompt":"说明订票和支付边界","variant":"secondary"}]}]}}
 {"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_train_search","path":"/trains","value":[{"trainCode":"G1","from":"北京南","to":"上海虹桥","depart":"09:00","arrive":"13:28","duration":"4小时28分","seats":"二等座有票","status":"success"}]}}
 ```
+
+For `travel.search`, successful mixed rows are written to `/travelOptions` in departure-time order. Each row includes a visible source tag such as `高铁 · 12306` or `飞机 · 飞常准`.
 
 Copy `tool-gateway/.env.example` to `tool-gateway/.env.local`, then fill the keys you have. `.env.local` is ignored by git. For the app runtime path, run this from the repo root before building:
 
@@ -117,7 +131,9 @@ The gateway calls VariFlight's query endpoint only. Booking, ticket issuing, pas
 
 ### Food / Delivery
 
-V1 is query-only. It does not call Meituan/Ele.me ordering APIs.
+V1 is query-only. It does not call Meituan, Ele.me, Taobao Flash, or Amap ordering APIs.
+
+The default HAP route is `local://aiphone-tools`, where `food.search` aggregates configured Amap, Meituan Union, and Taobao Flash/Ele.me Union adapters. The compatibility Node gateway can still return Amap POI data, but the in-app provider path is the primary implementation.
 
 Query nearby restaurants with Amap Web Service POI:
 
@@ -138,7 +154,17 @@ AMAP_KEY="..."
 AMAP_DEFAULT_LOCATION="116.397428,39.90923"
 ```
 
-The gateway returns nearby POI choices only. Ordering, cart creation, delivery quote, and payment are out of scope.
+Enable Meituan Union product query and Taobao Flash/Ele.me Union store promotion query in the HAP rawfile sync input:
+
+```bash
+MEITUAN_UNION_APP_KEY="..."
+MEITUAN_UNION_APP_SECRET="..."
+TAOBAO_APP_KEY="..."
+TAOBAO_APP_SECRET="..."
+TAOBAO_FLASH_PID="..."
+```
+
+The app returns query choices only. Ordering, cart creation, delivery quote, and payment are out of scope. Missing keys and provider errors are displayed as source status rows instead of mock stores.
 
 Generic HTTP API adapters:
 

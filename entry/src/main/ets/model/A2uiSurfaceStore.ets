@@ -11,8 +11,12 @@ import {
   A2uiRowGroupsData,
   A2uiRuntimeDataModel,
   A2uiSummaryData,
+  A2uiSocialData,
+  A2uiSocialMessageData,
+  A2uiSocialReplyData,
   A2uiSurfaceState,
   A2uiToolRequestData,
+  A2uiTravelOptionData,
   A2uiTrainData,
   A2uiTripData,
   emptyA2uiSurface
@@ -67,7 +71,9 @@ function emptyDataModel(): A2uiRuntimeDataModel {
     rows: [],
     trains: [],
     flights: [],
+    travelOptions: [],
     foods: [],
+    social: emptySocial(),
     thoughts: [],
     summary: {
       text: '',
@@ -84,6 +90,14 @@ function emptyDataModel(): A2uiRuntimeDataModel {
       prompt: '',
       actionId: ''
     }
+  };
+}
+
+function emptySocial(): A2uiSocialData {
+  return {
+    messages: [],
+    replies: [],
+    diagnostics: []
   };
 }
 
@@ -211,6 +225,17 @@ function normalizeRowGroups(parsed: A2uiRuntimeDataModel, fallback: A2uiRowGroup
   };
 }
 
+function normalizeSocial(parsed: A2uiRuntimeDataModel, fallback: A2uiSocialData): A2uiSocialData {
+  if (parsed.social === undefined || parsed.social === null) {
+    return fallback;
+  }
+  return {
+    messages: Array.isArray(parsed.social.messages) ? parsed.social.messages : fallback.messages,
+    replies: Array.isArray(parsed.social.replies) ? parsed.social.replies : fallback.replies,
+    diagnostics: Array.isArray(parsed.social.diagnostics) ? parsed.social.diagnostics : fallback.diagnostics
+  };
+}
+
 function parseDataModel(json: string): A2uiRuntimeDataModel {
   const fallback = emptyDataModel();
   try {
@@ -219,7 +244,9 @@ function parseDataModel(json: string): A2uiRuntimeDataModel {
       rows: Array.isArray(parsed.rows) ? parsed.rows : fallback.rows,
       trains: Array.isArray(parsed.trains) ? parsed.trains : fallback.trains,
       flights: Array.isArray(parsed.flights) ? parsed.flights : fallback.flights,
+      travelOptions: Array.isArray(parsed.travelOptions) ? parsed.travelOptions : fallback.travelOptions,
       foods: Array.isArray(parsed.foods) ? parsed.foods : fallback.foods,
+      social: normalizeSocial(parsed, fallback.social),
       thoughts: Array.isArray(parsed.thoughts) ? parsed.thoughts : fallback.thoughts,
       summary: parsed.summary === undefined || parsed.summary === null ? fallback.summary : parsed.summary,
       trip: parsed.trip === undefined || parsed.trip === null ? fallback.trip : {
@@ -305,8 +332,18 @@ function setKnownDataPath(model: A2uiRuntimeDataModel, path: string, value: A2ui
     next.trains = value as A2uiTrainData[];
   } else if (path === '/flights') {
     next.flights = value as A2uiFlightData[];
+  } else if (path === '/travelOptions') {
+    next.travelOptions = value as A2uiTravelOptionData[];
   } else if (path === '/foods') {
     next.foods = value as A2uiFoodData[];
+  } else if (path === '/social') {
+    next.social = value as A2uiSocialData;
+  } else if (path === '/social/messages') {
+    next.social.messages = value as A2uiSocialMessageData[];
+  } else if (path === '/social/replies') {
+    next.social.replies = value as A2uiSocialReplyData[];
+  } else if (path === '/social/diagnostics') {
+    next.social.diagnostics = labelRowsFromDataValue(value);
   } else if (path === '/thoughts') {
     const incoming = value as string[];
     const existingJoined = next.thoughts.join('');

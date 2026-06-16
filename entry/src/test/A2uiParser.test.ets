@@ -1,7 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { parseA2uiEnvelope, parseA2uiJsonl, parseA2uiJsonlChunk } from '../main/ets/model/A2uiParser';
 import { A2uiSurfaceStore } from '../main/ets/model/A2uiSurfaceStore';
-import { componentById, labelValues, toolRequest, trainOptions } from '../main/ets/model/A2uiData';
+import { componentById, foodOptions, labelValues, socialMessages, socialReplies, toolRequest, trainOptions, travelOptions } from '../main/ets/model/A2uiData';
 import {
   appendThinkingStream,
   extractA2uiJsonlFromModelChunk,
@@ -63,6 +63,53 @@ export default function a2uiParserTest() {
       }
     });
 
+    it('accepts unified travel options from train and flight sources', 0, () => {
+      const stream =
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"travel","root":"root","title":"北京到上海出行方案","intent":"travel","status":"ready"}}\n' +
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"travel","components":[{"id":"root","component":"SurfaceRoot","child":"options","title":"北京到上海出行方案","status":"ready"},{"id":"options","component":"TravelOptions","title":"推荐方案","dataPath":"/travelOptions","status":"ready"}]}}\n' +
+        '{"version":"v0.9.1","updateDataModel":{"surfaceId":"travel","path":"/travelOptions","value":[{"id":"train-G1","source":"train","sourceTag":"高铁 · 12306","title":"G1","from":"北京南","to":"上海虹桥","depart":"09:00","arrive":"13:28","duration":"4小时28分","price":"","availability":"二等座有票","status":"success","detail":"设备本机直连 12306 返回"},{"id":"flight-MU5101","source":"flight","sourceTag":"飞机 · 飞常准","title":"MU5101","from":"BJS","to":"SHA","depart":"10:00","arrive":"12:10","duration":"","price":"¥680","availability":"","status":"计划","detail":"设备本机直连飞常准返回"}]}}\n';
+      const parsed = parseA2uiJsonl(stream);
+      const store = new A2uiSurfaceStore();
+
+      parsed.envelopes.forEach(envelope => {
+        store.apply(envelope);
+      });
+
+      const surface = store.getSurface();
+      const options = componentById(surface, 'options');
+      expect(parsed.error).assertEqual('');
+      expect(options !== null).assertTrue();
+      expect(surface.dataModelJson.indexOf('高铁 · 12306')).assertLarger(-1);
+      expect(surface.dataModelJson.indexOf('飞机 · 飞常准')).assertLarger(-1);
+      if (options !== null) {
+        expect(travelOptions(surface, options)[0].sourceTag).assertEqual('高铁 · 12306');
+        expect(travelOptions(surface, options)[1].sourceTag).assertEqual('飞机 · 飞常准');
+      }
+    });
+
+    it('preserves food source tags for aggregated delivery results', 0, () => {
+      const stream =
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"food","root":"root","title":"外卖聚合","intent":"food","status":"ready"}}\n' +
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"food","components":[{"id":"root","component":"SurfaceRoot","child":"foods","title":"外卖聚合","status":"ready"},{"id":"foods","component":"FoodChoices","title":"聚合结果","dataPath":"/foods","status":"ready"}]}}\n' +
+        '{"version":"v0.9.1","updateDataModel":{"surfaceId":"food","path":"/foods","value":[{"name":"茶百道","category":"奶茶","address":"南山科技园","distance":"120米","sourceTags":["高德","美团","淘宝闪购"]}]}}\n';
+      const parsed = parseA2uiJsonl(stream);
+      const store = new A2uiSurfaceStore();
+
+      parsed.envelopes.forEach(envelope => {
+        store.apply(envelope);
+      });
+
+      const surface = store.getSurface();
+      const foods = componentById(surface, 'foods');
+      expect(parsed.error).assertEqual('');
+      expect(foods !== null).assertTrue();
+      if (foods !== null) {
+        const tags = foodOptions(surface, foods)[0].sourceTags === undefined ? [] : foodOptions(surface, foods)[0].sourceTags;
+        expect(tags[0]).assertEqual('高德');
+        expect(tags[2]).assertEqual('淘宝闪购');
+      }
+    });
+
     it('stores model requested tool calls in data model', 0, () => {
       const store = new A2uiSurfaceStore();
       store.apply(parseA2uiEnvelope('{"createSurface":{"surfaceId":"s","root":"root","title":"测试"}}'));
@@ -72,6 +119,30 @@ export default function a2uiParserTest() {
       expect(request.toolId).assertEqual('train.search');
       expect(request.prompt).assertEqual('查高铁');
       expect(request.actionId).assertEqual('model_tool_request');
+    });
+
+    it('accepts SocialInbox messages and reply state without falling back to rows', 0, () => {
+      const stream =
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"social","root":"root","title":"社交收件箱","intent":"social","status":"ready"}}\n' +
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"social","components":[{"id":"root","component":"SurfaceRoot","child":"inbox","title":"社交收件箱","status":"ready"},{"id":"inbox","component":"SocialInbox","title":"微信消息","dataPath":"/social/messages","status":"ready"}]}}\n' +
+        '{"version":"v0.9.1","updateDataModel":{"surfaceId":"social","path":"/social/messages","value":[{"id":"wechat-1","platform":"wechat","conversationId":"wechat-alice","conversationTitle":"Alice","senderName":"Alice","preview":"晚上一起吃饭吗","receivedAt":"2026-06-11T08:30:00.000Z","source":"notification","status":"unread"}]}}\n' +
+        '{"version":"v0.9.1","updateDataModel":{"surfaceId":"social","path":"/social/replies","value":[{"id":"reply-1","targetMessageId":"wechat-1","platform":"wechat","conversationId":"wechat-alice","text":"可以","status":"sent","error":"","sentAt":"2026-06-11T08:31:00.000Z"}]}}\n';
+      const parsed = parseA2uiJsonl(stream);
+      const store = new A2uiSurfaceStore();
+
+      parsed.envelopes.forEach(envelope => {
+        store.apply(envelope);
+      });
+
+      const surface = store.getSurface();
+      const inbox = componentById(surface, 'inbox');
+      expect(parsed.error).assertEqual('');
+      expect(inbox !== null).assertTrue();
+      if (inbox !== null) {
+        expect(socialMessages(surface, inbox)[0].conversationTitle).assertEqual('Alice');
+        expect(socialMessages(surface, inbox)[0].source).assertEqual('notification');
+        expect(socialReplies(surface)[0].status).assertEqual('sent');
+      }
     });
 
     it('extracts model A2UI from think blocks and markdown fences', 0, () => {

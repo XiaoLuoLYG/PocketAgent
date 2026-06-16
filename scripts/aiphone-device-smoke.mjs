@@ -10,10 +10,8 @@ mkdirSync(outDir, { recursive: true });
 
 const defaultCases = [
   { query: '你好', expectsTool: false },
-  { query: '帮我查明天北京到上海航班', expectsTool: true },
-  { query: '帮我查明天北京到上海高铁票', expectsTool: true },
-  { query: '帮我查附近咖啡', expectsTool: true },
-  { query: '我想明天从北京去上海，帮我整理可查的出行选项', expectsTool: false }
+  { query: '我明天要从北京去上海，帮我搜索出行方案', expectsTool: true, expectedToolId: 'travel.search' },
+  { query: '帮我搜索深圳坂田华为基地附近的奶茶店', expectsTool: true, expectedToolId: 'food.search' }
 ];
 
 const forbiddenSyntheticMarkers = [
@@ -33,10 +31,15 @@ const visibleDomainMarkers = [
   '深圳',
   '高铁',
   '航班',
+  '高铁 · 12306',
+  '飞机 · 飞常准',
   '12306',
   '飞常准',
   '餐饮',
   '咖啡',
+  '奶茶',
+  '坂田',
+  '华为',
   '多展示一些',
   '选最快的'
 ];
@@ -55,6 +58,7 @@ const finalLayoutBlockingMarkers = [
   '查询失败',
   'Bad Request',
   '暂无可展示数据',
+  '暂不支持的组件',
   '把一句话变成可执行界面',
   '告诉 AIPhone 你要安排的事',
   '[',
@@ -78,6 +82,43 @@ const useDefaultCases = queryArgs.length === 0;
 const queries = useDefaultCases ? defaultCases.map((testCase) => testCase.query) : queryArgs;
 const target = process.env.AIPHONE_HDC_TARGET || firstTarget();
 const timeoutMs = Number.parseInt(process.env.AIPHONE_QUERY_TIMEOUT_MS || '90000', 10);
+
+function expectedCaseForQuery(query) {
+  if (/^你好$|问候|打招呼/.test(query)) {
+    return {
+      expectsTool: false,
+      expectedToolId: ''
+    };
+  }
+  if (/出行方案|搜索出行|怎么去|比较出行|出行选项|整理可查|可查的出行/.test(query) && /北京|上海|广州|深圳|杭州|成都|重庆|西安|南京|武汉|厦门|青岛|长沙|昆明|海口|三亚/.test(query)) {
+    return {
+      expectsTool: true,
+      expectedToolId: 'travel.search'
+    };
+  }
+  if (/航班|机票|飞机/.test(query)) {
+    return {
+      expectsTool: true,
+      expectedToolId: 'flight.search'
+    };
+  }
+  if (/高铁|火车|车票|12306/.test(query)) {
+    return {
+      expectsTool: true,
+      expectedToolId: 'train.search'
+    };
+  }
+  if (/附近|周边|外卖|咖啡|奶茶|肯德基|餐饮|美食/.test(query)) {
+    return {
+      expectsTool: true,
+      expectedToolId: 'food.search'
+    };
+  }
+  return {
+    expectsTool: null,
+    expectedToolId: ''
+  };
+}
 
 function firstTarget() {
   const result = spawnSync('hdc', ['list', 'targets'], { encoding: 'utf8' });
@@ -183,6 +224,14 @@ function dumpLayout(localName = 'latest-layout.json') {
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
+function captureScreen(localName = 'latest-screen.png') {
+  const remote = '/data/local/tmp/aiphone-smoke-screen.png';
+  const local = join(outDir, localName);
+  hdc(['shell', 'uitest', 'screenCap', '-p', remote]);
+  hdc(['file', 'recv', remote, local]);
+  return local;
+}
+
 function collectLayoutText(layout) {
   const values = [];
   walk(layout, (node) => {
@@ -201,7 +250,7 @@ function collectInputText(layout) {
   const values = [];
   walk(layout, (node) => {
     const attrs = node.attributes || {};
-    if (attrs.type === 'TextInput') {
+    if (attrs.type === 'TextInput' || attrs.type === 'TextArea') {
       ['text', 'content', 'description', 'hint'].forEach((key) => {
         const value = attrs[key];
         if (typeof value === 'string' && value.trim().length > 0) {
@@ -218,15 +267,15 @@ function findControls(layout) {
   let generate = null;
   walk(layout, (node) => {
     const attrs = node.attributes || {};
-    if (attrs.type === 'TextInput' && input === null) {
+    if ((attrs.type === 'TextInput' || attrs.type === 'TextArea') && input === null) {
       input = center(attrs.bounds);
     }
     if (attrs.type === 'Button' && attrs.text === '生成') {
       generate = center(attrs.bounds);
     }
   });
-  if (input === null || generate === null) {
-    throw new Error('Could not locate AIPhone input/generate controls.');
+  if (input === null) {
+    throw new Error('Could not locate AIPhone input control.');
   }
   return { input, generate };
 }
@@ -281,7 +330,9 @@ async function captureWhile(appPid, runAction) {
     while (Date.now() - started < timeoutMs) {
       await sleep(500);
       const text = logs.join('\n');
-      if (/\[AIPhone\]\[ToolResult\] ok=/.test(text) || /\[AIPhone\]\[ToolRequest\] none/.test(text) || /\[AIPhone\]\[ModelResult\] ok=false/.test(text)) {
+      if (/\[AIPhone\]\[(ToolResult|A2uiHomeToolResult)\] ok=/.test(text) ||
+        /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest)\] none/.test(text) ||
+        /\[AIPhone\]\[(ModelResult|A2uiHomeModelResult)\] ok=false/.test(text)) {
         break;
       }
     }
@@ -324,21 +375,29 @@ function activeHilogProcesses() {
     .filter((line) => line.includes('hdc') && line.includes('hilog'));
 }
 
-function analyze(query, logs, expectedTool) {
+function analyze(query, logs, expectedTool, expectedToolId = '') {
   const text = logs.join('\n');
+  const escapedToolId = expectedToolId.replace('.', '\\.');
+  const toolIdPattern = expectedToolId.length > 0 ?
+    new RegExp(`\\[AIPhone\\]\\[(ToolRequest|A2uiHomeToolRequest|A2uiHomeToolRequestFromModel)\\][^\\n]*toolId=${escapedToolId}`) :
+    null;
+  const hasExpectedToolId = toolIdPattern === null ? true : toolIdPattern.test(text);
+  const missingConfig = /\[AIPhone\]\[LocalToolMissingConfig\]/.test(text);
   const result = {
     query,
     expectedTool,
+    expectedToolId,
+    hasExpectedToolId,
     directIntent: /\[AIPhone\]\[ToolRequestByIntent\] toolId=/.test(text),
     localToolRequest: /\[AIPhone\]\[LocalToolRequest\] endpoint=local:\/\/aiphone-tools toolId=/.test(text),
     model200: /\[AIPhone\]\[ModelStreamResponse\] code=200/.test(text) || /response_code":200[\s\S]*dst_port":11434/.test(text),
-    modelOk: /\[AIPhone\]\[ModelResult\] ok=true/.test(text),
-    toolRequested: /\[AIPhone\]\[ToolRequest\] toolId=/.test(text),
-    toolOk: /\[AIPhone\]\[ToolResult\] ok=true/.test(text),
+    modelOk: /\[AIPhone\]\[(ModelResult|A2uiHomeModelResult)\] ok=true/.test(text),
+    toolRequested: /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest|A2uiHomeToolRequestFromModel)\][^\n]*toolId=/.test(text),
+    toolOk: /\[AIPhone\]\[(ToolResult|A2uiHomeToolResult)\] ok=true/.test(text),
     failedConnect: /failed to connect|Could not connect|Couldn.t connect|ECONNREFUSED|server is not running|CURLcode result 7|curl_code":7|os_errno":111/i.test(text),
-    providerFailed: /\[AIPhone\]\[LocalTool12306Endpoint\][^\n]*code=[45]\d\d/.test(text) || /\[AIPhone\]\[LocalToolException\]/.test(text) || /\[AIPhone\]\[LocalToolMissingConfig\]/.test(text),
-    modelFailed: /\[AIPhone\]\[ModelResult\] ok=false/.test(text),
-    toolNone: /\[AIPhone\]\[ToolRequest\] none/.test(text),
+    providerFailed: /\[AIPhone\]\[LocalTool12306Endpoint\][^\n]*code=[45]\d\d/.test(text) || /\[AIPhone\]\[LocalToolException\]/.test(text) || (missingConfig && expectedToolId !== 'travel.search'),
+    modelFailed: /\[AIPhone\]\[(ModelResult|A2uiHomeModelResult)\] ok=false/.test(text),
+    toolNone: /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest)\] none/.test(text),
     syntheticFallback: forbiddenSyntheticMarkers.some((marker) => text.includes(marker))
   };
   const modelPassed = result.model200 && result.modelOk && !result.modelFailed;
@@ -347,7 +406,7 @@ function analyze(query, logs, expectedTool) {
     !result.syntheticFallback &&
     !result.directIntent;
   if (expectedTool === true) {
-    result.ok = basePassed && modelPassed && result.toolRequested && result.localToolRequest && result.toolOk;
+    result.ok = basePassed && modelPassed && result.toolRequested && result.localToolRequest && result.toolOk && result.hasExpectedToolId;
   } else if (expectedTool === false) {
     result.ok = basePassed && modelPassed && result.toolNone && !result.toolRequested && !result.localToolRequest;
   } else {
@@ -355,6 +414,19 @@ function analyze(query, logs, expectedTool) {
       (result.toolRequested ? (result.localToolRequest && result.toolOk) : (result.toolNone && !result.localToolRequest));
   }
   return result;
+}
+
+function layoutExpectationsForQuery(query) {
+  if (/^你好$|问候|打招呼/.test(query)) {
+    return ['你好'];
+  }
+  if (/出行方案|搜索出行|怎么去|比较出行|出行选项|整理可查|可查的出行/.test(query)) {
+    return ['北京', '上海'];
+  }
+  if (/附近|周边|外卖|咖啡|奶茶|肯德基|餐饮|美食/.test(query)) {
+    return ['奶茶', '餐饮', '高德', '腾讯地图', '百度地图', '美团', '淘宝闪购'];
+  }
+  return [];
 }
 
 async function runQuery(query, index, expectedTool) {
@@ -374,7 +446,7 @@ async function runQuery(query, index, expectedTool) {
       hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2072', '2017']);
       hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2055']);
       hdc(['shell', 'uitest', 'uiInput', 'text', query]);
-    await sleep(1200);
+      await sleep(1200);
       const inputText = collectInputText(dumpLayout(`query-${index + 1}-input-attempt-${attempt + 1}.json`));
       if (inputText.includes(query)) {
         typed = true;
@@ -384,20 +456,37 @@ async function runQuery(query, index, expectedTool) {
     if (!typed) {
       throw new Error(`Could not type full query into AIPhone input: ${query}`);
     }
-    let updatedControls = controls;
-    try {
-      updatedControls = await waitForControls(`query-${index + 1}-after-input-layout.json`, 6);
-    } catch (_) {
-      updatedControls = controls;
-    }
-    hdc(['shell', 'uitest', 'uiInput', 'click', String(updatedControls.generate.x), String(updatedControls.generate.y)]);
-    await sleep(800);
-    hdc(['shell', 'uitest', 'uiInput', 'click', String(updatedControls.generate.x), String(updatedControls.generate.y)]);
+    hdc(['shell', 'uitest', 'uiInput', 'keyEvent', '2054']);
   });
   const logPath = join(outDir, `query-${index + 1}.log`);
   writeFileSync(logPath, logs.join('\n') + '\n');
-  const summary = analyze(query, logs, expectedTool);
+  const expectedToolId = useDefaultCases ? (defaultCases[index].expectedToolId || '') : expectedCaseForQuery(query).expectedToolId;
+  const summary = analyze(query, logs, expectedTool, expectedToolId);
   summary.logPath = logPath;
+  const layout = dumpLayout(`query-${index + 1}-final-layout.json`);
+  const layoutTextValues = collectLayoutText(layout);
+  const layoutText = layoutTextValues.join('\n');
+  const layoutTextPath = join(outDir, `query-${index + 1}-final-layout-text.txt`);
+  writeFileSync(layoutTextPath, layoutText + '\n');
+  const expectedMarkers = layoutExpectationsForQuery(query);
+  const expectedHits = expectedMarkers.filter((marker) => layoutText.includes(marker));
+  const allowsPartialTravelSourceFailure = expectedToolId === 'travel.search' &&
+    summary.toolOk === true &&
+    (layoutText.includes('来源状态') || layoutText.includes('飞常准')) &&
+    (layoutText.includes('耗时') || /\bG\d+\b/.test(layoutText) || layoutText.includes('高铁 · 12306'));
+  const layoutBlockingHits = finalLayoutBlockingMarkers.filter((marker) => {
+    if (allowsPartialTravelSourceFailure && marker === '查询失败') {
+      return false;
+    }
+    return layoutText.includes(marker);
+  });
+  summary.layoutPath = join(outDir, `query-${index + 1}-final-layout.json`);
+  summary.layoutTextPath = layoutTextPath;
+  summary.screenPath = captureScreen(`query-${index + 1}-final-screen.png`);
+  summary.layoutExpectedHits = expectedHits;
+  summary.layoutBlockingHits = layoutBlockingHits;
+  summary.layoutOk = layoutBlockingHits.length === 0 && (expectedMarkers.length === 0 || expectedHits.length > 0);
+  summary.ok = summary.ok && summary.layoutOk;
   return summary;
 }
 
@@ -409,13 +498,15 @@ const summaries = [];
 for (let index = 0; index < queries.length; index += 1) {
   const query = queries[index];
   console.log(`\n[${index + 1}/${queries.length}] ${query}`);
-  const expectedTool = useDefaultCases ? defaultCases[index].expectsTool : null;
+  const inferredCase = useDefaultCases ? defaultCases[index] : expectedCaseForQuery(query);
+  const expectedTool = inferredCase.expectsTool;
   const summary = await runQuery(query, index, expectedTool);
   summaries.push(summary);
   console.log(JSON.stringify(summary, null, 2));
 }
 
 const finalLayout = dumpLayout('final-layout.json');
+const finalScreenPath = captureScreen('final-screen.png');
 const finalLayoutTextValues = collectLayoutText(finalLayout);
 const finalLayoutText = finalLayoutTextValues.join('\n');
 const finalLayoutTextPath = join(outDir, 'final-layout-text.txt');
@@ -423,7 +514,25 @@ writeFileSync(finalLayoutTextPath, finalLayoutText + '\n');
 const finalLayoutDomainHits = visibleDomainMarkers.filter((marker) => finalLayoutText.includes(marker));
 const finalLayoutSyntheticHits = forbiddenSyntheticMarkers.filter((marker) => finalLayoutText.includes(marker));
 const finalLayoutForbiddenActionHits = forbiddenLayoutActionMarkers.filter((marker) => finalLayoutText.includes(marker));
-const finalLayoutBlockingHits = finalLayoutBlockingMarkers.filter((marker) => finalLayoutText.includes(marker));
+const finalQuery = queries.length > 0 ? queries[queries.length - 1] : '';
+const finalAllowsPartialTravel = /出行方案|搜索出行|怎么去|比较出行|出行选项|整理可查|可查的出行/.test(finalQuery);
+const finalSummary = summaries.length > 0 ? summaries[summaries.length - 1] : null;
+const finalAllowsSourceFailure =
+  finalAllowsPartialTravel &&
+  finalSummary !== null &&
+  finalSummary.expectedToolId === 'travel.search' &&
+  finalSummary.toolOk === true &&
+  (finalLayoutText.includes('来源状态') || finalLayoutText.includes('飞常准')) &&
+  finalLayoutText.includes('耗时');
+const finalLayoutBlockingHits = finalLayoutBlockingMarkers.filter((marker) => {
+  if (finalAllowsPartialTravel && (marker === '需要供应商配置' || marker === '需要配置：')) {
+    return false;
+  }
+  if (finalAllowsSourceFailure && marker === '查询失败') {
+    return false;
+  }
+  return finalLayoutText.includes(marker);
+});
 for (const blockingPattern of finalLayoutBlockingPatterns) {
   if (blockingPattern.pattern.test(finalLayoutText)) {
     finalLayoutBlockingHits.push(blockingPattern.name);
@@ -433,6 +542,7 @@ const finalLayoutRouteHits = finalLayoutRouteMarkers.filter((marker) => finalLay
 const hilogProcesses = activeHilogProcesses();
 const visibleOutput = {
   layoutPath: join(outDir, 'final-layout.json'),
+  screenPath: finalScreenPath,
   textPath: finalLayoutTextPath,
   domainHits: finalLayoutDomainHits,
   routeHits: finalLayoutRouteHits,

@@ -35,7 +35,13 @@ function modelJson(rows: A2uiLabelValueData[] = [], thoughts: string[] = []): st
     rows: rows,
     trains: [],
     flights: [],
+    travelOptions: [],
     foods: [],
+    social: {
+      messages: [],
+      replies: [],
+      diagnostics: []
+    },
     thoughts: thoughts,
     summary: {
       text: '',

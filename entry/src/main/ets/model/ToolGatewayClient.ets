@@ -9,7 +9,9 @@ import {
   A2uiFlightData,
   A2uiFoodData,
   A2uiLabelValueData,
+  A2uiSummaryData,
   A2uiSurfaceState,
+  A2uiTravelOptionData,
   A2uiTrainData,
   defaultA2uiCapabilities,
   emptyA2uiSurface
@@ -48,6 +50,11 @@ interface HttpRequestHeaders {
   'Cookie'?: string;
   'Content-Type'?: string;
   'X-VARIFLIGHT-KEY'?: string;
+  'Content-MD5'?: string;
+  'S-Ca-App'?: string;
+  'S-Ca-Signature'?: string;
+  'S-Ca-Timestamp'?: string;
+  'S-Ca-Signature-Headers'?: string;
 }
 
 interface ToolRequestDebug {
@@ -84,6 +91,17 @@ interface LocalProviderConfig {
   amapKey: string;
   amapDefaultLocation: string;
   amapRadius: string;
+  tencentMapKey: string;
+  tencentMapApiUrl: string;
+  baiduMapAk: string;
+  baiduMapApiUrl: string;
+  meituanUnionAppKey: string;
+  meituanUnionAppSecret: string;
+  meituanUnionApiUrl: string;
+  taobaoAppKey: string;
+  taobaoAppSecret: string;
+  taobaoFlashPid: string;
+  taobaoApiUrl: string;
 }
 
 interface LocalProviderRawConfig {
@@ -97,11 +115,33 @@ interface LocalProviderRawConfig {
   AMAP_DEFAULT_LOCATION?: string;
   FOOD_DEFAULT_LOCATION?: string;
   AMAP_RADIUS?: string;
+  TENCENT_MAP_KEY?: string;
+  TENCENT_MAP_API_URL?: string;
+  BAIDU_MAP_AK?: string;
+  BAIDU_MAP_API_URL?: string;
+  MEITUAN_UNION_APP_KEY?: string;
+  MEITUAN_UNION_APP_SECRET?: string;
+  MEITUAN_UNION_API_URL?: string;
+  TAOBAO_APP_KEY?: string;
+  TAOBAO_APP_SECRET?: string;
+  TAOBAO_FLASH_PID?: string;
+  TAOBAO_API_URL?: string;
   flightMcpKey?: string;
   variflightApiUrl?: string;
   amapKey?: string;
   amapDefaultLocation?: string;
   amapRadius?: string;
+  tencentMapKey?: string;
+  tencentMapApiUrl?: string;
+  baiduMapAk?: string;
+  baiduMapApiUrl?: string;
+  meituanUnionAppKey?: string;
+  meituanUnionAppSecret?: string;
+  meituanUnionApiUrl?: string;
+  taobaoAppKey?: string;
+  taobaoAppSecret?: string;
+  taobaoFlashPid?: string;
+  taobaoApiUrl?: string;
 }
 
 interface VariFlightRequestParams {
@@ -228,6 +268,165 @@ interface AmapPayload {
   geocodes?: AmapGeocode[];
 }
 
+export interface TencentMapPlace {
+  title?: string;
+  address?: string;
+  category?: string;
+  _distance?: string | number;
+  distance?: string | number;
+  location?: FoodMapPoint;
+}
+
+interface TencentMapPayload {
+  status?: string | number;
+  message?: string;
+  data?: TencentMapPlace[];
+}
+
+export interface BaiduPlaceDetailInfo {
+  tag?: string;
+  distance?: string | number;
+  overall_rating?: string | number;
+  price?: string | number;
+}
+
+export interface BaiduPlace {
+  name?: string;
+  address?: string;
+  location?: FoodMapPoint;
+  detail_info?: BaiduPlaceDetailInfo;
+}
+
+interface BaiduPlacePayload {
+  status?: string | number;
+  message?: string;
+  results?: BaiduPlace[];
+}
+
+export interface FoodProviderResult {
+  provider: string;
+  foods: A2uiFoodData[];
+  error: string;
+}
+
+export interface FoodAggregationResult {
+  foods: A2uiFoodData[];
+  issues: FoodProviderResult[];
+}
+
+interface FoodProviderAdapter {
+  name: string;
+  search(prompt: string, query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult>;
+}
+
+export interface MeituanUnionBrandInfo {
+  brandName?: string;
+  brandLogoUrl?: string;
+}
+
+export interface MeituanUnionCouponPackDetail {
+  name?: string;
+  sellPrice?: string;
+  saleVolume?: string;
+  productName?: string;
+}
+
+export interface MeituanUnionDeliverablePoiInfo {
+  poiName?: string;
+  deliveryDistance?: string;
+  distributionCost?: string;
+  deliveryDuration?: string;
+  lastDeliveryFee?: string;
+}
+
+export interface MeituanUnionRecord {
+  brandInfo?: MeituanUnionBrandInfo;
+  couponPackDetail?: MeituanUnionCouponPackDetail;
+  deliverablePoiInfo?: MeituanUnionDeliverablePoiInfo;
+  brandName?: string;
+  name?: string;
+  title?: string;
+  categoryName?: string;
+  deliveryDistance?: string;
+  distributionCost?: string;
+  deliveryDuration?: string;
+  lastDeliveryFee?: string;
+}
+
+interface MeituanUnionPayload {
+  code?: string | number;
+  status?: string | number;
+  message?: string;
+  msg?: string;
+  error?: string;
+  data?: MeituanUnionRecord[] | MeituanUnionRecordContainer;
+  result?: MeituanUnionRecord[] | MeituanUnionRecordContainer;
+}
+
+interface MeituanUnionRecordContainer {
+  list?: MeituanUnionRecord[];
+  records?: MeituanUnionRecord[];
+  items?: MeituanUnionRecord[];
+  products?: MeituanUnionRecord[];
+}
+
+export interface TaobaoFlashItemRecord {
+  title?: string;
+  price?: string;
+}
+
+export interface TaobaoFlashStoreRecord {
+  title?: string;
+  shop_name?: string;
+  name?: string;
+  category_1_name?: string;
+  category_name?: string;
+  delivery_distance?: string | number;
+  distance?: string | number;
+  delivery_time?: string | number;
+  delivery_price?: string | number;
+  service_rating?: string | number;
+  rating?: string | number;
+  items?: TaobaoFlashItemRecord[];
+  item_list?: TaobaoFlashItemRecord[];
+}
+
+interface TaobaoFlashPayload {
+  error_response?: TaobaoErrorResponse;
+  alibaba_alsc_union_eleme_promotion_storepromotion_query_response?: TaobaoFlashResponse;
+}
+
+interface TaobaoErrorResponse {
+  code?: string | number;
+  sub_code?: string;
+  msg?: string;
+  sub_msg?: string;
+}
+
+interface TaobaoFlashResponse {
+  result?: TaobaoFlashResult;
+  data?: TaobaoFlashResult | TaobaoFlashStoreRecord[];
+}
+
+interface TaobaoFlashResult {
+  success?: boolean | string;
+  msg_info?: string;
+  msg_code?: string;
+  result_list?: TaobaoFlashStoreRecord[];
+  records?: TaobaoFlashStoreRecord[];
+  data?: TaobaoFlashStoreRecord[];
+}
+
+interface FoodParamPair {
+  key: string;
+  value: string;
+}
+
+interface FoodMapPoint {
+  lat?: string | number;
+  lng?: string | number;
+}
+
 interface FlightCityCode {
   city: string;
   code: string;
@@ -250,10 +449,24 @@ interface FoodQuery {
   keyword: string;
 }
 
+interface ToolA2uiSnapshot {
+  title: string;
+  summary: string;
+  error: string;
+  trains: A2uiTrainData[];
+  flights: A2uiFlightData[];
+  rows: A2uiLabelValueData[];
+}
+
 const LOCAL_TOOL_GATEWAY_URL: string = 'local://aiphone-tools';
 const LOCAL_PROVIDER_CONFIG_RAWFILE: string = 'aiphone_provider_config.json';
 const DEFAULT_VARIFLIGHT_API_URL: string = 'https://mcp.variflight.com/api/v1/mcp/data';
 const DEFAULT_AMAP_RADIUS: string = '3000';
+const DEFAULT_TENCENT_MAP_API_URL: string = 'https://apis.map.qq.com/ws/place/v1/search';
+const DEFAULT_BAIDU_MAP_API_URL: string = 'https://api.map.baidu.com/place/v2/search';
+const DEFAULT_MEITUAN_UNION_API_URL: string = 'https://media.meituan.com/cps_open/common/api/v1/query_coupon';
+const DEFAULT_TAOBAO_API_URL: string = 'https://eco.taobao.com/router/rest';
+const FOOD_RESULT_LIMIT: number = 8;
 const TRAIN_RESULT_LIMIT: number = 30;
 const TRAIN_INITIAL_VISIBLE: number = 6;
 const TRAIN_CLIENT_ACTIONS: A2uiAction[] = [
@@ -261,6 +474,13 @@ const TRAIN_CLIENT_ACTIONS: A2uiAction[] = [
   { id: 'client_sort_fastest', label: '选最快的', prompt: 'client_sort_fastest', kind: 'client', variant: 'secondary' },
   { id: 'client_filter_available', label: '只看有票', prompt: 'client_filter_available', kind: 'client', variant: 'secondary' },
   { id: 'client_edit_query', label: '修改查询', prompt: 'client_edit_query', kind: 'input', variant: 'secondary' }
+];
+const TRAVEL_CLIENT_ACTIONS: A2uiAction[] = [
+  { id: 'travel_show_all', label: '全部', prompt: 'travel_show_all', kind: 'client', variant: 'secondary' },
+  { id: 'travel_filter_train', label: '只看高铁', prompt: 'travel_filter_train', kind: 'client', variant: 'secondary' },
+  { id: 'travel_filter_flight', label: '只看飞机', prompt: 'travel_filter_flight', kind: 'client', variant: 'secondary' },
+  { id: 'travel_change_date', label: '换日期', prompt: '换日期重新查询出行方案', kind: 'input', variant: 'secondary' },
+  { id: 'travel_retry', label: '重新查询', prompt: '重新查询出行方案', kind: 'prompt', variant: 'primary' }
 ];
 const HIGH_SPEED_DEFAULT_STATIONS: StationDefault[] = [
   { city: '北京', station: '北京南' },
@@ -299,7 +519,18 @@ let localProviderConfig: LocalProviderConfig = {
   variflightApiUrl: DEFAULT_VARIFLIGHT_API_URL,
   amapKey: '',
   amapDefaultLocation: '',
-  amapRadius: DEFAULT_AMAP_RADIUS
+  amapRadius: DEFAULT_AMAP_RADIUS,
+  tencentMapKey: '',
+  tencentMapApiUrl: DEFAULT_TENCENT_MAP_API_URL,
+  baiduMapAk: '',
+  baiduMapApiUrl: DEFAULT_BAIDU_MAP_API_URL,
+  meituanUnionAppKey: '',
+  meituanUnionAppSecret: '',
+  meituanUnionApiUrl: DEFAULT_MEITUAN_UNION_API_URL,
+  taobaoAppKey: '',
+  taobaoAppSecret: '',
+  taobaoFlashPid: '',
+  taobaoApiUrl: DEFAULT_TAOBAO_API_URL
 };
 
 function userAgentHeaders(): HttpRequestHeaders {
@@ -360,7 +591,7 @@ export function buildToolGatewayUrl(baseUrl: string): string {
 }
 
 export function isRegisteredToolId(toolId: string): boolean {
-  return toolId === 'flight.search' || toolId === 'train.search' || toolId === 'food.search';
+  return toolId === 'travel.search' || toolId === 'flight.search' || toolId === 'train.search' || toolId === 'food.search' || toolId === 'social.reply.send';
 }
 
 function firstText(values: Array<Object | string | number | boolean | null | undefined>): string {
@@ -379,11 +610,27 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     variflightApiUrl: config.variflightApiUrl.trim().length > 0 ? config.variflightApiUrl.trim() : DEFAULT_VARIFLIGHT_API_URL,
     amapKey: config.amapKey.trim(),
     amapDefaultLocation: config.amapDefaultLocation.trim(),
-    amapRadius: config.amapRadius.trim().length > 0 ? config.amapRadius.trim() : DEFAULT_AMAP_RADIUS
+    amapRadius: config.amapRadius.trim().length > 0 ? config.amapRadius.trim() : DEFAULT_AMAP_RADIUS,
+    tencentMapKey: config.tencentMapKey.trim(),
+    tencentMapApiUrl: config.tencentMapApiUrl.trim().length > 0 ? config.tencentMapApiUrl.trim() : DEFAULT_TENCENT_MAP_API_URL,
+    baiduMapAk: config.baiduMapAk.trim(),
+    baiduMapApiUrl: config.baiduMapApiUrl.trim().length > 0 ? config.baiduMapApiUrl.trim() : DEFAULT_BAIDU_MAP_API_URL,
+    meituanUnionAppKey: config.meituanUnionAppKey.trim(),
+    meituanUnionAppSecret: config.meituanUnionAppSecret.trim(),
+    meituanUnionApiUrl: config.meituanUnionApiUrl.trim().length > 0 ? config.meituanUnionApiUrl.trim() : DEFAULT_MEITUAN_UNION_API_URL,
+    taobaoAppKey: config.taobaoAppKey.trim(),
+    taobaoAppSecret: config.taobaoAppSecret.trim(),
+    taobaoFlashPid: config.taobaoFlashPid.trim(),
+    taobaoApiUrl: config.taobaoApiUrl.trim().length > 0 ? config.taobaoApiUrl.trim() : DEFAULT_TAOBAO_API_URL
   };
   aiLogInfo('[AIPhone][LocalProviderConfig] rawfile=' + LOCAL_PROVIDER_CONFIG_RAWFILE +
     ' flightKeyChars=' + localProviderConfig.flightMcpKey.length.toString() +
     ' amapKeyChars=' + localProviderConfig.amapKey.length.toString() +
+    ' tencentMapKeyChars=' + localProviderConfig.tencentMapKey.length.toString() +
+    ' baiduMapAkChars=' + localProviderConfig.baiduMapAk.length.toString() +
+    ' meituanKeyChars=' + localProviderConfig.meituanUnionAppKey.length.toString() +
+    ' taobaoKeyChars=' + localProviderConfig.taobaoAppKey.length.toString() +
+    ' taobaoPidChars=' + localProviderConfig.taobaoFlashPid.length.toString() +
     ' defaultLocationPresent=' + (localProviderConfig.amapDefaultLocation.length > 0 ? 'true' : 'false'));
 }
 
@@ -394,7 +641,18 @@ export function configureLocalProviderConfigFromRawJson(rawJson: string): void {
     variflightApiUrl: firstText([parsed.VARIFLIGHT_API_URL, parsed.FLIGHT_VARIFLIGHT_URL, parsed.variflightApiUrl]),
     amapKey: firstText([parsed.AMAP_KEY, parsed.amapKey]),
     amapDefaultLocation: firstText([parsed.AMAP_DEFAULT_LOCATION, parsed.FOOD_DEFAULT_LOCATION, parsed.amapDefaultLocation]),
-    amapRadius: firstText([parsed.AMAP_RADIUS, parsed.amapRadius])
+    amapRadius: firstText([parsed.AMAP_RADIUS, parsed.amapRadius]),
+    tencentMapKey: firstText([parsed.TENCENT_MAP_KEY, parsed.tencentMapKey]),
+    tencentMapApiUrl: firstText([parsed.TENCENT_MAP_API_URL, parsed.tencentMapApiUrl]),
+    baiduMapAk: firstText([parsed.BAIDU_MAP_AK, parsed.baiduMapAk]),
+    baiduMapApiUrl: firstText([parsed.BAIDU_MAP_API_URL, parsed.baiduMapApiUrl]),
+    meituanUnionAppKey: firstText([parsed.MEITUAN_UNION_APP_KEY, parsed.meituanUnionAppKey]),
+    meituanUnionAppSecret: firstText([parsed.MEITUAN_UNION_APP_SECRET, parsed.meituanUnionAppSecret]),
+    meituanUnionApiUrl: firstText([parsed.MEITUAN_UNION_API_URL, parsed.meituanUnionApiUrl]),
+    taobaoAppKey: firstText([parsed.TAOBAO_APP_KEY, parsed.taobaoAppKey]),
+    taobaoAppSecret: firstText([parsed.TAOBAO_APP_SECRET, parsed.taobaoAppSecret]),
+    taobaoFlashPid: firstText([parsed.TAOBAO_FLASH_PID, parsed.taobaoFlashPid]),
+    taobaoApiUrl: firstText([parsed.TAOBAO_API_URL, parsed.taobaoApiUrl])
   });
 }
 
@@ -402,6 +660,11 @@ export function localProviderConfigDebugSummary(): string {
   return 'rawfile=' + LOCAL_PROVIDER_CONFIG_RAWFILE +
     ', flightKey=' + (localProviderConfig.flightMcpKey.length > 0 ? 'present(' + localProviderConfig.flightMcpKey.length.toString() + ')' : 'missing') +
     ', amapKey=' + (localProviderConfig.amapKey.length > 0 ? 'present(' + localProviderConfig.amapKey.length.toString() + ')' : 'missing') +
+    ', tencentMapKey=' + (localProviderConfig.tencentMapKey.length > 0 ? 'present(' + localProviderConfig.tencentMapKey.length.toString() + ')' : 'missing') +
+    ', baiduMapAk=' + (localProviderConfig.baiduMapAk.length > 0 ? 'present(' + localProviderConfig.baiduMapAk.length.toString() + ')' : 'missing') +
+    ', meituanKey=' + (localProviderConfig.meituanUnionAppKey.length > 0 ? 'present(' + localProviderConfig.meituanUnionAppKey.length.toString() + ')' : 'missing') +
+    ', taobaoKey=' + (localProviderConfig.taobaoAppKey.length > 0 ? 'present(' + localProviderConfig.taobaoAppKey.length.toString() + ')' : 'missing') +
+    ', taobaoPid=' + (localProviderConfig.taobaoFlashPid.length > 0 ? 'present(' + localProviderConfig.taobaoFlashPid.length.toString() + ')' : 'missing') +
     ', defaultLocation=' + (localProviderConfig.amapDefaultLocation.length > 0 ? 'present' : 'missing');
 }
 
@@ -702,6 +965,240 @@ function buildQueryUrl(baseUrl: string, keys: string[], values: string[]): strin
   return baseUrl + query;
 }
 
+function utf8Bytes(value: string): number[] {
+  const bytes: number[] = [];
+  for (let index = 0; index < value.length; index++) {
+    let code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        code = 0x10000 + ((code - 0xd800) << 10) + (next - 0xdc00);
+        index++;
+      }
+    }
+    if (code < 0x80) {
+      bytes.push(code);
+    } else if (code < 0x800) {
+      bytes.push(0xc0 | (code >> 6));
+      bytes.push(0x80 | (code & 0x3f));
+    } else if (code < 0x10000) {
+      bytes.push(0xe0 | (code >> 12));
+      bytes.push(0x80 | ((code >> 6) & 0x3f));
+      bytes.push(0x80 | (code & 0x3f));
+    } else {
+      bytes.push(0xf0 | (code >> 18));
+      bytes.push(0x80 | ((code >> 12) & 0x3f));
+      bytes.push(0x80 | ((code >> 6) & 0x3f));
+      bytes.push(0x80 | (code & 0x3f));
+    }
+  }
+  return bytes;
+}
+
+function add32(left: number, right: number): number {
+  return (left + right) | 0;
+}
+
+function rotateLeft(value: number, bits: number): number {
+  return (value << bits) | (value >>> (32 - bits));
+}
+
+function md5DigestBytes(value: string): number[] {
+  const message = utf8Bytes(value);
+  const originalLength = message.length;
+  message.push(0x80);
+  while ((message.length % 64) !== 56) {
+    message.push(0);
+  }
+  const bitLow = (originalLength * 8) >>> 0;
+  const bitHigh = Math.floor(originalLength / 0x20000000) >>> 0;
+  for (let index = 0; index < 4; index++) {
+    message.push((bitLow >>> (index * 8)) & 0xff);
+  }
+  for (let index = 0; index < 4; index++) {
+    message.push((bitHigh >>> (index * 8)) & 0xff);
+  }
+
+  const shifts: number[] = [
+    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+    5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+    4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21
+  ];
+  const constants: number[] = [];
+  for (let index = 0; index < 64; index++) {
+    constants.push(Math.floor(Math.abs(Math.sin(index + 1)) * 4294967296) | 0);
+  }
+
+  let a0 = 0x67452301;
+  let b0 = 0xefcdab89 | 0;
+  let c0 = 0x98badcfe | 0;
+  let d0 = 0x10325476;
+
+  for (let offset = 0; offset < message.length; offset += 64) {
+    const words: number[] = [];
+    for (let wordIndex = 0; wordIndex < 16; wordIndex++) {
+      const base = offset + wordIndex * 4;
+      words.push((message[base] | (message[base + 1] << 8) | (message[base + 2] << 16) | (message[base + 3] << 24)) | 0);
+    }
+
+    let a = a0;
+    let b = b0;
+    let c = c0;
+    let d = d0;
+
+    for (let index = 0; index < 64; index++) {
+      let f = 0;
+      let g = 0;
+      if (index < 16) {
+        f = (b & c) | ((~b) & d);
+        g = index;
+      } else if (index < 32) {
+        f = (d & b) | ((~d) & c);
+        g = (5 * index + 1) % 16;
+      } else if (index < 48) {
+        f = b ^ c ^ d;
+        g = (3 * index + 5) % 16;
+      } else {
+        f = c ^ (b | (~d));
+        g = (7 * index) % 16;
+      }
+      const previousD = d;
+      d = c;
+      c = b;
+      const rotated = rotateLeft(add32(add32(a, f), add32(constants[index], words[g])), shifts[index]);
+      b = add32(b, rotated);
+      a = previousD;
+    }
+
+    a0 = add32(a0, a);
+    b0 = add32(b0, b);
+    c0 = add32(c0, c);
+    d0 = add32(d0, d);
+  }
+
+  const digest: number[] = [];
+  const words = [a0, b0, c0, d0];
+  for (let wordIndex = 0; wordIndex < words.length; wordIndex++) {
+    for (let byteIndex = 0; byteIndex < 4; byteIndex++) {
+      digest.push((words[wordIndex] >>> (byteIndex * 8)) & 0xff);
+    }
+  }
+  return digest;
+}
+
+function byteHex(value: number): string {
+  const digits = '0123456789abcdef';
+  return digits.charAt((value >>> 4) & 0x0f) + digits.charAt(value & 0x0f);
+}
+
+function md5Hex(value: string): string {
+  const digest = md5DigestBytes(value);
+  let result = '';
+  for (let index = 0; index < digest.length; index++) {
+    result += byteHex(digest[index]);
+  }
+  return result;
+}
+
+function bytesToBase64(bytes: number[]): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let result = '';
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const second = index + 1 < bytes.length ? bytes[index + 1] : 0;
+    const third = index + 2 < bytes.length ? bytes[index + 2] : 0;
+    const triple = (first << 16) | (second << 8) | third;
+    result += alphabet.charAt((triple >> 18) & 0x3f);
+    result += alphabet.charAt((triple >> 12) & 0x3f);
+    result += index + 1 < bytes.length ? alphabet.charAt((triple >> 6) & 0x3f) : '=';
+    result += index + 2 < bytes.length ? alphabet.charAt(triple & 0x3f) : '=';
+  }
+  return result;
+}
+
+function md5Base64(value: string): string {
+  return bytesToBase64(md5DigestBytes(value));
+}
+
+function sortedParamPairs(pairs: FoodParamPair[]): FoodParamPair[] {
+  const next: FoodParamPair[] = [];
+  for (let index = 0; index < pairs.length; index++) {
+    next.push({ key: pairs[index].key, value: pairs[index].value });
+  }
+  next.sort((left: FoodParamPair, right: FoodParamPair): number => {
+    if (left.key < right.key) {
+      return -1;
+    }
+    if (left.key > right.key) {
+      return 1;
+    }
+    return 0;
+  });
+  return next;
+}
+
+function topMd5Sign(pairs: FoodParamPair[], appSecret: string): string {
+  const sorted = sortedParamPairs(pairs);
+  let source = appSecret;
+  for (let index = 0; index < sorted.length; index++) {
+    if (sorted[index].key === 'sign' || sorted[index].value.length === 0) {
+      continue;
+    }
+    source += sorted[index].key + sorted[index].value;
+  }
+  source += appSecret;
+  return md5Hex(source).toUpperCase();
+}
+
+function encodeForm(pairs: FoodParamPair[]): string {
+  let body = '';
+  for (let index = 0; index < pairs.length; index++) {
+    if (body.length > 0) {
+      body += '&';
+    }
+    body += encodeURIComponent(pairs[index].key) + '=' + encodeURIComponent(pairs[index].value);
+  }
+  return body;
+}
+
+function formatTopTimestamp(date: Date): string {
+  return date.getFullYear().toString() + '-' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate()) + ' ' +
+    pad2(date.getHours()) + ':' + pad2(date.getMinutes()) + ':' + pad2(date.getSeconds());
+}
+
+function locationLongitude(location: string): string {
+  const parts = location.split(',');
+  return parts.length > 0 ? parts[0].trim() : '';
+}
+
+function locationLatitude(location: string): string {
+  const parts = location.split(',');
+  return parts.length > 1 ? parts[1].trim() : '';
+}
+
+function coordinateToMicros(value: string): string {
+  const numeric = Number(value);
+  if (isNaN(numeric)) {
+    return '';
+  }
+  return Math.round(numeric * 1000000).toString();
+}
+
+function meituanUnionSignature(appSecret: string, appKey: string, timestamp: string, contentMd5: string, body: string): string {
+  const source = appSecret +
+    'Content-MD5' + contentMd5 +
+    'S-Ca-App' + appKey +
+    'S-Ca-Timestamp' + timestamp +
+    body +
+    appSecret;
+  return md5Hex(source).toUpperCase();
+}
+
+function postFormText(url: string, headers: HttpRequestHeaders, body: string): Promise<HttpTextResponse> {
+  return postJsonText(url, headers, body);
+}
+
 function build12306LeftTicketUrl(path: string, date: string, fromCode: string, toCode: string): string {
   return 'https://kyfw.12306.cn/otn/leftTicket/' + path +
     '?leftTicketDTO.train_date=' + encodeURIComponent(date) +
@@ -927,16 +1424,25 @@ function filterHighSpeed(source: string, trains: A2uiTrainData[]): A2uiTrainData
 }
 
 function intentForTool(toolId: string): string {
+  if (toolId === 'social.reply.send') {
+    return 'social';
+  }
   if (toolId === 'food.search') {
     return 'food';
   }
-  if (toolId === 'train.search' || toolId === 'flight.search') {
+  if (toolId === 'travel.search' || toolId === 'train.search' || toolId === 'flight.search') {
     return 'travel';
   }
   return 'general';
 }
 
 function componentForTool(toolId: string): string {
+  if (toolId === 'social.reply.send') {
+    return 'SocialInbox';
+  }
+  if (toolId === 'travel.search') {
+    return 'TravelOptions';
+  }
   if (toolId === 'train.search') {
     return 'TrainOptions';
   }
@@ -950,6 +1456,12 @@ function componentForTool(toolId: string): string {
 }
 
 function dataPathForTool(toolId: string): string {
+  if (toolId === 'social.reply.send') {
+    return '/social/messages';
+  }
+  if (toolId === 'travel.search') {
+    return '/travelOptions';
+  }
   if (toolId === 'train.search') {
     return '/trains';
   }
@@ -963,6 +1475,12 @@ function dataPathForTool(toolId: string): string {
 }
 
 function dataLabelForTool(toolId: string): string {
+  if (toolId === 'social.reply.send') {
+    return 'social';
+  }
+  if (toolId === 'travel.search') {
+    return 'travelOptions';
+  }
   if (toolId === 'train.search') {
     return 'trains';
   }
@@ -976,6 +1494,12 @@ function dataLabelForTool(toolId: string): string {
 }
 
 function titleForTool(toolId: string): string {
+  if (toolId === 'social.reply.send') {
+    return '微信回复发送';
+  }
+  if (toolId === 'travel.search') {
+    return '出行方案查询';
+  }
   if (toolId === 'train.search') {
     return '火车票查询';
   }
@@ -1017,9 +1541,11 @@ function a2uiJsonl(envelopes: A2uiEnvelope[]): string {
 
 function pendingA2ui(toolId: string, prompt: string, surfaceId: string): string {
   const title = titleForTool(toolId);
-  const message = toolId === 'train.search'
+  const message = toolId === 'travel.search'
+    ? '正在同时等待 12306 和飞常准返回'
+    : (toolId === 'train.search'
     ? '正在等待 12306 返回'
-    : (toolId === 'flight.search' ? '正在等待飞常准返回' : (toolId === 'food.search' ? '正在等待高德 POI 返回' : '正在调用工具'));
+    : (toolId === 'flight.search' ? '正在等待飞常准返回' : (toolId === 'food.search' ? '正在等待外卖聚合来源返回' : '正在调用工具')));
   const components: A2uiComponent[] = [
     {
       id: 'root',
@@ -1266,7 +1792,367 @@ function flightResultA2ui(surfaceId: string, title: string, body: string, summar
   ]);
 }
 
-function foodResultA2ui(surfaceId: string, title: string, body: string, summaryText: string, foods: A2uiFoodData[]): string {
+function travelResultA2ui(surfaceId: string, title: string, body: string, summaryText: string, options: A2uiTravelOptionData[], rows: A2uiLabelValueData[]): string {
+  const components: A2uiComponent[] = [];
+  components.push({
+    id: 'root',
+    component: 'SurfaceRoot',
+    child: rows.length > 0 ? 'layout' : 'results',
+    title: title,
+    body: summaryText,
+    status: 'ready'
+  });
+  if (rows.length > 0) {
+    components.push({
+      id: 'layout',
+      component: 'Column',
+      children: ['summary', 'results'],
+      status: 'ready'
+    });
+    components.push({
+      id: 'summary',
+      component: 'InfoRows',
+      title: '来源状态',
+      body: '以下只展示真实工具返回；失败来源不会生成占位结果。',
+      status: 'ready',
+      dataPath: '/rows',
+      actions: []
+    });
+  }
+  components.push({
+    id: 'results',
+    component: componentForTool('travel.search'),
+    title: title,
+    body: body,
+    status: 'ready',
+    dataPath: dataPathForTool('travel.search'),
+    actions: TRAVEL_CLIENT_ACTIONS
+  });
+
+  return a2uiJsonl([
+    {
+      createSurface: {
+        surfaceId: surfaceId,
+        root: 'root',
+        title: title,
+        intent: 'travel',
+        status: 'ready',
+        sendDataModel: true
+      }
+    },
+    {
+      updateComponents: {
+        surfaceId: surfaceId,
+        components: components
+      }
+    },
+    {
+      updateDataModel: {
+        surfaceId: surfaceId,
+        path: '/travelOptions',
+        value: options
+      }
+    },
+    {
+      updateDataModel: {
+        surfaceId: surfaceId,
+        path: '/rows',
+        value: rows
+      }
+    },
+    {
+      updateDataModel: {
+        surfaceId: surfaceId,
+        path: '/summary',
+        value: {
+          text: summaryText,
+          toolName: 'travel.search',
+          dataLabel: dataLabelForTool('travel.search'),
+          count: options.length
+        }
+      }
+    }
+  ]);
+}
+
+function compactTime(value: string): string {
+  const text = value.trim();
+  const match = /(\d{1,2}):(\d{2})/.exec(text);
+  if (match !== null) {
+    return pad2(Number(match[1])) + ':' + match[2];
+  }
+  return text;
+}
+
+function parseTravelDurationMinutes(duration: string): number {
+  const text = duration.trim();
+  const colon = /^(\d{1,2}):(\d{2})$/.exec(text);
+  if (colon !== null) {
+    return Number.parseInt(colon[1], 10) * 60 + Number.parseInt(colon[2], 10);
+  }
+  let hours = 0;
+  let minutes = 0;
+  const hourMatch = /(\d+)\s*小时/.exec(text);
+  const minuteMatch = /(\d+)\s*分/.exec(text);
+  if (hourMatch !== null) {
+    hours = Number.parseInt(hourMatch[1], 10);
+  }
+  if (minuteMatch !== null) {
+    minutes = Number.parseInt(minuteMatch[1], 10);
+  }
+  if (hours > 0 || minutes > 0) {
+    return hours * 60 + minutes;
+  }
+  return 99999;
+}
+
+function durationFromTimes(depart: string, arrive: string): string {
+  const start = Date.parse(depart);
+  const end = Date.parse(arrive);
+  if (isNaN(start) || isNaN(end) || end <= start) {
+    return '';
+  }
+  const minutes = Math.floor((end - start) / 60000);
+  if (minutes <= 0 || minutes > 48 * 60) {
+    return '';
+  }
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours > 0) {
+    return hours.toString() + '小时' + rest.toString() + '分';
+  }
+  return rest.toString() + '分';
+}
+
+function clockScore(value: string): number {
+  const match = /(\d{1,2}):(\d{2})/.exec(value);
+  if (match === null) {
+    return 9999;
+  }
+  return Number.parseInt(match[1], 10) * 60 + Number.parseInt(match[2], 10);
+}
+
+function travelSourceSortOrder(source: string): number {
+  if (source === 'train') {
+    return 0;
+  }
+  if (source === 'flight') {
+    return 1;
+  }
+  return 2;
+}
+
+export function sortTravelOptionsByDeparture(options: A2uiTravelOptionData[]): A2uiTravelOptionData[] {
+  const copy = options.slice();
+  copy.sort((left: A2uiTravelOptionData, right: A2uiTravelOptionData) => {
+    const departDelta = clockScore(left.depart) - clockScore(right.depart);
+    if (departDelta !== 0) {
+      return departDelta;
+    }
+    const arriveDelta = clockScore(left.arrive) - clockScore(right.arrive);
+    if (arriveDelta !== 0) {
+      return arriveDelta;
+    }
+    return travelSourceSortOrder(left.source) - travelSourceSortOrder(right.source);
+  });
+  return copy;
+}
+
+function trainToTravelOption(item: A2uiTrainData, index: number): A2uiTravelOptionData {
+  return {
+    id: 'train-' + (item.trainCode.length > 0 ? item.trainCode : index.toString()) + '-' + item.depart,
+    source: 'train',
+    sourceTag: '高铁 · 12306',
+    title: item.trainCode,
+    from: item.from,
+    to: item.to,
+    depart: compactTime(item.depart),
+    arrive: compactTime(item.arrive),
+    duration: item.duration,
+    price: '',
+    availability: item.seats,
+    status: item.status.length > 0 ? item.status : '可查',
+    detail: ''
+  };
+}
+
+function flightToTravelOption(item: A2uiFlightData, index: number): A2uiTravelOptionData {
+  const duration = durationFromTimes(item.depTime, item.arrTime);
+  return {
+    id: 'flight-' + (item.flightNo.length > 0 ? item.flightNo : index.toString()) + '-' + compactTime(item.depTime),
+    source: 'flight',
+    sourceTag: '飞机 · 飞常准',
+    title: item.flightNo.length > 0 ? item.flightNo : item.airline,
+    from: item.dep,
+    to: item.arr,
+    depart: compactTime(item.depTime),
+    arrive: compactTime(item.arrTime),
+    duration: duration,
+    price: item.price,
+    availability: '',
+    status: item.status.length > 0 ? item.status : '计划',
+    detail: item.airline
+  };
+}
+
+function snapshotFromToolA2ui(raw: string): ToolA2uiSnapshot {
+  const parsed = parseA2uiJsonl(raw);
+  const snapshot: ToolA2uiSnapshot = {
+    title: '',
+    summary: '',
+    error: parsed.error,
+    trains: [],
+    flights: [],
+    rows: []
+  };
+  parsed.envelopes.forEach((envelope: A2uiEnvelope) => {
+    if (envelope.createSurface !== undefined && envelope.createSurface !== null) {
+      snapshot.title = envelope.createSurface.title === undefined ? snapshot.title : envelope.createSurface.title;
+    }
+    if (envelope.updateComponents !== undefined && envelope.updateComponents !== null) {
+      envelope.updateComponents.components.forEach((component: A2uiComponent) => {
+        if (component.component === 'ErrorNotice') {
+          const title = component.title === undefined ? '' : component.title;
+          const body = component.body === undefined ? '' : component.body;
+          snapshot.error = (title + ' ' + body).trim();
+        }
+      });
+    }
+    if (envelope.updateDataModel !== undefined && envelope.updateDataModel !== null) {
+      const update = envelope.updateDataModel;
+      if (update.path === '/trains' && Array.isArray(update.value)) {
+        snapshot.trains = update.value as A2uiTrainData[];
+      } else if (update.path === '/flights' && Array.isArray(update.value)) {
+        snapshot.flights = update.value as A2uiFlightData[];
+      } else if (update.path === '/rows' && Array.isArray(update.value)) {
+        snapshot.rows = update.value as A2uiLabelValueData[];
+      } else if (update.path === '/summary') {
+        const summary = update.value as A2uiSummaryData;
+        snapshot.summary = summary.text === undefined ? '' : summary.text;
+      }
+    }
+  });
+  return snapshot;
+}
+
+function issueRow(label: string, snapshot: ToolA2uiSnapshot, emptyText: string): A2uiLabelValueData | null {
+  if (snapshot.error.length > 0) {
+    return {
+      label: label,
+      value: snapshot.error
+    };
+  }
+  const message = snapshot.summary.length > 0 ? snapshot.summary : emptyText;
+  return {
+    label: label,
+    value: message
+  };
+}
+
+async function callLocalTravelSearch(prompt: string, surfaceId: string): Promise<string> {
+  const trainPrompt = /高铁|动车|\bG\d+|\bD\d+/i.test(prompt) ? prompt : prompt + ' 高铁';
+  const flightPrompt = /航班|机票|飞机/.test(prompt) ? prompt : prompt + ' 航班';
+  const results = await Promise.all([
+    callLocalTrainSearch(trainPrompt, surfaceId + '_train'),
+    callLocalFlightSearch(flightPrompt, surfaceId + '_flight')
+  ]);
+  const trainSnapshot = snapshotFromToolA2ui(results[0]);
+  const flightSnapshot = snapshotFromToolA2ui(results[1]);
+  let options: A2uiTravelOptionData[] = [];
+  trainSnapshot.trains.forEach((item: A2uiTrainData, index: number) => {
+    options.push(trainToTravelOption(item, index));
+  });
+  flightSnapshot.flights.forEach((item: A2uiFlightData, index: number) => {
+    options.push(flightToTravelOption(item, index));
+  });
+  options = sortTravelOptionsByDeparture(options);
+
+  const rows: A2uiLabelValueData[] = [];
+  if (trainSnapshot.error.length > 0 || trainSnapshot.trains.length === 0) {
+    const row = issueRow('高铁 · 12306', trainSnapshot, '12306 没有返回可展示车次。');
+    if (row !== null) {
+      rows.push(row);
+    }
+  }
+  if (flightSnapshot.error.length > 0 || flightSnapshot.flights.length === 0) {
+    const row = issueRow('飞机 · 飞常准', flightSnapshot, '飞常准没有返回可展示航班。');
+    if (row !== null) {
+      rows.push(row);
+    }
+  }
+
+  aiLogInfo('[AIPhone][LocalToolTravelResult] trains=' + trainSnapshot.trains.length.toString() +
+    ' flights=' + flightSnapshot.flights.length.toString() +
+    ' options=' + options.length.toString() +
+    ' issues=' + rows.length.toString());
+
+  if (options.length === 0) {
+    const messages: string[] = [];
+    rows.forEach((row: A2uiLabelValueData) => {
+      messages.push(row.label + '：' + row.value);
+    });
+    return errorA2ui(
+      surfaceId,
+      'travel.search',
+      '出行方案查询失败',
+      '高铁和航班工具都没有返回可展示结果。为避免编造行程，当前只展示真实错误或空结果说明。',
+      messages.length > 0 ? messages : ['12306 和飞常准都没有返回可展示结果。'],
+      ['换日期或城市', '只查高铁', '只查飞机']
+    );
+  }
+
+  return travelResultA2ui(
+    surfaceId,
+    '出行方案查询',
+    '用户请求：' + prompt,
+    '已查询高铁和航班，共 ' + options.length.toString() + ' 个可展示方案。',
+    options,
+    rows
+  );
+}
+
+function foodResultA2ui(surfaceId: string, title: string, body: string, summaryText: string, foods: A2uiFoodData[], rows: A2uiLabelValueData[] = []): string {
+  const components: A2uiComponent[] = [];
+  components.push({
+    id: 'root',
+    component: 'SurfaceRoot',
+    child: rows.length > 0 ? 'layout' : 'results',
+    title: title,
+    body: summaryText,
+    status: 'ready'
+  });
+  if (rows.length > 0) {
+    components.push({
+      id: 'layout',
+      component: 'Column',
+      children: ['summary', 'results'],
+      status: 'ready'
+    });
+    components.push({
+      id: 'summary',
+      component: 'InfoRows',
+      title: '来源状态',
+      body: '以下只展示真实 provider 返回；失败来源不会生成占位店铺。',
+      status: 'ready',
+      dataPath: '/rows',
+      actions: []
+    });
+  }
+  components.push({
+    id: 'results',
+    component: componentForTool('food.search'),
+    title: title,
+    body: body,
+    status: 'ready',
+    dataPath: dataPathForTool('food.search'),
+    actions: [
+      { id: 'food_show_all', label: '全部范围', prompt: '显示全部附近餐饮', kind: 'client', variant: 'secondary' },
+      { id: 'food_filter_1km', label: '1公里内', prompt: '只看一公里内餐饮', kind: 'client', variant: 'secondary' },
+      { id: 'food_change_keyword', label: '换关键词', prompt: '换关键词查询附近餐饮', kind: 'prompt', variant: 'secondary' },
+      { id: 'food_change_location', label: '换位置', prompt: '换位置查询附近餐饮', kind: 'prompt', variant: 'secondary' }
+    ]
+  });
+
   return a2uiJsonl([
     {
       createSurface: {
@@ -1281,28 +2167,7 @@ function foodResultA2ui(surfaceId: string, title: string, body: string, summaryT
     {
       updateComponents: {
         surfaceId: surfaceId,
-        components: [
-          {
-            id: 'root',
-            component: 'SurfaceRoot',
-            child: 'results',
-            title: title,
-            body: summaryText,
-            status: 'ready'
-          },
-          {
-            id: 'results',
-            component: componentForTool('food.search'),
-            title: title,
-            body: body,
-            status: 'ready',
-            dataPath: dataPathForTool('food.search'),
-            actions: [
-              { id: 'food_change_keyword', label: '换关键词', prompt: '换关键词查询附近餐饮', kind: 'prompt', variant: 'secondary' },
-              { id: 'food_change_location', label: '换位置', prompt: '换位置查询附近餐饮', kind: 'prompt', variant: 'secondary' }
-            ]
-          }
-        ]
+        components: components
       }
     },
     {
@@ -1310,6 +2175,13 @@ function foodResultA2ui(surfaceId: string, title: string, body: string, summaryT
         surfaceId: surfaceId,
         path: '/foods',
         value: foods
+      }
+    },
+    {
+      updateDataModel: {
+        surfaceId: surfaceId,
+        path: '/rows',
+        value: rows
       }
     },
     {
@@ -1573,7 +2445,7 @@ async function callLocalFlightSearch(prompt: string, surfaceId: string): Promise
       surfaceId,
       'flight.search',
       '飞常准航班查询失败',
-      '飞常准返回 HTTP ' + response.code.toString() + '。这是设备本机直接调用供应商的结果，不是 Mac gateway 连接失败。',
+      '飞常准返回 HTTP ' + response.code.toString() + '。当前只展示供应商返回的真实错误。',
       [response.text.substring(0, 700)],
       ['重新查询', '检查飞常准 Key']
     );
@@ -1619,7 +2491,7 @@ async function callLocalFlightSearch(prompt: string, surfaceId: string): Promise
   return flightResultA2ui(
     surfaceId,
     wantsPrice ? '飞常准航班价格查询' : '飞常准航班查询',
-    '以下为设备本机直连飞常准返回的查询结果。',
+    '以下为飞常准返回的查询结果。',
     '已通过飞常准查询到 ' + routeText + ' 的航班信息。',
     flights
   );
@@ -1764,25 +2636,856 @@ function foodRecordForA2ui(item: AmapPoi): A2uiFoodData {
     name: textOf(item.name),
     category: textOf(item.type),
     address: textOf(item.address),
-    distance: distance.length > 0 ? distance + '米' : ''
+    distance: distance.length > 0 ? distance + '米' : '',
+    location: textOf(item.location),
+    sourceTags: ['高德']
   };
+}
+
+function mapPointLocation(point: FoodMapPoint | undefined): string {
+  if (point === undefined || point === null) {
+    return '';
+  }
+  const longitude = textOf(point.lng);
+  const latitude = textOf(point.lat);
+  if (longitude.length === 0 || latitude.length === 0) {
+    return '';
+  }
+  return longitude + ',' + latitude;
+}
+
+export function foodRecordFromTencentMapPlace(item: TencentMapPlace): A2uiFoodData {
+  return {
+    name: textOf(item.title),
+    category: textOf(item.category),
+    address: textOf(item.address),
+    distance: meterDistanceText(firstText([item._distance, item.distance])),
+    location: mapPointLocation(item.location),
+    sourceTags: ['腾讯地图']
+  };
+}
+
+export function foodRecordFromBaiduPlace(item: BaiduPlace): A2uiFoodData {
+  const detail = item.detail_info === undefined ? null : item.detail_info;
+  const rating = detail === null ? '' : textOf(detail.overall_rating);
+  const price = detail === null ? '' : textOf(detail.price);
+  return {
+    name: textOf(item.name),
+    category: detail === null ? '' : textOf(detail.tag),
+    address: joinFoodParts([
+      textOf(item.address),
+      rating.length > 0 ? '评分' + rating : '',
+      price.length > 0 ? '人均¥' + price : ''
+    ]),
+    distance: meterDistanceText(detail === null ? '' : detail.distance),
+    location: mapPointLocation(item.location),
+    sourceTags: ['百度地图']
+  };
+}
+
+function joinFoodParts(parts: string[]): string {
+  let value = '';
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index].trim();
+    if (part.length === 0) {
+      continue;
+    }
+    value = value.length > 0 ? value + ' · ' + part : part;
+  }
+  return value;
+}
+
+function meituanDistanceText(value: Object | string | number | boolean | null | undefined): string {
+  const text = textOf(value).trim();
+  if (text.length === 0) {
+    return '';
+  }
+  if (/米|千米|公里|km/i.test(text)) {
+    return text.replace(/km/ig, '千米').replace(/公里/g, '千米');
+  }
+  return text + '千米';
+}
+
+function meterDistanceText(value: Object | string | number | boolean | null | undefined): string {
+  const text = textOf(value).trim();
+  if (text.length === 0) {
+    return '';
+  }
+  if (/米|千米|公里|km/i.test(text)) {
+    return text.replace(/km/ig, '千米').replace(/公里/g, '千米');
+  }
+  return text + '米';
+}
+
+function deliveryFeeText(label: string, value: Object | string | number | boolean | null | undefined): string {
+  const text = textOf(value).trim();
+  if (text.length === 0) {
+    return '';
+  }
+  if (/元$/.test(text)) {
+    return label + text;
+  }
+  return label + text + '元';
+}
+
+function minutesText(label: string, value: Object | string | number | boolean | null | undefined): string {
+  const text = textOf(value).trim();
+  if (text.length === 0) {
+    return '';
+  }
+  if (/分钟|小时/.test(text)) {
+    return label + text;
+  }
+  return label + text + '分钟';
+}
+
+export function foodRecordFromMeituanUnion(item: MeituanUnionRecord): A2uiFoodData {
+  const brand = item.brandInfo === undefined ? '' : textOf(item.brandInfo.brandName);
+  const coupon = item.couponPackDetail === undefined ? '' : firstText([item.couponPackDetail.name, item.couponPackDetail.productName]);
+  const poi = item.deliverablePoiInfo === undefined ? null : item.deliverablePoiInfo;
+  const name = firstText([
+    poi === null ? '' : poi.poiName,
+    item.name,
+    item.title,
+    brand
+  ]);
+  const salePrice = item.couponPackDetail === undefined ? '' : textOf(item.couponPackDetail.sellPrice);
+  const saleVolume = item.couponPackDetail === undefined ? '' : textOf(item.couponPackDetail.saleVolume);
+  const category = joinFoodParts([
+    coupon,
+    firstText([item.categoryName, brand]),
+    salePrice.length > 0 ? '券价¥' + salePrice : '',
+    saleVolume.length > 0 ? '销量' + saleVolume : ''
+  ]);
+  const distributionCost = firstText([
+    poi === null ? '' : poi.distributionCost,
+    item.distributionCost
+  ]);
+  const deliveryDuration = firstText([
+    poi === null ? '' : poi.deliveryDuration,
+    item.deliveryDuration
+  ]);
+  const lastDeliveryFee = firstText([
+    poi === null ? '' : poi.lastDeliveryFee,
+    item.lastDeliveryFee
+  ]);
+  const distance = firstText([
+    poi === null ? '' : poi.deliveryDistance,
+    item.deliveryDistance
+  ]);
+  return {
+    name: name,
+    category: category,
+    address: joinFoodParts([
+      deliveryFeeText('配送费', distributionCost),
+      minutesText('预计', deliveryDuration),
+      deliveryFeeText('起送', lastDeliveryFee)
+    ]),
+    distance: meituanDistanceText(distance),
+    sourceTags: ['美团']
+  };
+}
+
+export function foodRecordFromTaobaoFlashStore(item: TaobaoFlashStoreRecord): A2uiFoodData {
+  const items: TaobaoFlashItemRecord[] = item.items !== undefined && item.items.length > 0 ? item.items :
+    (item.item_list !== undefined ? item.item_list : []);
+  const firstItem: TaobaoFlashItemRecord | null = items.length > 0 ? items[0] : null;
+  const itemTitle = firstItem === null ? '' : textOf(firstItem.title);
+  const itemPrice = firstItem === null ? '' : textOf(firstItem.price);
+  return {
+    name: firstText([item.title, item.shop_name, item.name]),
+    category: joinFoodParts([
+      firstText([item.category_1_name, item.category_name]),
+      itemTitle,
+      itemPrice.length > 0 ? '¥' + itemPrice : ''
+    ]),
+    address: joinFoodParts([
+      textOf(item.service_rating).length > 0 ? '评分' + textOf(item.service_rating) : (textOf(item.rating).length > 0 ? '评分' + textOf(item.rating) : ''),
+      deliveryFeeText('配送费', item.delivery_price),
+      minutesText('预计', item.delivery_time)
+    ]),
+    distance: meterDistanceText(firstText([item.delivery_distance, item.distance])),
+    sourceTags: ['淘宝闪购']
+  };
+}
+
+function normalizeFoodName(value: string): string {
+  return value.toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[·•\-_/|｜,，.。:：;；（）()【】\[\]{}]/g, '')
+    .replace(/（.*?）/g, '')
+    .replace(/\(.*?\)/g, '');
+}
+
+function normalizeFoodComparable(value: string): string {
+  return normalizeFoodName(value)
+    .replace(/北京市|北京城区|北京|上海市|上海城区|上海|深圳市|深圳|广州市|广州|杭州市|杭州|成都市|成都|重庆市|重庆|天津市|天津|南京市|南京|武汉市|武汉|西安市|西安|苏州市|苏州/g, '');
+}
+
+function foodMergeKey(item: A2uiFoodData): string {
+  const name = normalizeFoodName(item.name);
+  if (name.length > 0) {
+    return 'name:' + name;
+  }
+  const address = normalizeFoodName(item.address);
+  if (address.length > 0) {
+    return 'address:' + address;
+  }
+  return 'distance:' + item.distance;
+}
+
+function foodBrandKey(item: A2uiFoodData): string {
+  const name = item.name;
+  const leftCn = name.indexOf('（');
+  const leftAscii = name.indexOf('(');
+  let cutIndex = -1;
+  if (leftCn >= 0 && leftAscii >= 0) {
+    cutIndex = Math.min(leftCn, leftAscii);
+  } else if (leftCn >= 0) {
+    cutIndex = leftCn;
+  } else if (leftAscii >= 0) {
+    cutIndex = leftAscii;
+  }
+  if (cutIndex > 0) {
+    return normalizeFoodComparable(name.substring(0, cutIndex));
+  }
+  return '';
+}
+
+function normalizedFoodAddress(value: string): string {
+  return normalizeFoodComparable(value)
+    .replace(/街道|路南|路北|路东|路西|路中|门口|附近/g, '');
+}
+
+export function foodDistanceMeters(value: string): number {
+  const compact = value.replace(/\s+/g, '');
+  const match = /(\d+(?:\.\d+)?)/.exec(compact);
+  if (match === null) {
+    return 999999999;
+  }
+  const amount = Number(match[1]);
+  if (isNaN(amount)) {
+    return 999999999;
+  }
+  if (/千米|公里|km/i.test(compact)) {
+    return amount * 1000;
+  }
+  return amount;
+}
+
+function foodDistanceClose(left: A2uiFoodData, right: A2uiFoodData): boolean {
+  const leftMeters = foodDistanceMeters(left.distance);
+  const rightMeters = foodDistanceMeters(right.distance);
+  if (leftMeters >= 999999999 || rightMeters >= 999999999) {
+    return false;
+  }
+  return Math.abs(leftMeters - rightMeters) <= 150;
+}
+
+function textContainsWithSignal(left: string, right: string, minLength: number): boolean {
+  if (left.length < minLength || right.length < minLength) {
+    return false;
+  }
+  return left.indexOf(right) >= 0 || right.indexOf(left) >= 0;
+}
+
+function foodAddressLikelySame(left: A2uiFoodData, right: A2uiFoodData): boolean {
+  const leftAddress = normalizedFoodAddress(left.address);
+  const rightAddress = normalizedFoodAddress(right.address);
+  return textContainsWithSignal(leftAddress, rightAddress, 8);
+}
+
+function foodNamesLikelySame(left: A2uiFoodData, right: A2uiFoodData): boolean {
+  const leftName = normalizeFoodComparable(left.name);
+  const rightName = normalizeFoodComparable(right.name);
+  if (leftName.length === 0 || rightName.length === 0) {
+    return false;
+  }
+  if (leftName === rightName) {
+    return true;
+  }
+  const leftBrand = foodBrandKey(left);
+  const rightBrand = foodBrandKey(right);
+  const sameBrand = leftBrand.length > 0 && leftBrand === rightBrand;
+  if (sameBrand && textContainsWithSignal(leftName, rightName, 6)) {
+    return true;
+  }
+  return textContainsWithSignal(leftName, rightName, 10) && foodDistanceClose(left, right);
+}
+
+function foodRecordsLikelySameStore(left: A2uiFoodData, right: A2uiFoodData): boolean {
+  if (foodMergeKey(left) === foodMergeKey(right)) {
+    return true;
+  }
+  if (foodNamesLikelySame(left, right)) {
+    return true;
+  }
+  const leftBrand = foodBrandKey(left);
+  const rightBrand = foodBrandKey(right);
+  return leftBrand.length > 0 && leftBrand === rightBrand && foodAddressLikelySame(left, right) && foodDistanceClose(left, right);
+}
+
+function foodTags(item: A2uiFoodData, fallbackProvider: string): string[] {
+  const tags: string[] = [];
+  const rawTags: string[] = item.sourceTags === undefined || item.sourceTags === null ? [] : item.sourceTags;
+  for (let index = 0; index < rawTags.length; index++) {
+    const tag = textOf(rawTags[index]).trim();
+    if (tag.length > 0 && tags.indexOf(tag) < 0) {
+      tags.push(tag);
+    }
+  }
+  if (tags.length === 0 && fallbackProvider.length > 0) {
+    tags.push(fallbackProvider);
+  }
+  return tags;
+}
+
+function cloneFood(item: A2uiFoodData, fallbackProvider: string): A2uiFoodData {
+  return {
+    name: item.name,
+    category: item.category,
+    address: item.address,
+    distance: item.distance,
+    location: item.location,
+    sourceTags: foodTags(item, fallbackProvider)
+  };
+}
+
+function mergeFoodInto(target: A2uiFoodData, item: A2uiFoodData, fallbackProvider: string): void {
+  const tags = foodTags(item, fallbackProvider);
+  const targetTags: string[] = target.sourceTags === undefined || target.sourceTags === null ? [] : target.sourceTags;
+  for (let index = 0; index < tags.length; index++) {
+    if (targetTags.indexOf(tags[index]) < 0) {
+      targetTags.push(tags[index]);
+    }
+  }
+  target.sourceTags = targetTags;
+  if (target.category.length === 0 && item.category.length > 0) {
+    target.category = item.category;
+  }
+  if (target.address.length === 0 && item.address.length > 0) {
+    target.address = item.address;
+  }
+  if (target.distance.length === 0 && item.distance.length > 0) {
+    target.distance = item.distance;
+    if (target.location === undefined || target.location.length === 0) {
+      target.location = item.location;
+    }
+  } else if (item.distance.length > 0 && foodDistanceMeters(item.distance) < foodDistanceMeters(target.distance)) {
+    target.distance = item.distance;
+    if (item.location !== undefined && item.location.length > 0) {
+      target.location = item.location;
+    }
+  } else if ((target.location === undefined || target.location.length === 0) && item.location !== undefined && item.location.length > 0) {
+    target.location = item.location;
+  }
+}
+
+function appendUniqueText(values: string[], value: string): void {
+  if (value.length > 0 && values.indexOf(value) < 0) {
+    values.push(value);
+  }
+}
+
+function foodHasSourceTag(item: A2uiFoodData, source: string): boolean {
+  const tags: string[] = foodTags(item, '');
+  return tags.indexOf(source) >= 0;
+}
+
+function addCoveredFoodSources(coveredSources: string[], item: A2uiFoodData): void {
+  const tags: string[] = foodTags(item, '');
+  for (let index = 0; index < tags.length; index++) {
+    appendUniqueText(coveredSources, tags[index]);
+  }
+}
+
+function visibleFoodSourceOrder(sourceOrder: string[]): string[] {
+  const ordered: string[] = [];
+  for (let index = 0; index < sourceOrder.length; index++) {
+    if (sourceOrder[index] !== '高德') {
+      appendUniqueText(ordered, sourceOrder[index]);
+    }
+  }
+  for (let index = 0; index < sourceOrder.length; index++) {
+    if (sourceOrder[index] === '高德') {
+      appendUniqueText(ordered, sourceOrder[index]);
+    }
+  }
+  return ordered;
+}
+
+function foodSourceCount(item: A2uiFoodData): number {
+  return foodTags(item, '').length;
+}
+
+function compareVisibleFood(left: A2uiFoodData, right: A2uiFoodData): number {
+  const leftMerged = foodSourceCount(left) > 1 ? 0 : 1;
+  const rightMerged = foodSourceCount(right) > 1 ? 0 : 1;
+  if (leftMerged !== rightMerged) {
+    return leftMerged - rightMerged;
+  }
+  const distanceDiff = foodDistanceMeters(left.distance) - foodDistanceMeters(right.distance);
+  if (distanceDiff !== 0) {
+    return distanceDiff;
+  }
+  return left.name.localeCompare(right.name);
+}
+
+function selectVisibleFoodResults(foods: A2uiFoodData[]): A2uiFoodData[] {
+  const sorted = foods.slice();
+  sorted.sort((left: A2uiFoodData, right: A2uiFoodData): number => compareVisibleFood(left, right));
+  return sorted.slice(0, FOOD_RESULT_LIMIT);
+}
+
+function findExistingFoodIndex(foods: A2uiFoodData[], item: A2uiFoodData): number {
+  for (let index = 0; index < foods.length; index++) {
+    if (foodRecordsLikelySameStore(foods[index], item)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+export function aggregateFoodProviderResults(results: FoodProviderResult[]): FoodAggregationResult {
+  const foods: A2uiFoodData[] = [];
+  const issues: FoodProviderResult[] = [];
+  for (let resultIndex = 0; resultIndex < results.length; resultIndex++) {
+    const result = results[resultIndex];
+    if (result.error.length > 0 || result.foods.length === 0) {
+      issues.push({
+        provider: result.provider,
+        foods: [],
+        error: result.error.length > 0 ? result.error : result.provider + '没有返回可展示结果。'
+      });
+    }
+    for (let foodIndex = 0; foodIndex < result.foods.length; foodIndex++) {
+      const food = result.foods[foodIndex];
+      if (food.name.length === 0) {
+        continue;
+      }
+      const existingIndex = findExistingFoodIndex(foods, food);
+      if (existingIndex >= 0) {
+        mergeFoodInto(foods[existingIndex], food, result.provider);
+      } else {
+        foods.push(cloneFood(food, result.provider));
+      }
+    }
+  }
+  return {
+    foods: selectVisibleFoodResults(foods),
+    issues: issues
+  };
+}
+
+export function providerIssueRows(issues: FoodProviderResult[]): A2uiLabelValueData[] {
+  const rows: A2uiLabelValueData[] = [];
+  for (let index = 0; index < issues.length; index++) {
+    const issue = issues[index];
+    rows.push({
+      label: issue.provider,
+      value: issue.error.length > 0 ? issue.error : issue.provider + '没有返回可展示结果。'
+    });
+  }
+  return rows;
+}
+
+function emptyProviderResult(provider: string, error: string): FoodProviderResult {
+  return {
+    provider: provider,
+    foods: [],
+    error: error
+  };
+}
+
+function meituanRecordsFromContainer(value: MeituanUnionRecord[] | MeituanUnionRecordContainer | undefined): MeituanUnionRecord[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  const container = value as MeituanUnionRecordContainer;
+  if (container.list !== undefined && container.list.length > 0) {
+    return container.list;
+  }
+  if (container.records !== undefined && container.records.length > 0) {
+    return container.records;
+  }
+  if (container.items !== undefined && container.items.length > 0) {
+    return container.items;
+  }
+  if (container.products !== undefined && container.products.length > 0) {
+    return container.products;
+  }
+  return [];
+}
+
+function meituanProviderError(payload: MeituanUnionPayload): string {
+  const message = firstText([payload.error, payload.message, payload.msg]);
+  const code = textOf(payload.code);
+  const status = textOf(payload.status);
+  if (code.length > 0 && code !== '0' && code !== '200') {
+    return message.length > 0 ? message + '（code=' + code + '）' : '美团联盟返回 code=' + code;
+  }
+  if (status === '0' || status.toLowerCase() === 'false') {
+    return message.length > 0 ? message : '美团联盟返回失败状态。';
+  }
+  return '';
+}
+
+function taobaoResponseResult(payload: TaobaoFlashPayload): TaobaoFlashResult {
+  const response = payload.alibaba_alsc_union_eleme_promotion_storepromotion_query_response;
+  if (response !== undefined) {
+    if (response.result !== undefined) {
+      return response.result;
+    }
+    if (response.data !== undefined) {
+      if (Array.isArray(response.data)) {
+        return { result_list: response.data };
+      }
+      return response.data as TaobaoFlashResult;
+    }
+  }
+  const direct = payload as TaobaoFlashResponse;
+  if (direct.result !== undefined) {
+    return direct.result;
+  }
+  if (direct.data !== undefined) {
+    if (Array.isArray(direct.data)) {
+      return { result_list: direct.data };
+    }
+    return direct.data as TaobaoFlashResult;
+  }
+  return {};
+}
+
+function taobaoProviderError(payload: TaobaoFlashPayload): string {
+  if (payload.error_response !== undefined) {
+    return firstText([
+      payload.error_response.sub_msg,
+      payload.error_response.msg,
+      payload.error_response.sub_code,
+      payload.error_response.code
+    ]);
+  }
+  const result = taobaoResponseResult(payload);
+  if (textOf(result.success).toLowerCase() === 'false') {
+    return firstText([result.msg_info, result.msg_code, '淘宝闪购返回失败状态。']);
+  }
+  return '';
+}
+
+function taobaoRecordsFromResult(result: TaobaoFlashResult): TaobaoFlashStoreRecord[] {
+  if (result.result_list !== undefined && result.result_list.length > 0) {
+    return result.result_list;
+  }
+  if (result.records !== undefined && result.records.length > 0) {
+    return result.records;
+  }
+  if (result.data !== undefined && result.data.length > 0) {
+    return result.data;
+  }
+  return [];
+}
+
+async function safeFoodProviderSearch(adapter: FoodProviderAdapter, prompt: string, query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult> {
+  try {
+    return await adapter.search(prompt, query, keyword, location, locationSource);
+  } catch (error) {
+    return emptyProviderResult(adapter.name, describeThrown(error));
+  }
+}
+
+class AmapFoodProvider implements FoodProviderAdapter {
+  name: string = '高德';
+
+  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult> {
+    const key = localProviderConfig.amapKey;
+    if (key.length === 0) {
+      return emptyProviderResult(this.name, '未配置 AMAP_KEY');
+    }
+    if (location.length === 0) {
+      return emptyProviderResult(this.name, '缺少经纬度，无法调用高德周边 POI。');
+    }
+    aiLogInfo('[AIPhone][LocalToolAmapRequest] keyChars=' + key.length.toString() +
+      ' locationSource=' + locationSource + ' locationPresent=true keyword=' + keyword);
+    const payload = await amapJsonGet(buildQueryUrl(
+      'https://restapi.amap.com/v3/place/around',
+      ['key', 'location', 'types', 'keywords', 'radius', 'offset', 'page', 'extensions'],
+      [key, location, '050000', keyword, localProviderConfig.amapRadius, '10', '1', 'all']
+    ));
+    if (textOf(payload.status) !== '1') {
+      const providerMessage = firstText([payload.info, payload.infocode, payload.message]);
+      return emptyProviderResult(this.name, providerMessage.length > 0 ? providerMessage : JSON.stringify(payload).substring(0, 500));
+    }
+    const pois = payload.pois === undefined ? [] : payload.pois;
+    const foods: A2uiFoodData[] = [];
+    const names: string[] = [];
+    for (let index = 0; index < pois.length && foods.length < FOOD_RESULT_LIMIT; index++) {
+      const food = foodRecordForA2ui(pois[index]);
+      const normalized = normalizeFoodName(food.name);
+      if (food.name.length === 0 || names.indexOf(normalized) >= 0) {
+        continue;
+      }
+      names.push(normalized);
+      foods.push(food);
+    }
+    aiLogInfo('[AIPhone][LocalToolAmapResult] pois=' + pois.length.toString() + ' returned=' + foods.length.toString());
+    return {
+      provider: this.name,
+      foods: foods,
+      error: foods.length > 0 ? '' : '高德没有返回可展示餐饮 POI。'
+    };
+  }
+}
+
+class TencentMapFoodProvider implements FoodProviderAdapter {
+  name: string = '腾讯地图';
+
+  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult> {
+    const key = localProviderConfig.tencentMapKey;
+    if (key.length === 0) {
+      return emptyProviderResult(this.name, '未配置 TENCENT_MAP_KEY');
+    }
+    if (location.length === 0) {
+      return emptyProviderResult(this.name, '缺少经纬度，无法调用腾讯地图周边搜索。');
+    }
+    const longitude = locationLongitude(location);
+    const latitude = locationLatitude(location);
+    if (longitude.length === 0 || latitude.length === 0) {
+      return emptyProviderResult(this.name, '经纬度格式无效：' + location);
+    }
+    const boundary = 'nearby(' + latitude + ',' + longitude + ',' + localProviderConfig.amapRadius + ',1)';
+    aiLogInfo('[AIPhone][LocalToolTencentMapRequest] endpoint=' + localProviderConfig.tencentMapApiUrl +
+      ' keyChars=' + key.length.toString() + ' locationSource=' + locationSource + ' keyword=' + keyword);
+    const response = await requestText(buildQueryUrl(
+      localProviderConfig.tencentMapApiUrl,
+      ['key', 'keyword', 'boundary', 'page_size', 'page_index', 'orderby'],
+      [key, keyword, boundary, '10', '1', '_distance']
+    ), userAgentHeaders());
+    if (response.code < 200 || response.code >= 300) {
+      return emptyProviderResult(this.name, 'HTTP ' + response.code.toString() + '：' + response.text.substring(0, 300));
+    }
+    const payload = JSON.parse(response.text) as TencentMapPayload;
+    if (textOf(payload.status) !== '0') {
+      const message = firstText([payload.message, payload.status]);
+      return emptyProviderResult(this.name, message.length > 0 ? message : response.text.substring(0, 300));
+    }
+    const places = payload.data === undefined ? [] : payload.data;
+    const foods: A2uiFoodData[] = [];
+    for (let index = 0; index < places.length && foods.length < FOOD_RESULT_LIMIT; index++) {
+      const food = foodRecordFromTencentMapPlace(places[index]);
+      if (food.name.length > 0) {
+        foods.push(food);
+      }
+    }
+    aiLogInfo('[AIPhone][LocalToolTencentMapResult] rows=' + places.length.toString() + ' returned=' + foods.length.toString());
+    return {
+      provider: this.name,
+      foods: foods,
+      error: foods.length > 0 ? '' : '腾讯地图没有返回可展示餐饮 POI。'
+    };
+  }
+}
+
+class BaiduMapFoodProvider implements FoodProviderAdapter {
+  name: string = '百度地图';
+
+  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult> {
+    const ak = localProviderConfig.baiduMapAk;
+    if (ak.length === 0) {
+      return emptyProviderResult(this.name, '未配置 BAIDU_MAP_AK');
+    }
+    if (location.length === 0) {
+      return emptyProviderResult(this.name, '缺少经纬度，无法调用百度地图地点检索。');
+    }
+    const longitude = locationLongitude(location);
+    const latitude = locationLatitude(location);
+    if (longitude.length === 0 || latitude.length === 0) {
+      return emptyProviderResult(this.name, '经纬度格式无效：' + location);
+    }
+    aiLogInfo('[AIPhone][LocalToolBaiduMapRequest] endpoint=' + localProviderConfig.baiduMapApiUrl +
+      ' akChars=' + ak.length.toString() + ' locationSource=' + locationSource + ' keyword=' + keyword);
+    const response = await requestText(buildQueryUrl(
+      localProviderConfig.baiduMapApiUrl,
+      ['ak', 'query', 'location', 'radius', 'output', 'scope', 'coord_type', 'ret_coordtype', 'page_size', 'page_num'],
+      [ak, keyword, latitude + ',' + longitude, localProviderConfig.amapRadius, 'json', '2', '2', 'gcj02ll', '10', '0']
+    ), userAgentHeaders());
+    if (response.code < 200 || response.code >= 300) {
+      return emptyProviderResult(this.name, 'HTTP ' + response.code.toString() + '：' + response.text.substring(0, 300));
+    }
+    const payload = JSON.parse(response.text) as BaiduPlacePayload;
+    if (textOf(payload.status) !== '0') {
+      const message = firstText([payload.message, payload.status]);
+      return emptyProviderResult(this.name, message.length > 0 ? message : response.text.substring(0, 300));
+    }
+    const places = payload.results === undefined ? [] : payload.results;
+    const foods: A2uiFoodData[] = [];
+    for (let index = 0; index < places.length && foods.length < FOOD_RESULT_LIMIT; index++) {
+      const food = foodRecordFromBaiduPlace(places[index]);
+      if (food.name.length > 0) {
+        foods.push(food);
+      }
+    }
+    aiLogInfo('[AIPhone][LocalToolBaiduMapResult] rows=' + places.length.toString() + ' returned=' + foods.length.toString());
+    return {
+      provider: this.name,
+      foods: foods,
+      error: foods.length > 0 ? '' : '百度地图没有返回可展示餐饮 POI。'
+    };
+  }
+}
+
+class MeituanUnionFoodProvider implements FoodProviderAdapter {
+  name: string = '美团';
+
+  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, _locationSource: string): Promise<FoodProviderResult> {
+    const appKey = localProviderConfig.meituanUnionAppKey;
+    const appSecret = localProviderConfig.meituanUnionAppSecret;
+    if (appKey.length === 0 || appSecret.length === 0) {
+      return emptyProviderResult(this.name, '未配置 MEITUAN_UNION_APP_KEY 或 MEITUAN_UNION_APP_SECRET');
+    }
+    if (location.length === 0) {
+      return emptyProviderResult(this.name, '缺少经纬度，无法按附近外卖商品查询。');
+    }
+    const longitude = coordinateToMicros(locationLongitude(location));
+    const latitude = coordinateToMicros(locationLatitude(location));
+    if (longitude.length === 0 || latitude.length === 0) {
+      return emptyProviderResult(this.name, '经纬度格式无效：' + location);
+    }
+    const body = '{"platform":1,"bizLine":1,"searchText":' + JSON.stringify(keyword) +
+      ',"longitude":' + longitude +
+      ',"latitude":' + latitude +
+      ',"pageSize":10,"pageNo":1}';
+    const timestamp = new Date().getTime().toString();
+    const contentMd5 = md5Base64(body);
+    const signature = meituanUnionSignature(appSecret, appKey, timestamp, contentMd5, body);
+    aiLogInfo('[AIPhone][LocalToolMeituanRequest] endpoint=' + localProviderConfig.meituanUnionApiUrl +
+      ' keyChars=' + appKey.length.toString() + ' keyword=' + keyword + ' bodyChars=' + body.length.toString());
+    const response = await postJsonText(localProviderConfig.meituanUnionApiUrl, {
+      'User-Agent': 'Mozilla/5.0 AIPhoneDemo/0.1',
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Content-MD5': contentMd5,
+      'S-Ca-App': appKey,
+      'S-Ca-Timestamp': timestamp,
+      'S-Ca-Signature-Headers': 'S-Ca-Timestamp,S-Ca-App',
+      'S-Ca-Signature': signature
+    }, body);
+    if (response.code < 200 || response.code >= 300) {
+      return emptyProviderResult(this.name, 'HTTP ' + response.code.toString() + '：' + response.text.substring(0, 300));
+    }
+    const payload = JSON.parse(response.text) as MeituanUnionPayload;
+    const providerError = meituanProviderError(payload);
+    if (providerError.length > 0) {
+      return emptyProviderResult(this.name, providerError);
+    }
+    const records = meituanRecordsFromContainer(payload.data).length > 0 ?
+      meituanRecordsFromContainer(payload.data) :
+      meituanRecordsFromContainer(payload.result);
+    const foods: A2uiFoodData[] = [];
+    for (let index = 0; index < records.length && foods.length < FOOD_RESULT_LIMIT; index++) {
+      const food = foodRecordFromMeituanUnion(records[index]);
+      if (food.name.length > 0) {
+        foods.push(food);
+      }
+    }
+    aiLogInfo('[AIPhone][LocalToolMeituanResult] rows=' + records.length.toString() + ' returned=' + foods.length.toString());
+    return {
+      provider: this.name,
+      foods: foods,
+      error: foods.length > 0 ? '' : '美团联盟没有返回可展示外卖商品券。'
+    };
+  }
+}
+
+class TaobaoFlashFoodProvider implements FoodProviderAdapter {
+  name: string = '淘宝闪购';
+
+  async search(_prompt: string, _query: FoodQuery, keyword: string, location: string, _locationSource: string): Promise<FoodProviderResult> {
+    const appKey = localProviderConfig.taobaoAppKey;
+    const appSecret = localProviderConfig.taobaoAppSecret;
+    const pid = localProviderConfig.taobaoFlashPid;
+    if (appKey.length === 0 || appSecret.length === 0 || pid.length === 0) {
+      return emptyProviderResult(this.name, '未配置 TAOBAO_APP_KEY、TAOBAO_APP_SECRET 或 TAOBAO_FLASH_PID');
+    }
+    if (location.length === 0) {
+      return emptyProviderResult(this.name, '缺少经纬度，无法调用淘宝闪购店铺推广查询。');
+    }
+    const longitude = locationLongitude(location);
+    const latitude = locationLatitude(location);
+    if (longitude.length === 0 || latitude.length === 0) {
+      return emptyProviderResult(this.name, '经纬度格式无效：' + location);
+    }
+    const queryRequest = '{"pid":' + JSON.stringify(pid) +
+      ',"longitude":' + JSON.stringify(longitude) +
+      ',"latitude":' + JSON.stringify(latitude) +
+      ',"search_content":' + JSON.stringify(keyword) +
+      ',"page_size":10,"include_dynamic":true}';
+    const params: FoodParamPair[] = [
+      { key: 'method', value: 'alibaba.alsc.union.eleme.promotion.storepromotion.query' },
+      { key: 'app_key', value: appKey },
+      { key: 'timestamp', value: formatTopTimestamp(new Date()) },
+      { key: 'format', value: 'json' },
+      { key: 'v', value: '2.0' },
+      { key: 'sign_method', value: 'md5' },
+      { key: 'simplify', value: 'true' },
+      { key: 'query_request', value: queryRequest }
+    ];
+    params.push({ key: 'sign', value: topMd5Sign(params, appSecret) });
+    const body = encodeForm(params);
+    aiLogInfo('[AIPhone][LocalToolTaobaoFlashRequest] endpoint=' + localProviderConfig.taobaoApiUrl +
+      ' keyChars=' + appKey.length.toString() + ' pidChars=' + pid.length.toString() +
+      ' keyword=' + keyword + ' bodyChars=' + body.length.toString());
+    const response = await postFormText(localProviderConfig.taobaoApiUrl, {
+      'User-Agent': 'Mozilla/5.0 AIPhoneDemo/0.1',
+      'Accept': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8'
+    }, body);
+    if (response.code < 200 || response.code >= 300) {
+      return emptyProviderResult(this.name, 'HTTP ' + response.code.toString() + '：' + response.text.substring(0, 300));
+    }
+    const payload = JSON.parse(response.text) as TaobaoFlashPayload;
+    const providerError = taobaoProviderError(payload);
+    if (providerError.length > 0) {
+      return emptyProviderResult(this.name, providerError);
+    }
+    const result = taobaoResponseResult(payload);
+    const records = taobaoRecordsFromResult(result);
+    const foods: A2uiFoodData[] = [];
+    for (let index = 0; index < records.length && foods.length < FOOD_RESULT_LIMIT; index++) {
+      const food = foodRecordFromTaobaoFlashStore(records[index]);
+      if (food.name.length > 0) {
+        foods.push(food);
+      }
+    }
+    aiLogInfo('[AIPhone][LocalToolTaobaoFlashResult] rows=' + records.length.toString() + ' returned=' + foods.length.toString());
+    return {
+      provider: this.name,
+      foods: foods,
+      error: foods.length > 0 ? '' : '淘宝闪购没有返回可展示店铺推广结果。'
+    };
+  }
 }
 
 async function callLocalFoodSearch(prompt: string, surfaceId: string): Promise<string> {
   const key = localProviderConfig.amapKey;
-  if (key.length === 0) {
-    return missingConfigA2ui(surfaceId, 'food.search');
-  }
 
   const query = extractFoodQuery(prompt);
+  const preflightResults: FoodProviderResult[] = [];
   let locationSource = 'none';
   let location = parseCoordinatePair(prompt);
   if (location.length > 0) {
     locationSource = 'prompt_coords';
-  } else if (query.place.length > 0) {
-    const resolved = await resolveFoodSearchLocation(query.place, key);
-    location = resolved.location;
-    locationSource = resolved.locationSource;
+  } else if (query.place.length > 0 && key.length > 0) {
+    try {
+      const resolved = await resolveFoodSearchLocation(query.place, key);
+      location = resolved.location;
+      locationSource = resolved.locationSource;
+    } catch (error) {
+      preflightResults.push(emptyProviderResult('高德', '地点解析失败：' + describeThrown(error)));
+      locationSource = 'geocode_error';
+    }
   }
   if (location.length === 0) {
     location = defaultConfiguredLocation();
@@ -1791,67 +3494,38 @@ async function callLocalFoodSearch(prompt: string, surfaceId: string): Promise<s
     }
   }
   const keyword = extractFoodKeyword(prompt);
-  aiLogInfo('[AIPhone][LocalToolAmapRequest] keyChars=' + key.length.toString() +
-    ' locationSource=' + locationSource + ' locationPresent=' + (location.length > 0 ? 'true' : 'false') +
-    ' keyword=' + keyword);
 
+  const adapters: FoodProviderAdapter[] = [
+    new AmapFoodProvider(),
+    new TencentMapFoodProvider(),
+    new BaiduMapFoodProvider(),
+    new MeituanUnionFoodProvider(),
+    new TaobaoFlashFoodProvider()
+  ];
+  const providerResults: FoodProviderResult[] = preflightResults.slice();
+  for (let index = 0; index < adapters.length; index++) {
+    providerResults.push(await safeFoodProviderSearch(adapters[index], prompt, query, keyword, location, locationSource));
+  }
   if (location.length === 0) {
-    return errorA2ui(
-      surfaceId,
-      'food.search',
-      '需要位置或默认坐标',
-      '高德周边搜索需要经纬度。请在 prompt 中写明「地点附近的餐饮」，或把 AMAP_DEFAULT_LOCATION=经度,纬度 同步到 HAP 本地 rawfile 配置。',
-      ['需要 AMAP_KEY', '需要地点文本或 AMAP_DEFAULT_LOCATION'],
-      ['配置默认坐标', '换查询位置']
-    );
+    providerResults.push(emptyProviderResult('位置', '缺少经纬度。请在 prompt 写明地点，或把 AMAP_DEFAULT_LOCATION/FOOD_DEFAULT_LOCATION=经度,纬度 同步到 HAP rawfile。'));
   }
-
-  const payload = await amapJsonGet(buildQueryUrl(
-    'https://restapi.amap.com/v3/place/around',
-    ['key', 'location', 'types', 'keywords', 'radius', 'offset', 'page', 'extensions'],
-    [key, location, '050000', keyword, localProviderConfig.amapRadius, '10', '1', 'all']
-  ));
-  if (textOf(payload.status) !== '1') {
-    const providerMessage = firstText([payload.info, payload.infocode, payload.message]);
-    return errorA2ui(
-      surfaceId,
-      'food.search',
-      '高德餐饮查询失败',
-      providerMessage.length > 0 ? providerMessage : JSON.stringify(payload).substring(0, 500),
-      ['检查 AMAP_KEY', '检查坐标和配额'],
-      ['重新配置 Key']
-    );
-  }
-
-  const pois = payload.pois === undefined ? [] : payload.pois;
-  const foods: A2uiFoodData[] = [];
-  const names: string[] = [];
-  for (let index = 0; index < pois.length && foods.length < 8; index++) {
-    const food = foodRecordForA2ui(pois[index]);
-    if (food.name.length === 0 || names.indexOf(food.name) >= 0) {
-      continue;
-    }
-    names.push(food.name);
-    foods.push(food);
-  }
-
-  aiLogInfo('[AIPhone][LocalToolAmapResult] pois=' + pois.length.toString() + ' returned=' + foods.length.toString());
-  if (foods.length === 0) {
-    return foodResultA2ui(
-      surfaceId,
-      '附近餐饮选择',
-      '高德返回成功，但没有可展示的餐饮 POI。',
-      '已通过高德查询附近餐饮，暂无可展示结果。',
-      []
-    );
-  }
+  const aggregated = aggregateFoodProviderResults(providerResults);
+  const rows = providerIssueRows(aggregated.issues);
+  aiLogInfo('[AIPhone][LocalToolFoodAggregate] keyword=' + keyword +
+    ' locationSource=' + locationSource +
+    ' locationPresent=' + (location.length > 0 ? 'true' : 'false') +
+    ' foods=' + aggregated.foods.length.toString() +
+    ' issues=' + rows.length.toString());
 
   return foodResultA2ui(
     surfaceId,
-    '附近餐饮选择',
-    '以下为设备本机直连高德返回的周边餐饮结果。',
-    '已通过高德查询到附近餐饮 POI。',
-    foods
+    '外卖聚合搜索',
+    '以下结果来自高德、腾讯地图、百度地图、美团联盟和淘宝闪购联盟；仅展示真实返回字段，不下单、不支付、不创建购物车。',
+    aggregated.foods.length > 0 ?
+      '已聚合 ' + aggregated.foods.length.toString() + ' 个可展示结果；' + rows.length.toString() + ' 个来源需要处理。' :
+      '所有来源都没有可展示外卖结果；下面只列出真实 provider 状态。',
+    aggregated.foods,
+    rows
   );
 }
 
@@ -1866,7 +3540,7 @@ async function callLocalTrainSearch(prompt: string, surfaceId: string): Promise<
       surfaceId,
       'train.search',
       '12306 查询参数不足',
-      '我可以在设备本机直接查 12306 余票，但需要明确的出发地、目的地和日期。',
+      '查询 12306 余票需要明确的出发地、目的地和日期。',
       ['示例：明天北京到上海高铁票', '示例：2026-06-10 北京南到上海虹桥'],
       ['补充日期', '补充城市']
     );
@@ -1937,6 +3611,19 @@ async function callLocalTrainSearch(prompt: string, surfaceId: string): Promise<
 }
 
 async function buildLocalToolJsonl(toolId: string, prompt: string, surfaceId: string): Promise<string> {
+  if (toolId === 'social.reply.send') {
+    return errorA2ui(
+      surfaceId,
+      toolId,
+      '微信回复未发送',
+      'social.reply.send 已注册为真实本地动作，但当前 HAP 未接入可执行的微信辅助发送器；不会假装发送成功。',
+      ['缺少真实微信辅助发送执行器', '请先授权并接入通知/辅助桥接后重试'],
+      ['打开社交权限诊断']
+    );
+  }
+  if (toolId === 'travel.search') {
+    return callLocalTravelSearch(prompt, surfaceId);
+  }
   if (toolId === 'flight.search') {
     return callLocalFlightSearch(prompt, surfaceId);
   }

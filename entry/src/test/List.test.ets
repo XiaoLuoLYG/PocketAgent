@@ -1,6 +1,7 @@
 import localUnitTest from './LocalUnit.test';
 import a2uiParserTest from './A2uiParser.test';
 import localModelClientTest from './LocalModelClient.test';
+import socialBridgeTest from './SocialBridge.test';
 import toolGatewayClientTest from './ToolGatewayClient.test';
 import a2uiHomeStateTest from './A2uiHomeState.test';
 import a2uiRenderDataTest from './A2uiRenderData.test';
@@ -16,6 +17,7 @@ export default function testsuite() {
   localUnitTest();
   a2uiParserTest();
   localModelClientTest();
+  socialBridgeTest();
   toolGatewayClientTest();
   a2uiHomeStateTest();
   a2uiRenderDataTest();

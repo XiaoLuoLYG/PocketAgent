@@ -1,10 +1,33 @@
 import { LocalModelSettings, defaultLocalModelSettings } from '../../model/LocalModelSettings';
 import router from '@ohos.router';
-import { A2uiAction, A2uiCallResult, A2uiComponent, A2uiMessage, A2uiSurfaceState } from '../../model/A2uiTypes';
+import { common } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { notificationExtensionSubscription } from '@kit.NotificationKit';
+import {
+  A2UI_COMPONENT_SOCIAL_INBOX,
+  A2UI_COMPONENT_SURFACE_ROOT,
+  A2uiAction,
+  A2uiCallResult,
+  A2uiComponent,
+  A2uiMessage,
+  A2uiRuntimeDataModel,
+  A2uiSocialMessageData,
+  A2uiSocialReplyData,
+  A2uiSurfaceState
+} from '../../model/A2uiTypes';
 import { A2uiStreamMeta, callLocalModel, modelThinkCloseSeen } from '../../model/LocalModelClient';
-import { createSeedA2uiSurface } from '../../model/A2uiSurfaceStore';
+import { A2uiSurfaceStore, createSeedA2uiSurface } from '../../model/A2uiSurfaceStore';
 import { aiLogError, aiLogInfo } from '../../model/AiphoneLogger';
 import { callToolGateway, defaultToolGatewayUrl, isRegisteredToolId } from '../../model/ToolGatewayClient';
+import {
+  AccessibilityIngestProvider,
+  NotificationIngestProvider,
+  SocialMessageStore,
+  WechatReplyAutomation,
+  buildSocialDiagnosticsRows,
+  probeSocialCapabilities
+} from '../../model/SocialBridge';
+import { readNotificationCaptureArchive, SocialNotificationArchiveRead } from '../../model/SocialNotificationArchive';
 import { HomePage } from './components/HomePage';
 import { ConfigPage } from './components/ConfigPage';
 import {
@@ -19,6 +42,10 @@ const TOOL_GATEWAY_URL: string = defaultToolGatewayUrl();
 const initialConnectionState: ConnectionPanelState = createInitialConnectionPanelState();
 const initialSurface: A2uiSurfaceState = createSeedA2uiSurface();
 const LOG_SNIPPET_LIMIT: number = 1200;
+const DEFAULT_INPUT_PLACEHOLDER: string = '告诉 PocketAgent 你想完成什么';
+const TRAIN_EDIT_QUERY_PLACEHOLDER: string = '请输入具体车站和时间，如：深圳北 18:00 后 到香港西九龙';
+const SOCIAL_REPLY_UNAVAILABLE: string = '辅助自动化未授权或未接入真实微信发送器';
+const SOCIAL_MESSAGE_STORE: SocialMessageStore = new SocialMessageStore();
 
 function logSnippet(text: string): string {
   if (text.length <= LOG_SNIPPET_LIMIT) {
@@ -47,7 +74,12 @@ struct Index {
   @State currentSurface: A2uiSurfaceState = initialSurface;
   @State surfaceRenderTick: number = 0;
   @State inputText: string = '帮我查询6月16日北京到上海的高铁票';
+  @State inputPlaceholder: string = DEFAULT_INPUT_PLACEHOLDER;
   @State messages: A2uiMessage[] = [];
+  @State selectedSocialMessageId: string = '';
+  @State selectedSocialConversationTitle: string = '';
+  @State socialLastCapture: string = '无真实消息';
+  @State socialLastSend: string = '未发送';
 
   private getSettings(): LocalModelSettings {
     return {
@@ -115,6 +147,49 @@ struct Index {
     };
   }
 
+  private parsedDataModel(): A2uiRuntimeDataModel | null {
+    try {
+      return JSON.parse(this.currentSurface.dataModelJson) as A2uiRuntimeDataModel;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  private emptySocialModel(): A2uiRuntimeDataModel {
+    return {
+      rows: [],
+      trains: [],
+      flights: [],
+      travelOptions: [],
+      foods: [],
+      social: {
+        messages: [],
+        replies: [],
+        diagnostics: []
+      },
+      thoughts: [],
+      summary: {
+        text: '',
+        toolName: '',
+        dataLabel: '',
+        count: 0
+      },
+      trip: {
+        rows: []
+      },
+      rowGroups: {
+        train: [],
+        flight: [],
+        food: []
+      },
+      toolRequest: {
+        toolId: '',
+        prompt: '',
+        actionId: ''
+      }
+    };
+  }
+
   private applySurface(surface: A2uiSurfaceState): void {
     this.currentSurface = this.surfaceSnapshot(surface);
     this.surfaceRenderTick = this.surfaceRenderTick + 1;
@@ -154,6 +229,318 @@ struct Index {
     this.messages = next;
   }
 
+  private shouldOpenSocialPrompt(prompt: string): boolean {
+    return prompt.indexOf('社交') >= 0 ||
+      prompt.indexOf('微信消息') >= 0 ||
+      prompt.indexOf('微信收件箱') >= 0 ||
+      prompt.indexOf('打开微信') >= 0;
+  }
+
+  private currentSocialMessages(): A2uiSocialMessageData[] {
+    const model = this.parsedDataModel();
+    if (model === null || model.social === undefined || model.social === null || !Array.isArray(model.social.messages)) {
+      return [];
+    }
+    return model.social.messages;
+  }
+
+  private currentSocialReplies(): A2uiSocialReplyData[] {
+    const model = this.parsedDataModel();
+    if (model === null || model.social === undefined || model.social === null || !Array.isArray(model.social.replies)) {
+      return [];
+    }
+    return model.social.replies;
+  }
+
+  private selectedSocialMessage(): A2uiSocialMessageData | null {
+    const messages = this.currentSocialMessages();
+    for (let index = 0; index < messages.length; index++) {
+      if (messages[index].id === this.selectedSocialMessageId) {
+        return messages[index];
+      }
+    }
+    return null;
+  }
+
+  private isSocialReplyMode(): boolean {
+    return this.selectedSocialMessageId.length > 0 && this.currentSurface.intent === 'social';
+  }
+
+  private replaceCurrentSocialData(messages: A2uiSocialMessageData[], replies: A2uiSocialReplyData[]): void {
+    let model = this.parsedDataModel();
+    if (model === null) {
+      model = this.emptySocialModel();
+    }
+    if (model.social === undefined || model.social === null) {
+      model.social = {
+        messages: [],
+        replies: [],
+        diagnostics: []
+      };
+    }
+    model.social.messages = messages;
+    model.social.replies = replies;
+    const nextSurface = this.surfaceSnapshot(this.currentSurface);
+    nextSurface.dataModelJson = JSON.stringify(model);
+    nextSurface.sequence = nextSurface.sequence + 1;
+    this.applySurface(nextSurface);
+  }
+
+  private markSocialMessageStatus(messageId: string, status: string): A2uiSocialMessageData[] {
+    const messages = this.currentSocialMessages();
+    const next: A2uiSocialMessageData[] = [];
+    for (let index = 0; index < messages.length; index++) {
+      const item = messages[index];
+      next.push({
+        id: item.id,
+        platform: item.platform,
+        conversationId: item.conversationId,
+        conversationTitle: item.conversationTitle,
+        senderName: item.senderName,
+        preview: item.preview,
+        receivedAt: item.receivedAt,
+        source: item.source,
+        status: item.id === messageId ? status : item.status
+      });
+    }
+    return next;
+  }
+
+  private selectSocialMessageById(messageId: string): void {
+    const messages = this.currentSocialMessages();
+    for (let index = 0; index < messages.length; index++) {
+      if (messages[index].id === messageId) {
+        const message = messages[index];
+        this.selectedSocialMessageId = message.id;
+        this.selectedSocialConversationTitle = message.conversationTitle;
+        this.inputText = '';
+        this.inputPlaceholder = '回复 微信 · ' + message.conversationTitle;
+        this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+          ok: true,
+          status: 'ready',
+          message: '正在回复 ' + message.conversationTitle,
+          requestDebug: this.lastModelRequest,
+          assistantDebug: this.lastModelOutput,
+          error: ''
+        }));
+        this.replaceCurrentSocialData(this.markSocialMessageStatus(message.id, 'selected'), this.currentSocialReplies());
+        return;
+      }
+    }
+    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+      ok: false,
+      status: 'error',
+      message: '没有找到可回复的微信消息。',
+      requestDebug: this.lastModelRequest,
+      assistantDebug: this.lastModelOutput,
+      error: 'social message not found: ' + messageId
+    }));
+  }
+
+  private readSocialNotificationArchive(): SocialNotificationArchiveRead {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    return readNotificationCaptureArchive(context);
+  }
+
+  private async openSocialNotificationSubscriptionSettings(): Promise<void> {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      await notificationExtensionSubscription.openSubscriptionSettings(context);
+      this.socialLastCapture = '已请求系统通知订阅授权';
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: true,
+        status: 'ready',
+        message: '已打开通知订阅授权。',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: ''
+      }));
+      aiLogInfo('[AIPhone][SocialNotificationSettings] opened');
+    } catch (error) {
+      const businessError = error as BusinessError;
+      const message = '通知订阅授权页打开失败：' + businessError.message;
+      this.socialLastCapture = message;
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: false,
+        status: 'error',
+        message: '通知授权不可用。',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: message
+      }));
+      const code = businessError.code === undefined || businessError.code === null ? 'unknown' : businessError.code.toString();
+      aiLogError('[AIPhone][SocialNotificationSettingsError] code=' + code +
+        ' message=' + businessError.message);
+    }
+  }
+
+  private openSocialInbox(): void {
+    const archive = this.readSocialNotificationArchive();
+    const notificationCandidates = archive.ok ? archive.candidates : [];
+    const notificationUnavailable = archive.ok ?
+      '未捕获到真实微信通知：请确认 ACL/Profile、系统通知订阅授权和微信通知预览' :
+      ('通知中心缓存读取失败：' + archive.error);
+    const notification = new NotificationIngestProvider(notificationCandidates.length > 0, notificationUnavailable, notificationCandidates).capture();
+    const accessibility = new AccessibilityIngestProvider(false, '辅助捕获未授权或未接入').capture();
+    this.socialLastCapture = notification.ok ? '通知中心返回 ' + notification.messages.length.toString() + ' 条' :
+      (accessibility.ok ? '辅助捕获返回 ' + accessibility.messages.length.toString() + ' 条' : '无真实消息：' + notification.error + '；' + accessibility.error);
+    notification.messages.forEach(candidate => {
+      SOCIAL_MESSAGE_STORE.ingest(candidate);
+    });
+    accessibility.messages.forEach(candidate => {
+      SOCIAL_MESSAGE_STORE.ingest(candidate);
+    });
+    const capabilities = probeSocialCapabilities({
+      notificationBridgeAvailable: notification.ok,
+      accessibilityAvailable: accessibility.ok,
+      wechatInstalled: notification.messages.length > 0,
+      lastCapture: this.socialLastCapture,
+      lastSend: this.socialLastSend
+    });
+    const store = new A2uiSurfaceStore();
+    store.apply({
+      version: 'v0.9.1',
+      createSurface: {
+        surfaceId: 'surface_social',
+        root: 'root',
+        title: '社交收件箱',
+        intent: 'social',
+        status: 'ready',
+        sendDataModel: true
+      }
+    });
+    store.apply({
+      version: 'v0.9.1',
+      updateComponents: {
+        surfaceId: 'surface_social',
+        components: [
+          {
+            id: 'root',
+            component: A2UI_COMPONENT_SURFACE_ROOT,
+            child: 'social_inbox',
+            title: '社交收件箱',
+            status: 'ready'
+          },
+          {
+            id: 'social_inbox',
+            component: A2UI_COMPONENT_SOCIAL_INBOX,
+            title: '微信消息',
+            body: '只展示真实捕获的新消息；当前不会生成测试消息。',
+            status: 'ready',
+            dataPath: '/social/messages',
+            actions: []
+          }
+        ]
+      }
+    });
+    store.apply({
+      version: 'v0.9.1',
+      updateDataModel: {
+        surfaceId: 'surface_social',
+        path: '/social/messages',
+        value: SOCIAL_MESSAGE_STORE.messages()
+      }
+    });
+    store.apply({
+      version: 'v0.9.1',
+      updateDataModel: {
+        surfaceId: 'surface_social',
+        path: '/social/replies',
+        value: this.currentSocialReplies()
+      }
+    });
+    store.apply({
+      version: 'v0.9.1',
+      updateDataModel: {
+        surfaceId: 'surface_social',
+        path: '/social/diagnostics',
+        value: buildSocialDiagnosticsRows(capabilities)
+      }
+    });
+    this.selectedSocialMessageId = '';
+    this.selectedSocialConversationTitle = '';
+    this.inputPlaceholder = '选择微信消息后在这里回复';
+    this.inputText = '';
+    this.applySurface(store.getSurface());
+    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+      ok: true,
+      status: 'ready',
+      message: '社交收件箱已打开：当前只显示真实捕获的新消息。',
+      requestDebug: this.lastModelRequest,
+      assistantDebug: this.lastModelOutput,
+      error: ''
+    }));
+    this.appendMessage('assistant', '社交收件箱已打开：当前只显示真实捕获的新消息。');
+  }
+
+  private async sendSelectedSocialReply(): Promise<void> {
+    const text = this.inputText.trim();
+    if (text.length === 0 || this.isBusy) {
+      return;
+    }
+    const message = this.selectedSocialMessage();
+    if (message === null) {
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: false,
+        status: 'error',
+        message: '请先选择一条微信消息。',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: '缺少社交会话'
+      }));
+      return;
+    }
+    this.isBusy = true;
+    this.inputText = '';
+    this.replaceCurrentSocialData(this.markSocialMessageStatus(message.id, 'sending'), this.currentSocialReplies());
+    aiLogInfo('[AIPhone][SocialReplyRequest] messageId=' + message.id +
+      ' platform=' + message.platform +
+      ' target=' + message.conversationTitle +
+      ' textChars=' + text.length.toString());
+    try {
+      const automation = new WechatReplyAutomation(false, SOCIAL_REPLY_UNAVAILABLE);
+      const reply = automation.send({
+        targetMessageId: message.id,
+        platform: message.platform,
+        conversationId: message.conversationId,
+        text
+      });
+      const replies = this.currentSocialReplies();
+      const nextReplies = replies.slice();
+      nextReplies.push(reply);
+      const nextStatus = reply.status === 'sent' ? 'replied' : 'failed';
+      this.replaceCurrentSocialData(this.markSocialMessageStatus(message.id, nextStatus), nextReplies);
+      this.socialLastSend = reply.status === 'sent' ? '已发送 ' + text.length.toString() + ' 字' : '失败：' + reply.error;
+      aiLogInfo('[AIPhone][SocialReplyResult] messageId=' + message.id +
+        ' platform=' + message.platform +
+        ' status=' + reply.status +
+        ' failureStep=' + reply.error);
+      if (reply.status === 'sent') {
+        this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+          ok: true,
+          status: 'ready',
+          message: '微信回复已发送。',
+          requestDebug: this.lastModelRequest,
+          assistantDebug: this.lastModelOutput,
+          error: ''
+        }));
+        this.appendMessage('assistant', '微信回复已发送。');
+      } else {
+        this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+          ok: false,
+          status: 'error',
+          message: '微信回复失败。',
+          requestDebug: this.lastModelRequest,
+          assistantDebug: this.lastModelOutput,
+          error: reply.error
+        }));
+        this.appendMessage('assistant', '微信回复失败：' + reply.error);
+      }
+    } finally {
+      this.isBusy = false;
+    }
+  }
+
   private async submitPrompt(prompt: string, visibleText: string, actionId: string = ''): Promise<void> {
     const trimmed = prompt.trim();
     if (trimmed.length === 0 || this.isBusy) {
@@ -172,6 +559,9 @@ struct Index {
       return;
     }
 
+    this.selectedSocialMessageId = '';
+    this.selectedSocialConversationTitle = '';
+    this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
     this.appendMessage('user', visibleText);
     aiLogInfo('[AIPhone][A2uiHomeSubmitPrompt] chars=' + trimmed.length.toString() +
       ' model=' + this.selectedModel +
@@ -233,10 +623,66 @@ struct Index {
   }
 
   private async sendPrompt(): Promise<void> {
+    if (this.isSocialReplyMode()) {
+      await this.sendSelectedSocialReply();
+      return;
+    }
+    if (this.shouldOpenSocialPrompt(this.inputText)) {
+      this.appendMessage('user', this.inputText);
+      this.openSocialInbox();
+      return;
+    }
     await this.submitPrompt(this.inputText, this.inputText);
   }
 
+  private handleClientAction(action: A2uiAction): void {
+    aiLogInfo('[AIPhone][A2uiHomeClientAction] id=' + action.id);
+    if (action.id === 'social_select_message') {
+      this.selectSocialMessageById(action.prompt);
+      return;
+    }
+    if (action.id === 'social_open_notification_settings') {
+      this.openSocialNotificationSubscriptionSettings();
+      return;
+    }
+  }
+
+  private focusEditQuery(actionId: string = ''): void {
+    if (actionId === 'travel_change_date') {
+      this.inputPlaceholder = '请输入新的日期或路线，如：后天北京到上海出行方案';
+      this.inputText = '';
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: true,
+        status: 'ready',
+        message: '请在输入框补充新的日期或路线。',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: ''
+      }));
+      return;
+    }
+    this.inputPlaceholder = TRAIN_EDIT_QUERY_PLACEHOLDER;
+    this.inputText = '';
+    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+      ok: true,
+      status: 'ready',
+      message: '请在输入框补充具体查询条件。',
+      requestDebug: this.lastModelRequest,
+      assistantDebug: this.lastModelOutput,
+      error: ''
+    }));
+  }
+
   private async sendAction(action: A2uiAction): Promise<void> {
+    const kind = action.kind.length > 0 ? action.kind : 'prompt';
+    if (kind === 'client') {
+      this.handleClientAction(action);
+      return;
+    }
+    if (kind === 'input') {
+      this.focusEditQuery(action.id);
+      return;
+    }
     await this.submitPrompt(action.prompt, action.label, action.id);
   }
 
@@ -418,8 +864,12 @@ struct Index {
         messages: this.messages,
         currentSurface: this.currentSurface,
         surfaceRenderTick: this.surfaceRenderTick,
+        inputPlaceholder: this.inputPlaceholder,
         onToggleHistory: () => {
           this.showHistory = !this.showHistory;
+        },
+        onOpenSocial: () => {
+          this.openSocialInbox();
         },
         onOpenConfig: () => {
           this.showConfigPage = true;

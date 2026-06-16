@@ -9,13 +9,29 @@ const TOOL_GATEWAY_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_QUERIES = [
   {
+    name: 'travel',
+    toolId: 'travel.search',
+    prompt: '我明天要从北京去上海，帮我搜索出行方案',
+    expect: {
+      status: 'ready',
+      components: ['TravelOptions'],
+      dataPath: '/travelOptions',
+      contains: ['高铁 · 12306', '飞机 · 飞常准']
+    }
+  },
+  {
     name: 'flight',
     toolId: 'flight.search',
     prompt: '帮我查明天北京到上海航班',
     expect: {
       status: 'ready',
       components: ['FlightBoard'],
-      dataPath: '/flights'
+      dataPath: '/flights',
+      allowProviderError: {
+        status: 'needs_input',
+        components: ['ErrorNotice'],
+        anyText: ['飞常准返回 HTTP', '飞常准 Key 或参数需要检查', '飞常准查询参数不足']
+      }
     }
   },
   {
@@ -226,7 +242,35 @@ function checkExpectation(testCase, result) {
   if (/failed to connect|Cannot write headers after they are sent|ERR_HTTP_HEADERS_SENT/i.test(result.raw)) {
     failures.push('raw response contains connection/header failure text');
   }
+  if (matchesAllowedProviderError(testCase, result)) {
+    const hardFailures = failures.filter(failure =>
+      failure.startsWith('HTTP ') ||
+      failure.startsWith('JSONL parse errors:') ||
+      failure.startsWith('forbidden synthetic marker ') ||
+      failure === 'raw response contains connection/header failure text'
+    );
+    return hardFailures;
+  }
   return failures;
+}
+
+function matchesAllowedProviderError(testCase, result) {
+  const allowed = testCase.expect.allowProviderError;
+  if (!allowed) {
+    return false;
+  }
+  if (allowed.status && result.summary.status !== allowed.status) {
+    return false;
+  }
+  const requiredComponents = allowed.components || [];
+  if (!requiredComponents.every(component => result.summary.componentTypes.includes(component))) {
+    return false;
+  }
+  const anyText = allowed.anyText || [];
+  if (anyText.length > 0 && !anyText.some(token => result.summary.allText.includes(token) || result.raw.includes(token))) {
+    return false;
+  }
+  return result.httpStatus >= 200 && result.httpStatus < 300 && result.parseErrors.length === 0;
 }
 
 function fileSizeIfExists(filePath) {

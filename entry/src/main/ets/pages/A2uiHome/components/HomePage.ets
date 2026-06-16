@@ -28,9 +28,11 @@ export struct HomePage {
   @Prop messages: A2uiMessage[] = [];
   @Prop currentSurface: A2uiSurfaceState = emptyA2uiSurface();
   @Prop surfaceRenderTick: number = 0;
+  @Prop inputPlaceholder: string = '告诉 PocketAgent 你想完成什么';
   @State sendSpinnerRotation: number = 0;
   private sendSpinnerTimerId: number = -1;
   onToggleHistory: () => void = () => {};
+  onOpenSocial: () => void = () => {};
   onOpenConfig: () => void = () => {};
   onOpenStyleLab: () => void = () => {};
   onSendPrompt: () => void = () => {};
@@ -99,7 +101,7 @@ export struct HomePage {
         }
         .alignItems(VerticalAlign.Center)
         .layoutWeight(1)
-        .constraintSize({ maxWidth: 220 })
+        .constraintSize({ maxWidth: 150 })
 
         A2uiButtonView({
           icon: $r('app.media.icon_history'),
@@ -112,6 +114,17 @@ export struct HomePage {
             this.onToggleHistory();
           })
           .margin({ left: 10 })
+
+        A2uiButtonView({
+          label: '社',
+          shape: 'circle',
+          tone: 'secondary',
+          active: this.currentSurface.intent === 'social'
+        })
+          .onClick(() => {
+            this.onOpenSocial();
+          })
+          .margin({ left: 8 })
 
         A2uiButtonView({
           icon: $r('app.media.icon_settings'),
@@ -166,7 +179,7 @@ export struct HomePage {
       Column() {
         Row() {
           TextArea({
-            placeholder: '告诉 PocketAgent 你想完成什么',
+            placeholder: this.inputPlaceholder,
             text: this.inputText
           })
             .constraintSize({ minHeight: 52 })
