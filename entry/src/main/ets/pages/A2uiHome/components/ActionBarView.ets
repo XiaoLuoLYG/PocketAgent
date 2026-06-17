@@ -5,7 +5,6 @@ import {
   actionRenderKey,
   usesDialogActionLayout
 } from '../style/A2uiActionBarLayout';
-import { a2uiEnterTransition } from '../style/A2uiHomeMotion';
 import { A2uiButtonView } from './common/A2uiButtonView';
 
 @Component
@@ -55,7 +54,6 @@ export struct ActionBarView {
         .width('100%')
         .padding({ left: A2UI_DIALOG_ACTION_SIDE_PADDING, right: A2UI_DIALOG_ACTION_SIDE_PADDING })
         .margin({ top: 12 })
-        .transition(a2uiEnterTransition())
       } else {
         Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap }) {
           ForEach(this.actions, (action: A2uiAction) => {
@@ -77,7 +75,6 @@ export struct ActionBarView {
         }
         .width('100%')
         .margin({ top: 4 })
-        .transition(a2uiEnterTransition())
       }
     }
   }

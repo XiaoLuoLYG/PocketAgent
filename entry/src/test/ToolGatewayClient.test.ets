@@ -1,10 +1,13 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { A2uiFoodData, A2uiTravelOptionData } from '../main/ets/model/A2uiTypes';
+import { A2uiFoodData, A2uiLabelValueData, A2uiTravelOptionData } from '../main/ets/model/A2uiTypes';
+import { planA2uiPartialUpdate, A2uiPartialUpdateResult } from '../main/ets/model/A2uiPartialUpdatePlanner';
 import {
   aggregateFoodProviderResults,
   buildToolGatewayUrl,
   defaultToolGatewayUrl,
+  foodA2uiRenderState,
   foodDistanceMeters,
+  foodProviderProgressRows,
   foodRecordFromBaiduPlace,
   foodRecordFromMeituanUnion,
   foodRecordFromTencentMapPlace,
@@ -12,7 +15,10 @@ import {
   isLocalToolGatewayUrl,
   isRegisteredToolId,
   providerIssueRows,
-  sortTravelOptionsByDeparture
+  sortTravelOptionsByDeparture,
+  streamFoodProviderResultsWithPartials,
+  FoodProviderPartialSnapshot,
+  FoodProviderResult
 } from '../main/ets/model/ToolGatewayClient';
 
 export default function toolGatewayClientTest() {
@@ -247,6 +253,69 @@ export default function toolGatewayClientTest() {
       expect(providerIssueRows(merged.issues)[0].label).assertEqual('淘宝闪购');
     });
 
+    it('builds food provider progress rows for waiting, completed, and errored sources', 0, () => {
+      const rice: A2uiFoodData = {
+        name: '米粉店',
+        category: '餐饮',
+        address: '科技园',
+        distance: '100米',
+        sourceTags: ['高德']
+      };
+      const providerNames: string[] = ['高德', '腾讯地图', '美团'];
+      const completedResults: FoodProviderResult[] = [
+        { provider: '高德', foods: [rice], error: '' },
+        { provider: '美团', foods: [], error: '未配置 MEITUAN_UNION_APP_KEY。' }
+      ];
+      const rows: A2uiLabelValueData[] = foodProviderProgressRows(providerNames, completedResults);
+
+      expect(rows.length).assertEqual(3);
+      expect(rows[0].label).assertEqual('高德');
+      expect(rows[0].value).assertEqual('已返回 1 条');
+      expect(rows[1].label).assertEqual('腾讯地图');
+      expect(rows[1].value).assertEqual('等待中');
+      expect(rows[2].label).assertEqual('美团');
+      expect(rows[2].value.indexOf('未配置')).assertLarger(-1);
+    });
+
+    it('keeps food partial component signatures stable when only provider data changes', 0, () => {
+      const firstRows: A2uiLabelValueData[] = [
+        { label: '高德', value: '等待中' }
+      ];
+      const secondRows: A2uiLabelValueData[] = [
+        { label: '高德', value: '已返回 1 条' }
+      ];
+      const noodles: A2uiFoodData = {
+        name: '牛肉面',
+        category: '餐饮',
+        address: '深圳北站',
+        distance: '300米',
+        sourceTags: ['高德']
+      };
+      const first: A2uiPartialUpdateResult = planA2uiPartialUpdate(null, foodA2uiRenderState(
+        'surface_food',
+        '外卖聚合搜索',
+        '真实 provider 返回',
+        '已返回 0/5 个餐饮来源',
+        [],
+        firstRows,
+        'calling_tool'
+      ));
+      const second: A2uiPartialUpdateResult = planA2uiPartialUpdate(first.cache, foodA2uiRenderState(
+        'surface_food',
+        '外卖聚合搜索',
+        '真实 provider 返回',
+        '已返回 1/5 个餐饮来源',
+        [noodles],
+        secondRows,
+        'calling_tool'
+      ));
+
+      expect(first.componentsUpdated).assertTrue();
+      expect(second.componentsUpdated).assertFalse();
+      expect(second.updatedDataPaths.indexOf('/foods')).assertLarger(-1);
+      expect(second.updatedDataPaths.indexOf('/rows')).assertLarger(-1);
+    });
+
     it('merges the same store when map providers include different city prefixes', 0, () => {
       const merged = aggregateFoodProviderResults([
         {
@@ -429,6 +498,81 @@ export default function toolGatewayClientTest() {
 
       expect(merged.foods.length).assertEqual(1);
       expect(tags[0]).assertEqual('高德');
+    });
+
+    it('emits food partial snapshots as provider promises complete', 0, async () => {
+      const snapshots: string[] = [];
+      const fastResult: FoodProviderResult = {
+        provider: '快来源',
+        foods: [{
+          name: '快来源餐厅',
+          category: '餐饮',
+          address: '快来源地址',
+          distance: '100米',
+          sourceTags: ['快来源']
+        }],
+        error: ''
+      };
+      const fast: Promise<FoodProviderResult> = Promise.resolve(fastResult);
+      const slow: Promise<FoodProviderResult> = new Promise<FoodProviderResult>((resolve: (value: FoodProviderResult) => void) => {
+        setTimeout(() => {
+          const slowResult: FoodProviderResult = {
+            provider: '慢来源',
+            foods: [{
+              name: '慢来源餐厅',
+              category: '餐饮',
+              address: '慢来源地址',
+              distance: '200米',
+              sourceTags: ['慢来源']
+            }],
+            error: ''
+          };
+          resolve(slowResult);
+        }, 10);
+      });
+      const tasks: Promise<FoodProviderResult>[] = [slow, fast];
+
+      const finalResult = await streamFoodProviderResultsWithPartials(tasks, [], (snapshot: FoodProviderPartialSnapshot) => {
+        snapshots.push(snapshot.provider + ':' + snapshot.foods.length.toString());
+      });
+
+      expect(snapshots.length).assertEqual(2);
+      expect(snapshots[0].indexOf('快来源')).assertEqual(0);
+      expect(snapshots[1].indexOf('慢来源')).assertEqual(0);
+      expect(finalResult.aggregation.foods.length).assertEqual(2);
+      expect(finalResult.results.length).assertEqual(2);
+    });
+
+    it('spaces food partial snapshots by configured delay after each provider result', 0, async () => {
+      const emittedAt: number[] = [];
+      const firstResult: FoodProviderResult = {
+        provider: '一号来源',
+        foods: [{ name: '一号店', category: '餐饮', address: '一号地址', distance: '100米', sourceTags: ['一号来源'] }],
+        error: ''
+      };
+      const secondResult: FoodProviderResult = {
+        provider: '二号来源',
+        foods: [{ name: '二号店', category: '餐饮', address: '二号地址', distance: '200米', sourceTags: ['二号来源'] }],
+        error: ''
+      };
+      const thirdResult: FoodProviderResult = {
+        provider: '三号来源',
+        foods: [{ name: '三号店', category: '餐饮', address: '三号地址', distance: '300米', sourceTags: ['三号来源'] }],
+        error: ''
+      };
+      const tasks: Promise<FoodProviderResult>[] = [
+        Promise.resolve(firstResult),
+        Promise.resolve(secondResult),
+        Promise.resolve(thirdResult)
+      ];
+
+      await streamFoodProviderResultsWithPartials(tasks, [], (_snapshot: FoodProviderPartialSnapshot) => {
+        emittedAt.push(Date.now());
+      }, 20);
+
+      expect(emittedAt.length).assertEqual(3);
+      expect(emittedAt[1] - emittedAt[0]).assertLarger(10);
+      expect(emittedAt[2] - emittedAt[1]).assertLarger(10);
     });
   });
 }

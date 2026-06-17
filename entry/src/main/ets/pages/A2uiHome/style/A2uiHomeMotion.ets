@@ -13,6 +13,14 @@ export function a2uiEnterTransition(offsetY: number = A2UI_ENTER_OFFSET_Y): Tran
     .animation({ duration: A2UI_MOTION_NORMAL_MS, curve: A2UI_MOTION_CURVE });
 }
 
+export function a2uiShouldAnimateActionBarUpdates(): boolean {
+  return false;
+}
+
+export function a2uiShouldAnimateResultCardUpdates(): boolean {
+  return true;
+}
+
 function normalizedStep(value: number): number {
   let step = value;
   while (step < 0) {

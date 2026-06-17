@@ -1,5 +1,24 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { createInitialConnectionPanelState, updateConnectionPanelState } from '../main/ets/pages/A2uiHome/state/A2uiHomeState';
+import { A2uiSurfaceState } from '../main/ets/model/A2uiTypes';
+import {
+  createInitialConnectionPanelState,
+  shouldApplySurfaceUpdate,
+  updateConnectionPanelState
+} from '../main/ets/pages/A2uiHome/state/A2uiHomeState';
+
+function surface(sequence: number, status: string): A2uiSurfaceState {
+  return {
+    surfaceId: 'surface_model',
+    rootId: 'root',
+    title: '测试',
+    intent: 'food',
+    status: status,
+    components: [],
+    dataModelJson: '{}',
+    error: '',
+    sequence: sequence
+  };
+}
 
 export default function a2uiHomeStateTest() {
   describe('a2uiHomeState', () => {
@@ -37,6 +56,11 @@ export default function a2uiHomeStateTest() {
       expect(next.connectionMessage).assertEqual('模型连接异常');
       expect(next.lastError).assertEqual('ECONNREFUSED');
       expect(next.refreshTick).assertEqual(1);
+    });
+
+    it('skips applying the same surface sequence twice', 0, () => {
+      expect(shouldApplySurfaceUpdate(surface(12, 'ready'), surface(12, 'ready'))).assertFalse();
+      expect(shouldApplySurfaceUpdate(surface(12, 'calling_tool'), surface(13, 'ready'))).assertTrue();
     });
   });
 }

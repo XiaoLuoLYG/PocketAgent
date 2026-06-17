@@ -2,7 +2,9 @@ import { describe, it, expect } from '@ohos/hypium';
 import {
   a2uiThinkingDotOpacity,
   a2uiThinkingDotScale,
-  a2uiThinkingDotsActive
+  a2uiThinkingDotsActive,
+  a2uiShouldAnimateActionBarUpdates,
+  a2uiShouldAnimateResultCardUpdates
 } from '../main/ets/pages/A2uiHome/style/A2uiHomeMotion';
 
 export default function a2uiHomeMotionTest() {
@@ -24,6 +26,11 @@ export default function a2uiHomeMotionTest() {
       expect(a2uiThinkingDotsActive(true, 'calling_tool')).assertTrue();
       expect(a2uiThinkingDotsActive(true, 'ready')).assertFalse();
       expect(a2uiThinkingDotsActive(false, 'thinking')).assertFalse();
+    });
+
+    it('keeps update enter motion on result cards instead of action buttons', 0, () => {
+      expect(a2uiShouldAnimateActionBarUpdates()).assertFalse();
+      expect(a2uiShouldAnimateResultCardUpdates()).assertTrue();
     });
   });
 }

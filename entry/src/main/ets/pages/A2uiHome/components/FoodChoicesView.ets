@@ -47,6 +47,7 @@ import {
   COLOR_TEXT
 } from '../style/A2uiHomeTheme';
 import { componentBodyOf, componentStatusOf, componentTitleOf } from '../render/A2uiRenderData';
+import { a2uiEnterTransition } from '../style/A2uiHomeMotion';
 import { ActionBarView } from './ActionBarView';
 import { StatusBadgeView } from './StatusBadgeView';
 
@@ -561,6 +562,7 @@ export struct FoodChoicesView {
           .width('100%')
           .alignItems(HorizontalAlign.Start)
           .margin({ top: 10 })
+          .transition(a2uiEnterTransition())
         }, (item: A2uiFoodOption) => this.foodRowKey(item) + '-' + this.renderTick.toString())
       }
     }

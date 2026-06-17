@@ -1,3 +1,5 @@
+import { A2uiSurfaceState } from '../../../model/A2uiTypes';
+
 export interface ConnectionPanelState {
   connectionStatus: string;
   connectionMessage: string;
@@ -36,6 +38,10 @@ export function updateConnectionPanelState(current: ConnectionPanelState, update
     lastError: update.ok ? '' : update.error,
     refreshTick: current.refreshTick + 1
   };
+}
+
+export function shouldApplySurfaceUpdate(current: A2uiSurfaceState, next: A2uiSurfaceState): boolean {
+  return current.surfaceId !== next.surfaceId || current.sequence !== next.sequence;
 }
 
 export function connectionStatusLabel(status: string): string {

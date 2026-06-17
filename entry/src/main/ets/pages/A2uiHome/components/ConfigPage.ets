@@ -28,6 +28,8 @@ export struct ConfigPage {
   @Link apiKey: string;
   @Link selectedModel: string;
   @Link customParametersJson: string;
+  @Link foodProviderDelayEnabled: boolean;
+  @Link foodProviderDelayMs: string;
   @Link showAdvancedSettings: boolean;
   @Prop connectionStatus: string = 'idle';
   @Prop connectionMessage: string = '';
@@ -230,6 +232,49 @@ export struct ConfigPage {
               .padding({ left: 10, right: 10 })
               .onChange((value: string) => {
                 this.customParametersJson = value;
+              })
+
+            Divider()
+              .color(COLOR_LINE)
+              .margin({ top: 16, bottom: 12 })
+
+            Row() {
+              Column() {
+                Text('餐饮来源延时')
+                  .fontSize(13)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(COLOR_INK)
+                Text('开启后延迟非首个餐饮来源，用于观察分步返回')
+                  .fontSize(12)
+                  .fontColor(COLOR_MUTED)
+                  .margin({ top: 4 })
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+
+              Toggle({ type: ToggleType.Switch, isOn: this.foodProviderDelayEnabled })
+                .selectedColor(COLOR_ACCENT)
+                .onChange((isOn: boolean) => {
+                  this.foodProviderDelayEnabled = isOn;
+                })
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+
+            this.InputLabel('延时毫秒', 12)
+            TextInput({ text: this.foodProviderDelayMs, placeholder: '5000' })
+              .height(42)
+              .fontSize(13)
+              .fontColor(COLOR_TEXT)
+              .placeholderColor(COLOR_MUTED)
+              .backgroundColor(COLOR_FIELD)
+              .borderRadius(9)
+              .border({ width: 1, color: COLOR_CARD_EDGE })
+              .padding({ left: 10, right: 10 })
+              .enabled(this.foodProviderDelayEnabled)
+              .opacity(this.foodProviderDelayEnabled ? 1 : 0.55)
+              .onChange((value: string) => {
+                this.foodProviderDelayMs = value;
               })
           }
 

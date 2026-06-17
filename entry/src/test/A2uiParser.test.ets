@@ -104,7 +104,8 @@ export default function a2uiParserTest() {
       expect(parsed.error).assertEqual('');
       expect(foods !== null).assertTrue();
       if (foods !== null) {
-        const tags = foodOptions(surface, foods)[0].sourceTags === undefined ? [] : foodOptions(surface, foods)[0].sourceTags;
+        const sourceTags = foodOptions(surface, foods)[0].sourceTags;
+        const tags: string[] = sourceTags === undefined ? [] : sourceTags;
         expect(tags[0]).assertEqual('高德');
         expect(tags[2]).assertEqual('淘宝闪购');
       }

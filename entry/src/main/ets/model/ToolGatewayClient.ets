@@ -20,6 +20,13 @@ import { parseA2uiJsonl, parseA2uiJsonlChunk } from './A2uiParser';
 import { A2uiSurfaceStore } from './A2uiSurfaceStore';
 import { A2uiSurfaceCallback } from './LocalModelClient';
 import { aiLogError, aiLogInfo } from './AiphoneLogger';
+import {
+  A2uiPartialDataPatch,
+  A2uiPartialRenderState,
+  A2uiPartialUpdateCache,
+  A2uiPartialUpdateResult,
+  planA2uiPartialUpdate
+} from './A2uiPartialUpdatePlanner';
 
 interface ToolGatewayRequestBody {
   toolId: string;
@@ -314,6 +321,20 @@ export interface FoodAggregationResult {
   issues: FoodProviderResult[];
 }
 
+export interface FoodProviderStreamResult {
+  aggregation: FoodAggregationResult;
+  results: FoodProviderResult[];
+}
+
+export interface FoodProviderPartialSnapshot {
+  provider: string;
+  completed: number;
+  total: number;
+  foods: A2uiFoodData[];
+  issues: FoodProviderResult[];
+  results: FoodProviderResult[];
+}
+
 interface FoodProviderAdapter {
   name: string;
   search(prompt: string, query: FoodQuery, keyword: string, location: string, locationSource: string): Promise<FoodProviderResult>;
@@ -533,6 +554,18 @@ let localProviderConfig: LocalProviderConfig = {
   taobaoApiUrl: DEFAULT_TAOBAO_API_URL
 };
 
+export interface LocalToolDebugConfig {
+  foodProviderDelayEnabled: boolean;
+  foodProviderDelayMs: number;
+}
+
+let localToolDebugConfig: LocalToolDebugConfig = {
+  foodProviderDelayEnabled: false,
+  foodProviderDelayMs: 0
+};
+
+type LocalA2uiEmitter = (jsonl: string) => void;
+
 function userAgentHeaders(): HttpRequestHeaders {
   return {
     'User-Agent': 'Mozilla/5.0 AIPhoneDemo/0.1'
@@ -592,6 +625,14 @@ export function buildToolGatewayUrl(baseUrl: string): string {
 
 export function isRegisteredToolId(toolId: string): boolean {
   return toolId === 'travel.search' || toolId === 'flight.search' || toolId === 'train.search' || toolId === 'food.search' || toolId === 'social.reply.send';
+}
+
+export function configureLocalToolDebugConfig(config: LocalToolDebugConfig): void {
+  const delayMs = config.foodProviderDelayMs < 0 ? 0 : config.foodProviderDelayMs;
+  localToolDebugConfig = {
+    foodProviderDelayEnabled: config.foodProviderDelayEnabled,
+    foodProviderDelayMs: delayMs
+  };
 }
 
 function firstText(values: Array<Object | string | number | boolean | null | undefined>): string {
@@ -2111,29 +2152,50 @@ async function callLocalTravelSearch(prompt: string, surfaceId: string): Promise
   );
 }
 
-function foodResultA2ui(surfaceId: string, title: string, body: string, summaryText: string, foods: A2uiFoodData[], rows: A2uiLabelValueData[] = []): string {
+function foodDataSignature(foods: A2uiFoodData[]): string {
+  return JSON.stringify(foods);
+}
+
+function foodRowsSignature(rows: A2uiLabelValueData[]): string {
+  return JSON.stringify(rows);
+}
+
+function foodSummaryData(summaryText: string, foods: A2uiFoodData[]): A2uiSummaryData {
+  return {
+    text: summaryText,
+    toolName: 'food.search',
+    dataLabel: dataLabelForTool('food.search'),
+    count: foods.length
+  };
+}
+
+function foodSummarySignature(summary: A2uiSummaryData): string {
+  return summary.text + '|' + summary.toolName + '|' + summary.dataLabel + '|' + summary.count.toString();
+}
+
+export function foodA2uiRenderState(surfaceId: string, title: string, body: string, summaryText: string, foods: A2uiFoodData[], rows: A2uiLabelValueData[] = [], status: string = 'ready'): A2uiPartialRenderState {
   const components: A2uiComponent[] = [];
   components.push({
     id: 'root',
     component: 'SurfaceRoot',
     child: rows.length > 0 ? 'layout' : 'results',
     title: title,
-    body: summaryText,
-    status: 'ready'
+    body: body,
+    status: status
   });
   if (rows.length > 0) {
     components.push({
       id: 'layout',
       component: 'Column',
       children: ['summary', 'results'],
-      status: 'ready'
+      status: status
     });
     components.push({
       id: 'summary',
       component: 'InfoRows',
       title: '来源状态',
       body: '以下只展示真实 provider 返回；失败来源不会生成占位店铺。',
-      status: 'ready',
+      status: status,
       dataPath: '/rows',
       actions: []
     });
@@ -2143,7 +2205,7 @@ function foodResultA2ui(surfaceId: string, title: string, body: string, summaryT
     component: componentForTool('food.search'),
     title: title,
     body: body,
-    status: 'ready',
+    status: status,
     dataPath: dataPathForTool('food.search'),
     actions: [
       { id: 'food_show_all', label: '全部范围', prompt: '显示全部附近餐饮', kind: 'client', variant: 'secondary' },
@@ -2152,51 +2214,35 @@ function foodResultA2ui(surfaceId: string, title: string, body: string, summaryT
       { id: 'food_change_location', label: '换位置', prompt: '换位置查询附近餐饮', kind: 'prompt', variant: 'secondary' }
     ]
   });
-
-  return a2uiJsonl([
+  const summary = foodSummaryData(summaryText, foods);
+  const dataPatches: A2uiPartialDataPatch[] = [
     {
-      createSurface: {
-        surfaceId: surfaceId,
-        root: 'root',
-        title: title,
-        intent: 'food',
-        status: 'ready',
-        sendDataModel: true
-      }
+      path: '/foods',
+      value: foods,
+      signature: foodDataSignature(foods)
     },
     {
-      updateComponents: {
-        surfaceId: surfaceId,
-        components: components
-      }
+      path: '/rows',
+      value: rows,
+      signature: foodRowsSignature(rows)
     },
     {
-      updateDataModel: {
-        surfaceId: surfaceId,
-        path: '/foods',
-        value: foods
-      }
-    },
-    {
-      updateDataModel: {
-        surfaceId: surfaceId,
-        path: '/rows',
-        value: rows
-      }
-    },
-    {
-      updateDataModel: {
-        surfaceId: surfaceId,
-        path: '/summary',
-        value: {
-          text: summaryText,
-          toolName: 'food.search',
-          dataLabel: dataLabelForTool('food.search'),
-          count: foods.length
-        }
-      }
+      path: '/summary',
+      value: summary,
+      signature: foodSummarySignature(summary)
     }
-  ]);
+  ];
+  return {
+    surfaceId: surfaceId,
+    root: 'root',
+    title: title,
+    intent: 'food',
+    status: status,
+    sendDataModel: true,
+    components: components,
+    componentsSignature: 'food-result-v1|rows=' + (rows.length > 0 ? '1' : '0') + '|status=' + status,
+    dataPatches: dataPatches
+  };
 }
 
 function missingConfigA2ui(surfaceId: string, toolId: string): string {
@@ -3089,6 +3135,74 @@ export function providerIssueRows(issues: FoodProviderResult[]): A2uiLabelValueD
   return rows;
 }
 
+export function foodProviderProgressRows(providerNames: string[], completedResults: FoodProviderResult[]): A2uiLabelValueData[] {
+  const rows: A2uiLabelValueData[] = [];
+  for (let providerIndex = 0; providerIndex < providerNames.length; providerIndex++) {
+    const providerName = providerNames[providerIndex];
+    let completedResult: FoodProviderResult | null = null;
+    for (let resultIndex = 0; resultIndex < completedResults.length; resultIndex++) {
+      const candidate = completedResults[resultIndex];
+      if (candidate.provider === providerName) {
+        completedResult = candidate;
+      }
+    }
+    if (completedResult === null) {
+      rows.push({
+        label: providerName,
+        value: '等待中'
+      });
+    } else if (completedResult.error.length > 0) {
+      rows.push({
+        label: providerName,
+        value: completedResult.error
+      });
+    } else {
+      rows.push({
+        label: providerName,
+        value: '已返回 ' + completedResult.foods.length.toString() + ' 条'
+      });
+    }
+  }
+  return rows;
+}
+
+export async function streamFoodProviderResultsWithPartials(tasks: Promise<FoodProviderResult>[], initialResults: FoodProviderResult[], onPartial: (snapshot: FoodProviderPartialSnapshot) => void, partialDelayMs: number = 0): Promise<FoodProviderStreamResult> {
+  const providerResults: FoodProviderResult[] = initialResults.slice();
+  let completed = 0;
+  const delayMs = partialDelayMs > 0 ? partialDelayMs : 0;
+  let partialChain: Promise<void> = Promise.resolve();
+  const wrappedTasks: Promise<void>[] = [];
+  for (let index = 0; index < tasks.length; index++) {
+    wrappedTasks.push(tasks[index].then((result: FoodProviderResult) => {
+      partialChain = partialChain.then(async () => {
+        if (completed > 0 && delayMs > 0) {
+          aiLogInfo('[AIPhone][LocalToolFoodPartialDelay] provider=' + result.provider +
+            ' delayMs=' + delayMs.toString());
+          await waitForDebugDelay(delayMs);
+        }
+        providerResults.push(result);
+        completed += 1;
+        const aggregated = aggregateFoodProviderResults(providerResults);
+        onPartial({
+          provider: result.provider,
+          completed: completed,
+          total: tasks.length,
+          foods: aggregated.foods,
+          issues: aggregated.issues,
+          results: providerResults.slice()
+        });
+      });
+      return partialChain;
+    }));
+  }
+  await Promise.all(wrappedTasks);
+  await partialChain;
+  return {
+    aggregation: aggregateFoodProviderResults(providerResults),
+    results: providerResults
+  };
+}
+
 function emptyProviderResult(provider: string, error: string): FoodProviderResult {
   return {
     provider: provider,
@@ -3194,6 +3308,12 @@ async function safeFoodProviderSearch(adapter: FoodProviderAdapter, prompt: stri
   } catch (error) {
     return emptyProviderResult(adapter.name, describeThrown(error));
   }
+}
+
+function waitForDebugDelay(delayMs: number): Promise<void> {
+  return new Promise<void>((resolve: () => void) => {
+    setTimeout(resolve, delayMs);
+  });
 }
 
 class AmapFoodProvider implements FoodProviderAdapter {
@@ -3468,7 +3588,21 @@ class TaobaoFlashFoodProvider implements FoodProviderAdapter {
   }
 }
 
-async function callLocalFoodSearch(prompt: string, surfaceId: string): Promise<string> {
+function foodPartialA2ui(surfaceId: string, prompt: string, providerNames: string[], snapshot: FoodProviderPartialSnapshot, previous: A2uiPartialUpdateCache | null): A2uiPartialUpdateResult {
+  const rows = foodProviderProgressRows(providerNames, snapshot.results);
+  return planA2uiPartialUpdate(previous, foodA2uiRenderState(
+    surfaceId,
+    '外卖聚合搜索',
+    '以下结果来自高德、腾讯地图、百度地图、美团联盟和淘宝闪购联盟；仅展示真实返回字段，不下单、不支付、不创建购物车。',
+    '已返回 ' + snapshot.completed.toString() + '/' + snapshot.total.toString() +
+      ' 个餐饮来源；当前可展示 ' + snapshot.foods.length.toString() + ' 个结果。用户请求：' + prompt,
+    snapshot.foods,
+    rows,
+    'calling_tool'
+  ));
+}
+
+async function callLocalFoodSearch(prompt: string, surfaceId: string, emitJsonl: LocalA2uiEmitter | null = null): Promise<string> {
   const key = localProviderConfig.amapKey;
 
   const query = extractFoodQuery(prompt);
@@ -3502,31 +3636,72 @@ async function callLocalFoodSearch(prompt: string, surfaceId: string): Promise<s
     new MeituanUnionFoodProvider(),
     new TaobaoFlashFoodProvider()
   ];
-  const providerResults: FoodProviderResult[] = preflightResults.slice();
-  for (let index = 0; index < adapters.length; index++) {
-    providerResults.push(await safeFoodProviderSearch(adapters[index], prompt, query, keyword, location, locationSource));
+  const providerNames: string[] = [];
+  for (let preflightIndex = 0; preflightIndex < preflightResults.length; preflightIndex++) {
+    const providerName = preflightResults[preflightIndex].provider;
+    if (providerNames.indexOf(providerName) < 0) {
+      providerNames.push(providerName);
+    }
   }
+  for (let adapterIndex = 0; adapterIndex < adapters.length; adapterIndex++) {
+    if (providerNames.indexOf(adapters[adapterIndex].name) < 0) {
+      providerNames.push(adapters[adapterIndex].name);
+    }
+  }
+  const providerResults: FoodProviderResult[] = preflightResults.slice();
   if (location.length === 0) {
     providerResults.push(emptyProviderResult('位置', '缺少经纬度。请在 prompt 写明地点，或把 AMAP_DEFAULT_LOCATION/FOOD_DEFAULT_LOCATION=经度,纬度 同步到 HAP rawfile。'));
+    if (providerNames.indexOf('位置') < 0) {
+      providerNames.push('位置');
+    }
   }
-  const aggregated = aggregateFoodProviderResults(providerResults);
-  const rows = providerIssueRows(aggregated.issues);
+  const tasks: Promise<FoodProviderResult>[] = [];
+  for (let index = 0; index < adapters.length; index++) {
+    tasks.push(safeFoodProviderSearch(adapters[index], prompt, query, keyword, location, locationSource));
+  }
+  let foodPartialCache: A2uiPartialUpdateCache | null = null;
+  const streamed = await streamFoodProviderResultsWithPartials(tasks, providerResults, (snapshot: FoodProviderPartialSnapshot) => {
+    aiLogInfo('[AIPhone][LocalToolFoodPartial] provider=' + snapshot.provider +
+      ' completed=' + snapshot.completed.toString() + '/' + snapshot.total.toString() +
+      ' foods=' + snapshot.foods.length.toString() +
+      ' issues=' + snapshot.issues.length.toString());
+    if (emitJsonl !== null) {
+      const planned = foodPartialA2ui(surfaceId, prompt, providerNames, snapshot, foodPartialCache);
+      foodPartialCache = planned.cache;
+      aiLogInfo('[AIPhone][LocalToolFoodPartialEmit] envelopes=' + planned.emittedEnvelopeCount.toString() +
+        ' components=' + (planned.componentsUpdated ? 'true' : 'false') +
+        ' dataPaths=' + planned.updatedDataPaths.join(','));
+      emitJsonl(planned.jsonl);
+    }
+  }, localToolDebugConfig.foodProviderDelayEnabled ? localToolDebugConfig.foodProviderDelayMs : 0);
+  const aggregated = streamed.aggregation;
+  const rows = foodProviderProgressRows(providerNames, streamed.results);
   aiLogInfo('[AIPhone][LocalToolFoodAggregate] keyword=' + keyword +
     ' locationSource=' + locationSource +
     ' locationPresent=' + (location.length > 0 ? 'true' : 'false') +
     ' foods=' + aggregated.foods.length.toString() +
     ' issues=' + rows.length.toString());
 
-  return foodResultA2ui(
+  const finalState = foodA2uiRenderState(
     surfaceId,
     '外卖聚合搜索',
     '以下结果来自高德、腾讯地图、百度地图、美团联盟和淘宝闪购联盟；仅展示真实返回字段，不下单、不支付、不创建购物车。',
     aggregated.foods.length > 0 ?
-      '已聚合 ' + aggregated.foods.length.toString() + ' 个可展示结果；' + rows.length.toString() + ' 个来源需要处理。' :
+      '已聚合 ' + aggregated.foods.length.toString() + ' 个可展示结果；' + rows.length.toString() + ' 个来源状态见下方。' :
       '所有来源都没有可展示外卖结果；下面只列出真实 provider 状态。',
     aggregated.foods,
-    rows
+    rows,
+    'ready'
   );
+  if (emitJsonl !== null) {
+    const planned = planA2uiPartialUpdate(foodPartialCache, finalState);
+    foodPartialCache = planned.cache;
+    aiLogInfo('[AIPhone][LocalToolFoodFinalEmit] envelopes=' + planned.emittedEnvelopeCount.toString() +
+      ' components=' + (planned.componentsUpdated ? 'true' : 'false') +
+      ' dataPaths=' + planned.updatedDataPaths.join(','));
+    return planned.jsonl;
+  }
+  return planA2uiPartialUpdate(null, finalState).jsonl;
 }
 
 async function callLocalTrainSearch(prompt: string, surfaceId: string): Promise<string> {
@@ -3610,7 +3785,7 @@ async function callLocalTrainSearch(prompt: string, surfaceId: string): Promise<
   return trainResultA2ui(surfaceId, '12306 余票查询', body, summaryText, top);
 }
 
-async function buildLocalToolJsonl(toolId: string, prompt: string, surfaceId: string): Promise<string> {
+async function buildLocalToolJsonl(toolId: string, prompt: string, surfaceId: string, emitJsonl: LocalA2uiEmitter | null = null): Promise<string> {
   if (toolId === 'social.reply.send') {
     return errorA2ui(
       surfaceId,
@@ -3631,7 +3806,7 @@ async function buildLocalToolJsonl(toolId: string, prompt: string, surfaceId: st
     return callLocalTrainSearch(prompt, surfaceId);
   }
   if (toolId === 'food.search') {
-    return callLocalFoodSearch(prompt, surfaceId);
+    return callLocalFoodSearch(prompt, surfaceId, emitJsonl);
   }
   return missingConfigA2ui(surfaceId, toolId);
 }
@@ -3642,6 +3817,25 @@ async function callLocalTool(toolId: string, prompt: string, surfaceId: string, 
     store.seed(initialSurface);
   }
   let rawResponse = '';
+  const emitJsonl = (jsonl: string): void => {
+    if (jsonl.length === 0 || streamError.length > 0) {
+      return;
+    }
+    rawResponse += jsonl;
+    const emitted = parseA2uiJsonl(jsonl);
+    if (emitted.error.length > 0) {
+      streamError = emitted.error;
+      aiLogError('[AIPhone][LocalToolEmitParseError] ' + emitted.error);
+      return;
+    }
+    const applyError = applyEnvelopes(store, emitted.envelopes);
+    if (applyError.length > 0) {
+      streamError = applyError;
+      aiLogError('[AIPhone][LocalToolEmitApplyError] ' + applyError);
+      return;
+    }
+    onSurface(store.getSurface(), rawResponse);
+  };
   const localDebugBody: ToolGatewayRequestBody = {
     toolId: toolId,
     prompt: prompt,
@@ -3657,25 +3851,15 @@ async function callLocalTool(toolId: string, prompt: string, surfaceId: string, 
   const requestDebug = JSON.stringify(localDebugPayload);
   aiLogInfo('[AIPhone][LocalToolRequest] endpoint=' + LOCAL_TOOL_GATEWAY_URL + ' toolId=' + toolId + ' surfaceId=' + surfaceId + ' promptChars=' + prompt.length.toString());
   const pending = pendingA2ui(toolId, prompt, surfaceId);
-  rawResponse += pending;
   let parsed = parseA2uiJsonl(pending);
   let streamError = parsed.error;
   if (streamError.length === 0) {
-    streamError = applyEnvelopes(store, parsed.envelopes);
-    onSurface(store.getSurface(), rawResponse);
+    emitJsonl(pending);
   }
 
   try {
-    const resultJsonl = await buildLocalToolJsonl(toolId, prompt, surfaceId);
-    rawResponse += resultJsonl;
-    parsed = parseA2uiJsonl(resultJsonl);
-    if (parsed.error.length > 0 && streamError.length === 0) {
-      streamError = parsed.error;
-    }
-    if (streamError.length === 0) {
-      streamError = applyEnvelopes(store, parsed.envelopes);
-    }
-    onSurface(store.getSurface(), rawResponse);
+    const resultJsonl = await buildLocalToolJsonl(toolId, prompt, surfaceId, emitJsonl);
+    emitJsonl(resultJsonl);
     aiLogInfo('[AIPhone][LocalToolResult] ok=' + (streamError.length === 0 ? 'true' : 'false') + ' rawChars=' + rawResponse.length.toString());
     return {
       ok: streamError.length === 0,

@@ -7,10 +7,12 @@ import {
   A2uiLabelValueData,
   A2uiRowGroupsData,
   A2uiRuntimeDataModel,
+  A2uiSocialData,
   A2uiSummaryData,
   A2uiSurfaceState,
   A2uiToolRequestData,
   A2uiTrainData,
+  A2uiTravelOptionData,
   A2uiTripData
 } from '../main/ets/model/A2uiTypes';
 
@@ -47,6 +49,12 @@ function businessSurface(): A2uiSurfaceState {
     address: '测试路 1 号',
     distance: '300米'
   }];
+  const travelOptions: A2uiTravelOptionData[] = [];
+  const social: A2uiSocialData = {
+    messages: [],
+    replies: [],
+    diagnostics: []
+  };
   const rows: A2uiLabelValueData[] = [];
   const thoughts: string[] = [];
   const summary: A2uiSummaryData = {
@@ -76,7 +84,9 @@ function businessSurface(): A2uiSurfaceState {
     rows: rows,
     trains: trains,
     flights: flights,
+    travelOptions: travelOptions,
     foods: foods,
+    social: social,
     thoughts: thoughts,
     summary: summary,
     trip: trip,
