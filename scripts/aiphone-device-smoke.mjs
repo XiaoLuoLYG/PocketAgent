@@ -625,6 +625,7 @@ function analyze(query, logs, expectedTool, expectedToolId = '', expectedDiscove
     providerFailed: /\[AIPhone\]\[LocalTool12306Endpoint\][^\n]*code=[45]\d\d/.test(text) || /\[AIPhone\]\[LocalToolException\]/.test(text) || (missingConfig && expectedToolId !== 'travel.search'),
     modelFailed: /\[AIPhone\]\[(ModelResult|A2uiHomeModelResult)\] ok=false/.test(text),
     toolNone: /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest)\] none/.test(text),
+    gmailWebOpened: /\[AIPhone\]\[A2uiHomeOpenUrl\] ok=true url=https:\/\/mail\.google\.com/.test(text),
     syntheticFallback: forbiddenSyntheticMarkers.some((marker) => text.includes(marker))
   };
   const modelPassed = result.model200 && result.modelOk && !result.modelFailed;
@@ -643,6 +644,10 @@ function analyze(query, logs, expectedTool, expectedToolId = '', expectedDiscove
   return result;
 }
 
+function isGmailWebQuery(query) {
+  return /Gmail|谷歌邮箱|谷歌邮件/.test(query) && /打开|网页版|网页/.test(query);
+}
+
 function layoutExpectationsForQuery(query) {
   if (/^你好$|问候|打招呼/.test(query)) {
     return ['你好'];
@@ -659,7 +664,7 @@ function layoutExpectationsForQuery(query) {
   if (/PPT|ppt|幻灯片|演示文稿/.test(query)) {
     return ['接入工具', 'ppt.generate', 'API_KEY', 'unsupported_transport', '歌者PPT'];
   }
-  if (/Gmail|谷歌邮箱|谷歌邮件/.test(query) && /打开|网页版|网页/.test(query)) {
+  if (isGmailWebQuery(query)) {
     return ['Gmail Web', 'gmail.open.web', 'https://mail.google.com'];
   }
   if (/Gmail|谷歌邮箱|谷歌邮件/.test(query) && /直接发送|立刻发送|马上发送|不确认直接发/.test(query)) {
@@ -723,6 +728,7 @@ async function runQuery(query, index, expectedTool) {
   writeFileSync(layoutTextPath, layoutText + '\n');
   const expectedMarkers = layoutExpectationsForQuery(query);
   const expectedHits = expectedMarkers.filter((marker) => layoutText.includes(marker));
+  const allowsExternalGmailWeb = isGmailWebQuery(query) && summary.gmailWebOpened === true;
   const allowsPartialTravelSourceFailure = expectedToolId === 'travel.search' &&
     summary.toolOk === true &&
     (layoutText.includes('来源状态') || layoutText.includes('飞常准')) &&
@@ -738,7 +744,8 @@ async function runQuery(query, index, expectedTool) {
   summary.screenPath = captureScreen(`query-${index + 1}-final-screen.png`);
   summary.layoutExpectedHits = expectedHits;
   summary.layoutBlockingHits = layoutBlockingHits;
-  summary.layoutOk = layoutBlockingHits.length === 0 && (expectedMarkers.length === 0 || expectedHits.length > 0);
+  summary.layoutOk = layoutBlockingHits.length === 0 &&
+    (allowsExternalGmailWeb || expectedMarkers.length === 0 || expectedHits.length > 0);
   summary.ok = summary.ok && summary.layoutOk;
   return summary;
 }
@@ -770,6 +777,9 @@ const finalLayoutForbiddenActionHits = forbiddenLayoutActionMarkers.filter((mark
 const finalQuery = queries.length > 0 ? queries[queries.length - 1] : '';
 const finalAllowsPartialTravel = /出行方案|搜索出行|怎么去|比较出行|出行选项|整理可查|可查的出行/.test(finalQuery);
 const finalSummary = summaries.length > 0 ? summaries[summaries.length - 1] : null;
+const finalAllowsExternalGmailWeb = isGmailWebQuery(finalQuery) &&
+  finalSummary !== null &&
+  finalSummary.gmailWebOpened === true;
 const finalAllowsSourceFailure =
   finalAllowsPartialTravel &&
   finalSummary !== null &&
@@ -808,7 +818,7 @@ const visibleOutput = {
   syntheticHits: finalLayoutSyntheticHits,
   forbiddenActionHits: finalLayoutForbiddenActionHits,
   blockingHits: finalLayoutBlockingHits,
-  ok: finalLayoutDomainHits.length > 0 &&
+  ok: (finalAllowsExternalGmailWeb || finalLayoutDomainHits.length > 0) &&
     finalLayoutSyntheticHits.length === 0 &&
     finalLayoutForbiddenActionHits.length === 0 &&
     finalLayoutBlockingHits.length === 0

@@ -1052,6 +1052,9 @@ struct Index {
       return false;
     }
     this.appendMessage('assistant', result.surface.title + ' 已返回 A2UI 结果。');
+    if (toolId === 'gmail.open.web') {
+      await this.openExternalUrl(GMAIL_WEB_URL);
+    }
     return true;
   }
 

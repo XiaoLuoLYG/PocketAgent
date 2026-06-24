@@ -83,14 +83,18 @@ function rootComponent(title: string, status: string): A2uiComponent {
   };
 }
 
-function genericResultsComponent(title: string, status: string): A2uiComponent {
-  return {
+function genericResultsComponent(title: string, status: string, actions?: A2uiAction[]): A2uiComponent {
+  const component: A2uiComponent = {
     id: 'gmail_results',
     component: A2UI_COMPONENT_GENERIC_TOOL_RESULTS,
     title: title,
     dataPath: GENERIC_RESULTS_PATH,
     status: status
   };
+  if (actions !== undefined && actions.length > 0) {
+    component.actions = actions;
+  }
+  return component;
 }
 
 function summary(text: string, toolName: string, count: number): A2uiSummaryData {
@@ -249,12 +253,13 @@ export function gmailOpenWebA2ui(surfaceId: string, url: string): string {
     })
   };
 
-  return genericResultsA2ui(
-    surfaceId,
-    'Gmail Web',
-    'needs_input',
-    'needs_user',
-    [result],
-    summary('Open Gmail Web to continue in the signed-in browser session.', 'gmail.open.web', 1)
-  );
+  return createSurfaceLine(surfaceId, 'Gmail Web', 'needs_input') +
+    componentsLine(surfaceId, [
+      rootComponent('Gmail Web', 'needs_user'),
+      genericResultsComponent('Gmail Web', 'needs_user', [
+        action('gmail.open.web', '打开 Gmail Web', url, 'primary', 'client')
+      ])
+    ]) +
+    dataLine(surfaceId, GENERIC_RESULTS_PATH, [result]) +
+    dataLine(surfaceId, SUMMARY_PATH, summary('Open Gmail Web to continue in the signed-in browser session.', 'gmail.open.web', 1));
 }

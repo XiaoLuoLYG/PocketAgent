@@ -125,8 +125,19 @@ export default function gmailToolA2uiTest() {
     it('renders Gmail Web as a needs-user system intent row', 0, () => {
       const url = 'https://mail.google.com/mail/u/0/#inbox/thread_fixture_1';
       const store = surfaceFromJsonl(gmailOpenWebA2ui('gmail_web', url));
+      const component = componentById(store.getSurface(), 'gmail_results');
       const rendered = genericToolResults(store.getSurface())[0];
 
+      expect(component !== null).assertTrue();
+      if (component !== null) {
+        expect(component.actions !== undefined).assertTrue();
+        if (component.actions !== undefined) {
+          expect(component.actions.length).assertEqual(1);
+          expect(component.actions[0].id).assertEqual('gmail.open.web');
+          expect(component.actions[0].kind).assertEqual('client');
+          expect(component.actions[0].prompt).assertEqual(url);
+        }
+      }
       expect(rendered.sourceTag).assertEqual('System intent');
       expect(rendered.toolName).assertEqual('gmail.open.web');
       expect(rendered.status).assertEqual('needs_user');
