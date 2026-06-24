@@ -611,7 +611,7 @@ function layoutExpectationsForQuery(query) {
     return ['接入工具', 'dynamic.search', '没有找到'];
   }
   if (/天气|气温|下雨|降雨/.test(query)) {
-    return ['接入工具', 'weather.query', 'AMAP_MAPS_API_KEY', '高德天气查询', '当前天气'];
+    return ['接入工具', 'weather.query', 'AMAP_MAPS_API_KEY', '高德天气预报', '预报日期'];
   }
   if (/统计局|GDP|CPI|人口|经济数据/.test(query)) {
     return ['接入工具', 'statistics.search', 'Authorization', '中国国家统计局'];
@@ -738,7 +738,7 @@ for (const blockingPattern of finalLayoutBlockingPatterns) {
   if (finalSummary !== null &&
     finalSummary.expectedToolId === 'dynamic.search' &&
     finalSummary.expectedDiscoveredToolId === 'weather.query' &&
-    finalLayoutText.includes('高德天气查询')) {
+    finalLayoutText.includes('高德天气')) {
     continue;
   }
   if (blockingPattern.pattern.test(finalLayoutText)) {

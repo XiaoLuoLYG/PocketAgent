@@ -318,11 +318,33 @@ interface AmapWeatherLive {
   reporttime?: string;
 }
 
+interface AmapWeatherCast {
+  date?: string;
+  week?: string;
+  dayweather?: string;
+  nightweather?: string;
+  daytemp?: string;
+  nighttemp?: string;
+  daywind?: string;
+  nightwind?: string;
+  daypower?: string;
+  nightpower?: string;
+}
+
+interface AmapWeatherForecast {
+  province?: string;
+  city?: string;
+  adcode?: string;
+  reporttime?: string;
+  casts?: AmapWeatherCast[];
+}
+
 interface AmapWeatherPayload {
   status?: string;
   info?: string;
   infocode?: string;
   lives?: AmapWeatherLive[];
+  forecasts?: AmapWeatherForecast[];
 }
 
 export interface TencentMapPlace {
@@ -5035,6 +5057,10 @@ interface DynamicPromptArgs {
   query: string;
   prompt: string;
   city: string;
+  weatherTargetOffset: number;
+  weatherTargetDate: string;
+  weatherTargetLabel: string;
+  weatherForecast: boolean;
 }
 
 const dynamicToolRegistry: DynamicToolRegistry = new DynamicToolRegistry();
@@ -5057,11 +5083,52 @@ function dynamicCityFromPrompt(prompt: string): string {
   return prompt;
 }
 
+function twoDigit(value: number): string {
+  return value < 10 ? '0' + value.toString() : value.toString();
+}
+
+function localDateAfter(offset: number): string {
+  const today = new Date();
+  const target = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+  return target.getFullYear().toString() + '-' + twoDigit(target.getMonth() + 1) + '-' + twoDigit(target.getDate());
+}
+
+function dynamicWeatherTargetOffset(prompt: string): number {
+  if (prompt.indexOf('大后天') >= 0) {
+    return 3;
+  }
+  if (prompt.indexOf('后天') >= 0) {
+    return 2;
+  }
+  if (prompt.indexOf('明天') >= 0 || prompt.indexOf('明日') >= 0) {
+    return 1;
+  }
+  return 0;
+}
+
+function dynamicWeatherTargetLabel(offset: number): string {
+  if (offset === 1) {
+    return '明天';
+  }
+  if (offset === 2) {
+    return '后天';
+  }
+  if (offset === 3) {
+    return '大后天';
+  }
+  return '当前';
+}
+
 function dynamicArgsFromPrompt(prompt: string): DynamicPromptArgs {
+  const weatherTargetOffset = dynamicWeatherTargetOffset(prompt);
   return {
     query: prompt,
     prompt: prompt,
-    city: dynamicCityFromPrompt(prompt)
+    city: dynamicCityFromPrompt(prompt),
+    weatherTargetOffset: weatherTargetOffset,
+    weatherTargetDate: localDateAfter(weatherTargetOffset),
+    weatherTargetLabel: dynamicWeatherTargetLabel(weatherTargetOffset),
+    weatherForecast: weatherTargetOffset > 0
   };
 }
 
@@ -5116,8 +5183,15 @@ function dynamicHttpApiHeaders(transport: DynamicToolTransport, credentialValue:
   return headers;
 }
 
+function dynamicHttpApiFixedQuery(transport: DynamicToolTransport, args: DynamicPromptArgs): string {
+  if (args.weatherForecast) {
+    return transportOption(transport, 'forecastQuery', transportOption(transport, 'fixedQuery', ''));
+  }
+  return transportOption(transport, 'fixedQuery', '');
+}
+
 function dynamicHttpApiUrl(transport: DynamicToolTransport, credentialValue: string, args: DynamicPromptArgs): string {
-  let url = appendFixedQuery(transport.url, transportOption(transport, 'fixedQuery', ''));
+  let url = appendFixedQuery(transport.url, dynamicHttpApiFixedQuery(transport, args));
   const queryParam = transportOption(transport, 'queryParam', 'query');
   url = appendQueryParam(url, queryParam, dynamicArgumentValue(args, queryParam));
   if (credentialValue.length > 0 && transportOption(transport, 'credentialPlacement', '') === 'query') {
@@ -5175,9 +5249,85 @@ function rowsFromAmapWeather(live: AmapWeatherLive): A2uiLabelValueData[] {
   return rows;
 }
 
-function dynamicHttpApiResultFromJson(registration: DynamicToolRegistration, response: HttpTextResponse): DynamicGenericToolResult {
+function rowsFromAmapWeatherForecast(forecast: AmapWeatherForecast, cast: AmapWeatherCast): A2uiLabelValueData[] {
+  const rows: A2uiLabelValueData[] = [];
+  const pairs: A2uiLabelValueData[] = [
+    { label: '城市', value: textOf(forecast.city) },
+    { label: '预报日期', value: textOf(cast.date) },
+    { label: '白天天气', value: textOf(cast.dayweather) },
+    { label: '夜间天气', value: textOf(cast.nightweather) },
+    { label: '白天温度', value: textOf(cast.daytemp).length > 0 ? textOf(cast.daytemp) + '°C' : '' },
+    { label: '夜间温度', value: textOf(cast.nighttemp).length > 0 ? textOf(cast.nighttemp) + '°C' : '' },
+    { label: '白天风向', value: textOf(cast.daywind) },
+    { label: '白天风力', value: textOf(cast.daypower) },
+    { label: '夜间风向', value: textOf(cast.nightwind) },
+    { label: '夜间风力', value: textOf(cast.nightpower) },
+    { label: '预报发布时间', value: textOf(forecast.reporttime) }
+  ];
+  for (let index = 0; index < pairs.length; index++) {
+    if (pairs[index].value.length > 0) {
+      rows.push(pairs[index]);
+    }
+  }
+  return rows;
+}
+
+function selectAmapWeatherCast(forecast: AmapWeatherForecast, args: DynamicPromptArgs): AmapWeatherCast | null {
+  if (forecast.casts === undefined || forecast.casts.length === 0) {
+    return null;
+  }
+  for (let index = 0; index < forecast.casts.length; index++) {
+    if (textOf(forecast.casts[index].date) === args.weatherTargetDate) {
+      return forecast.casts[index];
+    }
+  }
+  if (args.weatherTargetOffset >= 0 && args.weatherTargetOffset < forecast.casts.length) {
+    return forecast.casts[args.weatherTargetOffset];
+  }
+  return forecast.casts[0];
+}
+
+function amapForecastSummary(forecast: AmapWeatherForecast, cast: AmapWeatherCast, args: DynamicPromptArgs): string {
+  const city = textOf(forecast.city).length > 0 ? textOf(forecast.city) : args.city;
+  const date = textOf(cast.date).length > 0 ? textOf(cast.date) : args.weatherTargetDate;
+  const dayWeather = textOf(cast.dayweather);
+  const nightWeather = textOf(cast.nightweather);
+  const dayTemp = textOf(cast.daytemp);
+  const nightTemp = textOf(cast.nighttemp);
+  let summary = city + args.weatherTargetLabel + '（' + date + '）';
+  if (dayWeather.length > 0) {
+    summary += '白天' + dayWeather;
+  }
+  if (dayTemp.length > 0) {
+    summary += '，' + dayTemp + '°C';
+  }
+  if (nightWeather.length > 0) {
+    summary += '；夜间' + nightWeather;
+  }
+  if (nightTemp.length > 0) {
+    summary += '，' + nightTemp + '°C';
+  }
+  return summary + '。';
+}
+
+function dynamicHttpApiResultFromJson(registration: DynamicToolRegistration, response: HttpTextResponse, args: DynamicPromptArgs): DynamicGenericToolResult {
   if (registration.mcpToolName === 'maps_weather') {
     const payload = JSON.parse(response.text) as AmapWeatherPayload;
+    if (args.weatherForecast) {
+      const forecast = payload.forecasts !== undefined && payload.forecasts.length > 0 ? payload.forecasts[0] : null;
+      const cast = forecast === null ? null : selectAmapWeatherCast(forecast, args);
+      if (response.code >= 200 && response.code < 300 && payload.status === '1' && forecast !== null && cast !== null) {
+        return {
+          sourceTag: registration.displayName,
+          toolName: registration.mcpToolName,
+          title: '高德天气预报',
+          status: 'success',
+          summary: amapForecastSummary(forecast, cast, args),
+          rows: rowsFromAmapWeatherForecast(forecast, cast),
+          rawPreview: response.text.substring(0, 1200)
+        };
+      }
+    }
     const live = payload.lives !== undefined && payload.lives.length > 0 ? payload.lives[0] : null;
     if (response.code >= 200 && response.code < 300 && payload.status === '1' && live !== null) {
       return {
@@ -5224,7 +5374,7 @@ async function callDynamicHttpApiTool(registration: DynamicToolRegistration, cre
     const args = dynamicArgsFromPrompt(prompt);
     const url = dynamicHttpApiUrl(registration.transport, credentialValue, args);
     const response = await requestDynamicHttpApiGet(url, dynamicHttpApiHeaders(registration.transport, credentialValue));
-    return dynamicHttpApiResultFromJson(registration, response);
+    return dynamicHttpApiResultFromJson(registration, response, args);
   } catch (error) {
     return dynamicErrorResult(registration.displayName, registration.mcpToolName, 'HTTP API 调用失败', describeThrown(error));
   }

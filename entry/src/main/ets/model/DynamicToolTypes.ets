@@ -24,6 +24,7 @@ export interface DynamicToolTransport {
   credentialParam?: string;
   queryParam?: string;
   fixedQuery?: string;
+  forecastQuery?: string;
 }
 
 export interface DynamicMcpTool {

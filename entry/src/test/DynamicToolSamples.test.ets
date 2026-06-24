@@ -18,6 +18,8 @@ export default function dynamicToolSamplesTest() {
       expect(manifest.requiredCredentials[0].placement).assertEqual('query');
       expect(manifest.transports[0].type).assertEqual('http_api');
       expect(manifest.transports[0].credentialParam).assertEqual('key');
+      expect(manifest.transports[0].fixedQuery).assertEqual('extensions=base&output=json');
+      expect(manifest.transports[0].forecastQuery).assertEqual('extensions=all&output=json');
     });
 
     it('finds an unsupported npx sample', 0, () => {

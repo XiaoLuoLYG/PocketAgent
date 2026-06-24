@@ -37,7 +37,8 @@ function withRuntimeApiFallbacks(records: DynamicToolSampleRecord[]): DynamicToo
         credentialPlacement: 'query',
         credentialParam: 'key',
         queryParam: 'city',
-        fixedQuery: 'extensions=base&output=json'
+        fixedQuery: 'extensions=base&output=json',
+        forecastQuery: 'extensions=all&output=json'
       };
       manifest.transports = [weatherApiTransport].concat(manifest.transports);
     }

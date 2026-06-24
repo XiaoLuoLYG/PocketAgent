@@ -125,7 +125,8 @@ function cloneTransport(transport: DynamicToolTransport): DynamicToolTransport {
     credentialPlacement: transport.credentialPlacement,
     credentialParam: transport.credentialParam,
     queryParam: transport.queryParam,
-    fixedQuery: transport.fixedQuery
+    fixedQuery: transport.fixedQuery,
+    forecastQuery: transport.forecastQuery
   };
 }
 
