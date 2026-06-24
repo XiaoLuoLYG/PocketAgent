@@ -35,6 +35,7 @@ import {
 import {
   GMAIL_ACCESS_TOKEN_REF,
   GMAIL_DEFAULT_REDIRECT_URI,
+  GMAIL_MCP_RESOURCE,
   GmailOAuthConfig,
   buildGmailOAuthAuthorizationUrl,
   createGmailOAuthPending,
@@ -48,6 +49,7 @@ import {
   saveGmailOAuthTokenSet
 } from './GmailOAuthClient';
 import { GenericMcpClient } from './GenericMcpClient';
+import { callGmailApiTool } from './GmailApiClient';
 import { discoverDynamicToolForPrompt, DynamicToolDiscoveryResult } from './DynamicToolDiscovery';
 import { DynamicToolRegistry, isBuiltInToolId, isUnsafeMcpTool, selectBestRemoteTransport } from './DynamicToolRegistry';
 import { sampleManifestForToolId } from './DynamicToolSamples';
@@ -159,6 +161,7 @@ interface LocalProviderConfig {
   gmailOauthClientId: string;
   gmailOauthClientSecret: string;
   gmailOauthRedirectUri: string;
+  gmailMcpUserProject: string;
 }
 
 interface LocalProviderRawConfig {
@@ -193,6 +196,8 @@ interface LocalProviderRawConfig {
   GMAIL_OAUTH_CLIENT_SECRET?: string;
   GOOGLE_OAUTH_CLIENT_SECRET?: string;
   GMAIL_OAUTH_REDIRECT_URI?: string;
+  GMAIL_MCP_USER_PROJECT?: string;
+  GOOGLE_CLOUD_PROJECT?: string;
   flightMcpKey?: string;
   variflightApiUrl?: string;
   amapKey?: string;
@@ -217,6 +222,7 @@ interface LocalProviderRawConfig {
   gmailOauthClientId?: string;
   gmailOauthClientSecret?: string;
   gmailOauthRedirectUri?: string;
+  gmailMcpUserProject?: string;
 }
 
 interface VariFlightRequestParams {
@@ -944,7 +950,8 @@ let localProviderConfig: LocalProviderConfig = {
   gmailAuthUrl: '',
   gmailOauthClientId: '',
   gmailOauthClientSecret: '',
-  gmailOauthRedirectUri: ''
+  gmailOauthRedirectUri: '',
+  gmailMcpUserProject: ''
 };
 
 export interface LocalToolDebugConfig {
@@ -1076,7 +1083,8 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     gmailAuthUrl: config.gmailAuthUrl.trim(),
     gmailOauthClientId: config.gmailOauthClientId.trim(),
     gmailOauthClientSecret: config.gmailOauthClientSecret.trim(),
-    gmailOauthRedirectUri: config.gmailOauthRedirectUri.trim().length > 0 ? config.gmailOauthRedirectUri.trim() : GMAIL_DEFAULT_REDIRECT_URI
+    gmailOauthRedirectUri: config.gmailOauthRedirectUri.trim().length > 0 ? config.gmailOauthRedirectUri.trim() : GMAIL_DEFAULT_REDIRECT_URI,
+    gmailMcpUserProject: config.gmailMcpUserProject.trim()
   };
   aiLogInfo('[AIPhone][LocalProviderConfig] rawfile=' + LOCAL_PROVIDER_CONFIG_RAWFILE +
     ' flightKeyChars=' + localProviderConfig.flightMcpKey.length.toString() +
@@ -1090,6 +1098,7 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     ' luckinMcpTokenChars=' + localProviderConfig.luckinMcpToken.length.toString() +
     ' gmailOauthClientIdChars=' + localProviderConfig.gmailOauthClientId.length.toString() +
     ' gmailOauthClientSecretChars=' + localProviderConfig.gmailOauthClientSecret.length.toString() +
+    ' gmailMcpUserProjectPresent=' + (localProviderConfig.gmailMcpUserProject.length > 0 ? 'true' : 'false') +
     ' defaultLocationPresent=' + (localProviderConfig.amapDefaultLocation.length > 0 ? 'true' : 'false'));
 }
 
@@ -1119,7 +1128,8 @@ export function configureLocalProviderConfigFromRawJson(rawJson: string): void {
     gmailAuthUrl: firstText([parsed.GMAIL_AUTH_URL, parsed.gmailAuthUrl]),
     gmailOauthClientId: firstText([parsed.GMAIL_OAUTH_CLIENT_ID, parsed.GOOGLE_OAUTH_CLIENT_ID, parsed.gmailOauthClientId]),
     gmailOauthClientSecret: firstText([parsed.GMAIL_OAUTH_CLIENT_SECRET, parsed.GOOGLE_OAUTH_CLIENT_SECRET, parsed.gmailOauthClientSecret]),
-    gmailOauthRedirectUri: firstText([parsed.GMAIL_OAUTH_REDIRECT_URI, parsed.gmailOauthRedirectUri])
+    gmailOauthRedirectUri: firstText([parsed.GMAIL_OAUTH_REDIRECT_URI, parsed.gmailOauthRedirectUri]),
+    gmailMcpUserProject: firstText([parsed.GMAIL_MCP_USER_PROJECT, parsed.GOOGLE_CLOUD_PROJECT, parsed.gmailMcpUserProject])
   });
 }
 
@@ -1136,6 +1146,7 @@ export function localProviderConfigDebugSummary(): string {
     ', luckinMcpToken=' + (localProviderConfig.luckinMcpToken.length > 0 ? 'present(' + localProviderConfig.luckinMcpToken.length.toString() + ')' : 'missing') +
     ', gmailOauthClientId=' + (localProviderConfig.gmailOauthClientId.length > 0 ? 'present(' + localProviderConfig.gmailOauthClientId.length.toString() + ')' : 'missing') +
     ', gmailOauthClientSecret=' + (localProviderConfig.gmailOauthClientSecret.length > 0 ? 'present(' + localProviderConfig.gmailOauthClientSecret.length.toString() + ')' : 'missing') +
+    ', gmailMcpUserProject=' + (localProviderConfig.gmailMcpUserProject.length > 0 ? 'present' : 'missing') +
     ', defaultLocation=' + (localProviderConfig.amapDefaultLocation.length > 0 ? 'present' : 'missing');
 }
 
@@ -5737,7 +5748,8 @@ export function gmailOAuthConfigFromProvider(): GmailOAuthConfig {
   return {
     clientId: localProviderConfig.gmailOauthClientId,
     clientSecret: localProviderConfig.gmailOauthClientSecret,
-    redirectUri: localProviderConfig.gmailOauthRedirectUri.length > 0 ? localProviderConfig.gmailOauthRedirectUri : GMAIL_DEFAULT_REDIRECT_URI
+    redirectUri: localProviderConfig.gmailOauthRedirectUri.length > 0 ? localProviderConfig.gmailOauthRedirectUri : GMAIL_DEFAULT_REDIRECT_URI,
+    resource: GMAIL_MCP_RESOURCE
   };
 }
 
@@ -5755,7 +5767,8 @@ export async function prepareGmailOAuthAuthorizationUrl(): Promise<string> {
     clientId: config.clientId,
     redirectUri: config.redirectUri,
     state: pending.state,
-    codeChallenge: gmailPkceChallengeS256(pending.codeVerifier)
+    codeChallenge: gmailPkceChallengeS256(pending.codeVerifier),
+    resource: config.resource
   });
 }
 
@@ -5780,6 +5793,10 @@ async function gmailAccessTokenForMcp(): Promise<string> {
 }
 
 function gmailMcpRegistration(toolId: string, mcpToolName: string): DynamicToolRegistration {
+  const headers: Record<string, string> = {};
+  if (localProviderConfig.gmailMcpUserProject.length > 0) {
+    headers['x-goog-user-project'] = localProviderConfig.gmailMcpUserProject;
+  }
   return {
     toolId: toolId,
     manifestId: 'google.gmail',
@@ -5790,7 +5807,7 @@ function gmailMcpRegistration(toolId: string, mcpToolName: string): DynamicToolR
       url: GMAIL_MCP_SERVER_URL,
       command: '',
       args: [],
-      headers: {},
+      headers: headers,
       env: {}
     },
     mcpToolName: mcpToolName,
@@ -5827,6 +5844,16 @@ async function callLocalGmailTool(toolId: string, prompt: string, surfaceId: str
   }
 
   try {
+    if (gmailMcpClient === genericMcpClient) {
+      aiLogInfo('[AIPhone][GmailApiRequest] toolId=' + toolId);
+      const apiResults = await callGmailApiTool(toolId, prompt, accessToken);
+      if (toolId === 'gmail.draft.create' || toolId === 'gmail.draft.apply') {
+        return gmailDraftPreviewA2ui(surfaceId, apiResults[0]);
+      }
+      return gmailThreadResultsA2ui(surfaceId, toolId, apiResults);
+    }
+    aiLogInfo('[AIPhone][GmailMcpRequest] toolId=' + toolId +
+      ' mcpToolName=' + mcpToolName);
     const result = await gmailMcpClient.callTool(gmailMcpRegistration(toolId, mcpToolName), accessToken, gmailMcpArgsForPrompt(toolId, prompt));
     if (toolId === 'gmail.draft.create' || toolId === 'gmail.draft.apply') {
       return gmailDraftPreviewA2ui(surfaceId, result);

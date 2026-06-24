@@ -662,10 +662,10 @@ function layoutExpectationsForQuery(query) {
     return ['UnsafeActionBlocked', '不会自动发送 Gmail', 'gmail.message.send'];
   }
   if (/Gmail|谷歌邮箱|谷歌邮件/.test(query) && /写一封|写邮件|起草|草稿|回复|撰写/.test(query)) {
-    return ['接入工具：Gmail', 'gmail.draft.create', 'Google Workspace MCP OAuth'];
+    return ['Gmail Draft Preview', 'Gmail 草稿已创建', 'Draft ID'];
   }
   if (/Gmail|谷歌邮箱|谷歌邮件/.test(query)) {
-    return ['接入工具：Gmail', 'gmail.mail.search', '不会模拟 Gmail 邮件'];
+    return ['Gmail API', 'Thread ID', '没有找到匹配邮件'];
   }
   if (/出行方案|搜索出行|怎么去|比较出行|出行选项|整理可查|可查的出行/.test(query)) {
     return ['北京', '上海'];

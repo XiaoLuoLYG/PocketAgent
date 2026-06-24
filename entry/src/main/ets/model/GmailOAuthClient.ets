@@ -8,6 +8,7 @@ export const GMAIL_REFRESH_TOKEN_REF: string = 'gmail:mcp_refresh';
 export const GMAIL_TOKEN_SET_REF: string = 'gmail:mcp_tokens';
 export const GMAIL_PENDING_OAUTH_REF: string = 'gmail:mcp_pending_oauth';
 export const GMAIL_DEFAULT_REDIRECT_URI: string = 'com.example.aiphonedemo:/oauth/google';
+export const GMAIL_MCP_RESOURCE: string = 'https://gmailmcp.googleapis.com/mcp';
 export const GMAIL_OAUTH_SCOPES: string = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose';
 
 const GOOGLE_OAUTH_AUTH_URL: string = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -18,6 +19,7 @@ export interface GmailOAuthConfig {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
+  resource: string;
 }
 
 export interface GmailOAuthAuthorizeParams {
@@ -25,6 +27,7 @@ export interface GmailOAuthAuthorizeParams {
   redirectUri: string;
   state: string;
   codeChallenge: string;
+  resource: string;
 }
 
 export interface GmailOAuthRedirectResult {
@@ -61,12 +64,10 @@ export interface GmailOAuthTokenSet {
 export class GmailSearchThreadsArgs {
   query: string;
   pageSize: number;
-  view: string;
 
-  constructor(query: string, pageSize: number, view: string) {
+  constructor(query: string, pageSize: number) {
     this.query = query;
     this.pageSize = pageSize;
-    this.view = view;
   }
 }
 
@@ -205,6 +206,7 @@ export function buildGmailOAuthAuthorizationUrl(params: GmailOAuthAuthorizeParam
   appendFormPair(parts, 'access_type', 'offline');
   appendFormPair(parts, 'prompt', 'consent');
   appendFormPair(parts, 'include_granted_scopes', 'true');
+  appendFormPair(parts, 'resource', params.resource.trim());
   appendFormPair(parts, 'state', params.state.trim());
   appendFormPair(parts, 'code_challenge', params.codeChallenge.trim());
   appendFormPair(parts, 'code_challenge_method', 'S256');
@@ -232,6 +234,7 @@ export function buildGmailTokenExchangeBody(config: GmailOAuthConfig, code: stri
   appendFormPair(parts, 'code_verifier', codeVerifier);
   appendFormPair(parts, 'redirect_uri', config.redirectUri);
   appendFormPair(parts, 'grant_type', 'authorization_code');
+  appendFormPair(parts, 'resource', config.resource);
   return parts.join('&');
 }
 
@@ -241,6 +244,7 @@ export function buildGmailRefreshTokenBody(config: GmailOAuthConfig, refreshToke
   appendFormPair(parts, 'client_secret', config.clientSecret);
   appendFormPair(parts, 'refresh_token', refreshToken);
   appendFormPair(parts, 'grant_type', 'refresh_token');
+  appendFormPair(parts, 'resource', config.resource);
   return parts.join('&');
 }
 
@@ -424,7 +428,7 @@ function gmailSearchQuery(prompt: string): string {
 
 export function gmailMcpArgsForPrompt(toolId: string, prompt: string): Object {
   if (toolId === 'gmail.mail.search') {
-    return new GmailSearchThreadsArgs(gmailSearchQuery(prompt), 10, 'THREAD_VIEW_MINIMAL');
+    return new GmailSearchThreadsArgs(gmailSearchQuery(prompt), 10);
   }
   if (toolId === 'gmail.thread.read') {
     return new GmailGetThreadArgs(prompt.trim(), 'FULL_CONTENT');

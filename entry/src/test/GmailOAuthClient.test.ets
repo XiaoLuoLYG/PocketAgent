@@ -22,7 +22,8 @@ export default function gmailOAuthClientTest() {
         clientId: 'client-123.apps.googleusercontent.com',
         redirectUri: 'com.example.aiphonedemo:/oauth/google',
         state: 'state-123',
-        codeChallenge: 'challenge-456'
+        codeChallenge: 'challenge-456',
+        resource: 'https://gmailmcp.googleapis.com/mcp'
       });
 
       expect(url.indexOf('https://accounts.google.com/o/oauth2/v2/auth?')).assertEqual(0);
@@ -33,6 +34,7 @@ export default function gmailOAuthClientTest() {
       expect(url.indexOf('code_challenge=challenge-456')).assertLarger(-1);
       expect(url.indexOf('code_challenge_method=S256')).assertLarger(-1);
       expect(url.indexOf('access_type=offline')).assertLarger(-1);
+      expect(url.indexOf('resource=https%3A%2F%2Fgmailmcp.googleapis.com%2Fmcp')).assertLarger(-1);
     });
 
     it('generates the RFC 7636 S256 PKCE challenge', 0, () => {
@@ -55,20 +57,24 @@ export default function gmailOAuthClientTest() {
       const exchange = buildGmailTokenExchangeBody({
         clientId: 'client-123',
         clientSecret: 'secret-456',
-        redirectUri: 'com.example.aiphonedemo:/oauth/google'
+        redirectUri: 'com.example.aiphonedemo:/oauth/google',
+        resource: 'https://gmailmcp.googleapis.com/mcp'
       }, 'auth-code', 'verifier-789');
       const refresh = buildGmailRefreshTokenBody({
         clientId: 'client-123',
         clientSecret: '',
-        redirectUri: 'com.example.aiphonedemo:/oauth/google'
+        redirectUri: 'com.example.aiphonedemo:/oauth/google',
+        resource: 'https://gmailmcp.googleapis.com/mcp'
       }, 'refresh-token');
 
       expect(exchange.indexOf('grant_type=authorization_code')).assertLarger(-1);
       expect(exchange.indexOf('code=auth-code')).assertLarger(-1);
       expect(exchange.indexOf('code_verifier=verifier-789')).assertLarger(-1);
       expect(exchange.indexOf('client_secret=secret-456')).assertLarger(-1);
+      expect(exchange.indexOf('resource=https%3A%2F%2Fgmailmcp.googleapis.com%2Fmcp')).assertLarger(-1);
       expect(refresh.indexOf('grant_type=refresh_token')).assertLarger(-1);
       expect(refresh.indexOf('refresh_token=refresh-token')).assertLarger(-1);
+      expect(refresh.indexOf('resource=https%3A%2F%2Fgmailmcp.googleapis.com%2Fmcp')).assertLarger(-1);
       expect(refresh.indexOf('client_secret=')).assertEqual(-1);
     });
 
