@@ -1,12 +1,14 @@
 # HarmonyAgentPhone
 
-HarmonyAgentPhone is a HarmonyOS demo that turns a short request into a focused phone task. It can open travel results, nearby places, Gmail views, weather, and pinned home cards as native ArkUI screens.
+HarmonyAgentPhone is about OpenAI's AI phone idea: the agent is the entry point, and apps become tools behind the task.
+
+Today, ordering milk tea can mean jumping between Meituan, Taobao Flash, and other apps. Travel has the same problem across rail and flight platforms. HarmonyAgentPhone points to a simpler pattern: ask once, compare the options in one place, and let the agent handle the rest of the flow.
+
+The HarmonyOS app is a temporary shell. The plan is to make the app layer optional.
 
 ![HarmonyAgentPhone home screen](docs/assets/screenshots/home.jpg)
 
-The app is built around one compact flow: type a request, review the card, and keep useful results on the home screen.
-
-## What it shows
+## What it can show now
 
 - Travel choices across rail and flight
 - Nearby place search with map actions
@@ -16,59 +18,43 @@ The app is built around one compact flow: type a request, review the card, and k
 
 ## Screenshots
 
-### Travel planning
+<div align="center">
+  <img src="docs/assets/screenshots/travel-results.jpg" width="48%" alt="Travel planning" />
+  <img src="docs/assets/screenshots/coffee-search.jpg" width="48%" alt="Nearby coffee search" />
+</div>
 
-Query: `我明天要从北京去上海，帮我搜索合适的出行方式`
+<p align="center"><sub>Travel planning | Nearby coffee</sub></p>
 
-Mixed rail and flight results appear in a single task card with filters and detail rows.
+<div align="center">
+  <img src="docs/assets/screenshots/gmail-inbox.jpg" width="48%" alt="Gmail inbox" />
+  <img src="docs/assets/screenshots/home-cards.jpg" width="48%" alt="HarmonyOS home cards" />
+</div>
 
-![Travel planning](docs/assets/screenshots/travel-results.jpg)
-
-### Nearby coffee
-
-Query: `帮我查询深圳坂田基地附近的咖啡店`
-
-Nearby places are grouped into clear cards with distance, address, map, and pin actions.
-
-![Nearby coffee search](docs/assets/screenshots/coffee-search.jpg)
-
-### Gmail inbox
-
-Query: `帮我看 Gmail 里最新的重要邮件`
-
-The inbox view keeps message summaries, labels, and dates readable inside the app.
-
-![Gmail inbox](docs/assets/screenshots/gmail-inbox.jpg)
-
-### Home cards
-
-Selected results can stay on the HarmonyOS home screen as quick action cards.
-
-![HarmonyOS home cards](docs/assets/screenshots/home-cards.jpg)
+<p align="center"><sub>Gmail inbox | HarmonyOS home cards</sub></p>
 
 ## Video previews
 
-GitHub README pages do not always show repository MP4 files as inline players. These short GIF previews play in place. Click a preview to open the full MP4.
+GitHub README pages do not always show repository MP4 files as inline players. These GIFs play in place. Click any preview to open the MP4.
 
-### 我明天要从北京去上海，帮我搜索合适的出行方式
+<div align="center">
+  <a href="docs/assets/demos/travel-card.mp4"><img src="docs/assets/demos/gif/beijing-to-shanghai-travel.gif" width="48%" alt="我明天要从北京去上海，帮我搜索合适的出行方式" /></a>
+  <a href="docs/assets/demos/food-card.mp4"><img src="docs/assets/demos/gif/coffee-near-huawei-base.gif" width="48%" alt="帮我查询深圳坂田基地附近的咖啡店" /></a>
+</div>
 
-[![Travel card video preview](docs/assets/demos/gif/beijing-to-shanghai-travel.gif)](docs/assets/demos/travel-card.mp4)
+<p align="center"><sub><code>我明天要从北京去上海，帮我搜索合适的出行方式</code> | <code>帮我查询深圳坂田基地附近的咖啡店</code></sub></p>
 
-### 帮我查询深圳坂田基地附近的咖啡店
+<div align="center">
+  <a href="docs/assets/demos/gmail-search.mp4"><img src="docs/assets/demos/gif/gmail-important-mail.gif" width="48%" alt="帮我看 Gmail 里最新的重要邮件" /></a>
+  <a href="docs/assets/demos/gmail-draft.mp4"><img src="docs/assets/demos/gif/gmail-draft-reply.gif" width="48%" alt="帮我给 Gmail 里最近一封邮件起草回复" /></a>
+</div>
 
-[![Coffee search video preview](docs/assets/demos/gif/coffee-near-huawei-base.gif)](docs/assets/demos/food-card.mp4)
+<p align="center"><sub><code>帮我看 Gmail 里最新的重要邮件</code> | <code>帮我给 Gmail 里最近一封邮件起草回复</code></sub></p>
 
-### 帮我看 Gmail 里最新的重要邮件
+<div align="center">
+  <a href="docs/assets/demos/weather-dynamic-mcp.mp4"><img src="docs/assets/demos/gif/shenzhen-weather.gif" width="48%" alt="帮我查深圳明天天气" /></a>
+</div>
 
-[![Gmail search video preview](docs/assets/demos/gif/gmail-important-mail.gif)](docs/assets/demos/gmail-search.mp4)
-
-### 帮我给 Gmail 里最近一封邮件起草回复
-
-[![Gmail draft video preview](docs/assets/demos/gif/gmail-draft-reply.gif)](docs/assets/demos/gmail-draft.mp4)
-
-### 帮我查深圳明天天气
-
-[![Weather video preview](docs/assets/demos/gif/shenzhen-weather.gif)](docs/assets/demos/weather-dynamic-mcp.mp4)
+<p align="center"><sub><code>帮我查深圳明天天气</code></sub></p>
 
 ## Run locally
 
