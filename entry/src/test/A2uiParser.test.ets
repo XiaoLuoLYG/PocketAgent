@@ -369,6 +369,42 @@ export default function a2uiParserTest() {
       expect(componentById(surface, 'body') !== null).assertTrue();
     });
 
+    it('clears stale thoughts when a same-surface request starts a new data model', 0, () => {
+      const store = new A2uiSurfaceStore();
+      store.apply(parseA2uiEnvelope('{"createSurface":{"surfaceId":"surface_model","root":"root","title":"旧工具","status":"ready","sendDataModel":true}}'));
+      store.apply(parseA2uiEnvelope('{"updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"旧工具","status":"ready"},{"id":"thinking","component":"ThinkingStream","title":"旧工具","dataPath":"/thoughts","status":"ready"}]}}'));
+      store.apply(parseA2uiEnvelope(
+        '{"updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在识别出行约束","正在等待 12306 和飞常准返回一段更长的旧文案"]}}'
+      ));
+
+      store.apply(parseA2uiEnvelope('{"createSurface":{"surfaceId":"surface_model","root":"root","title":"正在搜索外卖","status":"calling_tool","sendDataModel":true}}'));
+      store.apply(parseA2uiEnvelope(
+        '{"updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在等待外卖来源返回"]}}'
+      ));
+
+      const surface = store.getSurface();
+      expect(surface.dataModelJson.indexOf('外卖来源')).assertLarger(-1);
+      expect(surface.dataModelJson.indexOf('12306')).assertEqual(-1);
+      expect(surface.dataModelJson.indexOf('飞常准')).assertEqual(-1);
+    });
+
+    it('keeps food results when a same-surface partial stream changes status to ready', 0, () => {
+      const store = new A2uiSurfaceStore();
+      store.apply(parseA2uiEnvelope('{"createSurface":{"surfaceId":"surface_food","root":"root","title":"外卖聚合搜索","intent":"food","status":"calling_tool","sendDataModel":true}}'));
+      store.apply(parseA2uiEnvelope('{"updateComponents":{"surfaceId":"surface_food","components":[{"id":"root","component":"SurfaceRoot","child":"results","title":"外卖聚合搜索","status":"calling_tool"},{"id":"results","component":"FoodChoices","title":"外卖聚合搜索","dataPath":"/foods","status":"calling_tool"}]}}'));
+      store.apply(parseA2uiEnvelope('{"updateDataModel":{"surfaceId":"surface_food","path":"/foods","value":[{"name":"坂田基地咖啡店","category":"咖啡","address":"深圳坂田基地附近","distance":"300米","sourceTags":["高德"]}]}}'));
+
+      store.apply(parseA2uiEnvelope('{"createSurface":{"surfaceId":"surface_food","root":"root","title":"外卖聚合搜索","intent":"food","status":"ready","sendDataModel":true}}'));
+      store.apply(parseA2uiEnvelope('{"updateComponents":{"surfaceId":"surface_food","components":[{"id":"root","component":"SurfaceRoot","child":"results","title":"外卖聚合搜索","status":"ready"},{"id":"results","component":"FoodChoices","title":"外卖聚合搜索","dataPath":"/foods","status":"ready"}]}}'));
+
+      const surface = store.getSurface();
+      const food = componentById(surface, 'results');
+      expect(food !== null).assertTrue();
+      if (food !== null) {
+        expect(foodOptions(surface, food)[0].name).assertEqual('坂田基地咖啡店');
+      }
+    });
+
     it('apply failure does not wipe existing surface state', 0, () => {
       const store = new A2uiSurfaceStore();
       store.apply(parseA2uiEnvelope('{"createSurface":{"surfaceId":"s","root":"root","title":"Test"}}'));

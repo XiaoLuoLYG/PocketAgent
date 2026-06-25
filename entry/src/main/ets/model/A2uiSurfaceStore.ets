@@ -563,6 +563,9 @@ export class A2uiSurfaceStore {
           'thinking' : envelope.createSurface.status;
         const preservedThoughts = parseDataModel(this.surface.dataModelJson).thoughts;
         if (this.surface.surfaceId === nextSurfaceId && this.surface.components.length > 0) {
+          if (envelope.createSurface.sendDataModel === true && nextStatus === 'calling_tool') {
+            this.surface.dataModelJson = JSON.stringify(emptyDataModel());
+          }
           this.surface.rootId = nextRootId;
           this.surface.title = nextTitle;
           this.surface.intent = nextIntent;

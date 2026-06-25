@@ -5755,14 +5755,22 @@ export function gmailOAuthConfigFromProvider(): GmailOAuthConfig {
 
 export async function prepareGmailOAuthAuthorizationUrl(): Promise<string> {
   if (localProviderConfig.gmailAuthUrl.length > 0) {
+    aiLogInfo('[AIPhone][GmailOAuthAuthorizeUrl] source=configured-url');
     return localProviderConfig.gmailAuthUrl;
   }
   const config = gmailOAuthConfigFromProvider();
   if (config.clientId.length === 0 || config.redirectUri.length === 0) {
+    aiLogInfo('[AIPhone][GmailOAuthAuthorizeUrl] source=setup-docs clientConfigured=' +
+      (config.clientId.length > 0 ? 'true' : 'false') +
+      ' redirectConfigured=' + (config.redirectUri.length > 0 ? 'true' : 'false'));
     return GMAIL_MCP_AUTH_SETUP_URL;
   }
   const pending = createGmailOAuthPending();
   await saveGmailOAuthPending(gmailCredentialStore, pending);
+  aiLogInfo('[AIPhone][GmailOAuthPendingSaved] stateChars=' + pending.state.length.toString() +
+    ' verifierChars=' + pending.codeVerifier.length.toString() +
+    ' redirectChars=' + config.redirectUri.length.toString() +
+    ' clientChars=' + config.clientId.length.toString());
   return buildGmailOAuthAuthorizationUrl({
     clientId: config.clientId,
     redirectUri: config.redirectUri,
@@ -5773,8 +5781,12 @@ export async function prepareGmailOAuthAuthorizationUrl(): Promise<string> {
 }
 
 async function gmailAccessTokenForMcp(): Promise<string> {
+  aiLogInfo('[AIPhone][GmailAccessLoad] start');
   const token = await loadGmailOAuthTokenSet(gmailCredentialStore);
   if (token !== null) {
+    aiLogInfo('[AIPhone][GmailAccessLoad] tokenSet=true accessChars=' + token.accessToken.length.toString() +
+      ' refreshChars=' + token.refreshToken.length.toString() +
+      ' fresh=' + (isGmailAccessTokenFresh(token) ? 'true' : 'false'));
     if (isGmailAccessTokenFresh(token)) {
       return token.accessToken;
     }
@@ -5785,11 +5797,16 @@ async function gmailAccessTokenForMcp(): Promise<string> {
       }
       const refreshed = await refreshGmailOAuthAccessToken(config, token.refreshToken);
       const saved = await saveGmailOAuthTokenSet(gmailCredentialStore, refreshed);
+      aiLogInfo('[AIPhone][GmailAccessRefreshOk] accessChars=' + saved.accessToken.length.toString() +
+        ' refreshChars=' + saved.refreshToken.length.toString());
       return saved.accessToken;
     }
+    aiLogInfo('[AIPhone][GmailAccessLoad] expiredNoRefresh=true returningAccessChars=' + token.accessToken.length.toString());
     return token.accessToken;
   }
-  return gmailCredentialStore.get(GMAIL_ACCESS_TOKEN_REF);
+  const fallback = await gmailCredentialStore.get(GMAIL_ACCESS_TOKEN_REF);
+  aiLogInfo('[AIPhone][GmailAccessLoad] tokenSet=false fallbackAccessChars=' + fallback.length.toString());
+  return fallback;
 }
 
 function gmailMcpRegistration(toolId: string, mcpToolName: string): DynamicToolRegistration {
@@ -5840,6 +5857,7 @@ async function callLocalGmailTool(toolId: string, prompt: string, surfaceId: str
     return gmailThreadResultsA2ui(surfaceId, toolId, [gmailErrorResult(mcpToolName, describeThrown(error))]);
   }
   if (accessToken.length === 0) {
+    aiLogInfo('[AIPhone][GmailAccessMissing] toolId=' + toolId);
     return gmailAuthRequiredA2ui(surfaceId, toolId, gmailAuthUnavailableMessage(toolId, prompt), await prepareGmailOAuthAuthorizationUrl());
   }
 

@@ -9,12 +9,14 @@ import {
 } from '../../../model/A2uiTypes';
 import { rootComponentIdOf } from '../render/A2uiRenderData';
 import { A2uiNodeView } from './A2uiNodeView';
+import { QueryPendingSurfaceView } from './QueryPendingSurfaceView';
 
 @Component
 export struct A2uiSurfaceView {
   @Prop surface: A2uiSurfaceState = emptyA2uiSurface();
   @Prop renderTick: number = 0;
   @Prop isBusy: boolean = false;
+  @Prop showPendingSurface: boolean = false;
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
   onPinNavigationCard: (item: A2uiFoodData) => void = (_item: A2uiFoodData) => {};
   onPinTravelNavigationCard: (item: A2uiTravelOptionData) => void = (_item: A2uiTravelOptionData) => {};
@@ -27,7 +29,9 @@ export struct A2uiSurfaceView {
 
   build() {
     Scroll() {
-      if (this.hasRenderableSurface()) {
+      if (this.showPendingSurface) {
+        QueryPendingSurfaceView()
+      } else if (this.hasRenderableSurface()) {
         A2uiNodeView({
           surface: this.surface,
           componentId: rootComponentIdOf(this.surface),

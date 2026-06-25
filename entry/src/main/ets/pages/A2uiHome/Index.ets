@@ -103,6 +103,7 @@ struct Index {
   @State refreshTick: number = initialConnectionState.refreshTick;
   @State currentSurface: A2uiSurfaceState = initialSurface;
   @State surfaceRenderTick: number = 0;
+  @State isAwaitingFirstSurface: boolean = false;
   @State inputText: string = '帮我查询深圳北站附近的餐馆。';
   @State inputPlaceholder: string = DEFAULT_INPUT_PLACEHOLDER;
   @State messages: A2uiMessage[] = [];
@@ -709,6 +710,7 @@ struct Index {
       ' baseUrl=' + this.baseUrl);
     this.inputText = inputTextAfterPromptSubmit(this.inputText);
     this.isBusy = true;
+    this.isAwaitingFirstSurface = true;
     this.markChecking('正在生成 A2UI...');
     try {
       const result: A2uiCallResult = await callLocalModel(
@@ -716,6 +718,7 @@ struct Index {
         trimmed,
         this.recentMessages(),
         (surface: A2uiSurfaceState, raw: string, meta?: A2uiStreamMeta) => {
+          this.isAwaitingFirstSurface = false;
           this.applySurface(surface);
           const thinkClosed = meta?.thinkClosed === true || modelThinkCloseSeen(raw);
           this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
@@ -727,8 +730,9 @@ struct Index {
             error: ''
           }));
         },
-        this.currentSurface
+        null
       );
+      this.isAwaitingFirstSurface = false;
       this.applySurface(result.surface);
       aiLogInfo('[AIPhone][A2uiHomeModelResult] ok=' + (result.ok ? 'true' : 'false') +
         ' errorChars=' + result.error.length.toString() +
@@ -757,6 +761,7 @@ struct Index {
         }
       }
     } catch (error) {
+      this.isAwaitingFirstSurface = false;
       const message = error instanceof Error ? error.message : JSON.stringify(error);
       aiLogError('[AIPhone][A2uiHomeModelException] ' + logSnippet(message));
       this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
@@ -768,6 +773,7 @@ struct Index {
         error: message
       }));
     } finally {
+      this.isAwaitingFirstSurface = false;
       this.isBusy = false;
     }
   }
@@ -1031,7 +1037,7 @@ struct Index {
           error: ''
         }));
       },
-      this.currentSurface
+      null
     );
 
     aiLogInfo('[AIPhone][A2uiHomeToolResult] ok=' + (result.ok ? 'true' : 'false') +
@@ -1158,6 +1164,7 @@ struct Index {
         messages: this.messages,
         currentSurface: this.currentSurface,
         surfaceRenderTick: this.surfaceRenderTick,
+        isAwaitingFirstSurface: this.isAwaitingFirstSurface,
         inputPlaceholder: this.inputPlaceholder,
         isSocialReturnAvailable: this.hasSocialReturnSurface,
         onToggleHistory: () => {

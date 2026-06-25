@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { flightOptions, foodOptions, trainOptions } from '../main/ets/model/A2uiData';
+import { flightOptions, foodOptions, foodVisualSourceTag, trainOptions } from '../main/ets/model/A2uiData';
 import {
   A2uiComponent,
   A2uiFlightData,
@@ -132,6 +132,13 @@ export default function a2uiBusinessDataTest() {
       expect(trainOptions(surface, trainComponent)[0].trainCode).assertEqual('G1');
       expect(flightOptions(surface, flightComponent)[0].flightNo).assertEqual('MU2157');
       expect(foodOptions(surface, foodComponent)[0].name).assertEqual('测试餐厅');
+    });
+
+    it('uses provider color only for single-source food cards', 0, () => {
+      expect(foodVisualSourceTag(['高德'])).assertEqual('高德');
+      expect(foodVisualSourceTag(['高德', '高德'])).assertEqual('高德');
+      expect(foodVisualSourceTag(['高德', '腾讯地图'])).assertEqual('');
+      expect(foodVisualSourceTag([])).assertEqual('');
     });
   });
 }

@@ -2,7 +2,7 @@ import { common, Want } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { formBindingData, formProvider } from '@kit.FormKit';
 import { A2uiAction, A2uiComponent, A2uiSurfaceState, emptyA2uiSurface } from '../../../model/A2uiTypes';
-import { actionsOf, foodOptions, A2uiFoodOption } from '../../../model/A2uiData';
+import { actionsOf, foodOptions, foodVisualSourceTag, uniqueFoodSourceTags, A2uiFoodOption } from '../../../model/A2uiData';
 import { aiLogError, aiLogInfo } from '../../../model/AiphoneLogger';
 import { buildSystemFoodNavigationUri, describeSystemFoodNavigationUri } from '../../../model/FoodNavigation';
 import {
@@ -115,24 +115,11 @@ export struct FoodChoicesView {
   }
 
   private sourceTags(item: A2uiFoodOption): string[] {
-    if (item.sourceTags === undefined || item.sourceTags === null || !Array.isArray(item.sourceTags)) {
-      return [];
-    }
-    const tags: string[] = [];
-    item.sourceTags.forEach((tag: string) => {
-      if (tag.length > 0 && tags.indexOf(tag) < 0) {
-        tags.push(tag);
-      }
-    });
-    return tags;
+    return uniqueFoodSourceTags(item.sourceTags);
   }
 
   private primarySource(item: A2uiFoodOption): string {
-    const tags = this.sourceTags(item);
-    if (tags.length > 0) {
-      return tags[0];
-    }
-    return '';
+    return foodVisualSourceTag(item.sourceTags);
   }
 
   private sourceAccent(source: string): string {

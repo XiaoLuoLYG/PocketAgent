@@ -6,6 +6,7 @@ import {
   inputTextAfterPromptSubmit,
   isPromptInputEnabled,
   nextSendSpinnerRotation,
+  shouldShowQueryPendingSurface,
   shouldApplySurfaceUpdate,
   updateConnectionPanelState
 } from '../main/ets/pages/A2uiHome/state/A2uiHomeState';
@@ -77,6 +78,12 @@ export default function a2uiHomeStateTest() {
       expect(isPromptInputEnabled(false)).assertTrue();
       expect(isPromptInputEnabled(true)).assertFalse();
       expect(inputTextAfterPromptSubmit('帮我查深圳北站附近餐馆')).assertEqual('帮我查深圳北站附近餐馆');
+    });
+
+    it('shows the query pending surface only before the first new render arrives', 0, () => {
+      expect(shouldShowQueryPendingSurface(true, true)).assertTrue();
+      expect(shouldShowQueryPendingSurface(true, false)).assertFalse();
+      expect(shouldShowQueryPendingSurface(false, true)).assertFalse();
     });
   });
 }

@@ -435,6 +435,24 @@ export function foodOptions(surface: A2uiSurfaceState, component: A2uiComponent)
   return [];
 }
 
+export function uniqueFoodSourceTags(sourceTags: string[] | null | undefined): string[] {
+  if (sourceTags === undefined || sourceTags === null || !Array.isArray(sourceTags)) {
+    return [];
+  }
+  const tags: string[] = [];
+  sourceTags.forEach((tag: string) => {
+    if (tag.length > 0 && tags.indexOf(tag) < 0) {
+      tags.push(tag);
+    }
+  });
+  return tags;
+}
+
+export function foodVisualSourceTag(sourceTags: string[] | null | undefined): string {
+  const tags = uniqueFoodSourceTags(sourceTags);
+  return tags.length === 1 ? tags[0] : '';
+}
+
 export function socialMessages(surface: A2uiSurfaceState, component: A2uiComponent): A2uiSocialMessage[] {
   const data = resolveData(surface, component.dataPath);
   if (component.dataPath === '/social/messages') {

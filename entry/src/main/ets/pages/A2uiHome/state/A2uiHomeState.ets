@@ -57,6 +57,10 @@ export function isPromptInputEnabled(isBusy: boolean): boolean {
   return !isBusy;
 }
 
+export function shouldShowQueryPendingSurface(isBusy: boolean, isAwaitingFirstSurface: boolean): boolean {
+  return isBusy && isAwaitingFirstSurface;
+}
+
 export function inputTextAfterPromptSubmit(current: string): string {
   return current;
 }

@@ -2,6 +2,7 @@ import { http } from '@kit.NetworkKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import util from '@ohos.util';
 import { CredentialStore } from './DynamicCredentialStore';
+import { aiLogInfo } from './AiphoneLogger';
 
 export const GMAIL_ACCESS_TOKEN_REF: string = 'gmail:mcp_oauth';
 export const GMAIL_REFRESH_TOKEN_REF: string = 'gmail:mcp_refresh';
@@ -258,6 +259,14 @@ function responseText(result: Object | string | number | boolean | ArrayBuffer):
   return textOf(result);
 }
 
+function tokenResponseSummary(response: GoogleOAuthTokenResponse): string {
+  return 'accessChars=' + textOf(response.access_token).length.toString() +
+    ' refreshChars=' + textOf(response.refresh_token).length.toString() +
+    ' expiresIn=' + numberOf(response.expires_in, 0).toString() +
+    ' tokenType=' + textOf(response.token_type) +
+    ' scopeChars=' + textOf(response.scope).length.toString();
+}
+
 async function postGoogleTokenForm(body: string): Promise<GoogleOAuthTokenResponse> {
   const request = http.createHttp();
   try {
@@ -273,10 +282,17 @@ async function postGoogleTokenForm(body: string): Promise<GoogleOAuthTokenRespon
     });
     const text = responseText(response.result);
     const payload = JSON.parse(text) as GoogleOAuthTokenResponse;
+    aiLogInfo('[AIPhone][GmailOAuthTokenHttp] code=' + response.responseCode.toString() +
+      ' responseChars=' + text.length.toString() +
+      ' hasOAuthError=' + (textOf(payload.error).length > 0 ? 'true' : 'false'));
     if (response.responseCode < 200 || response.responseCode >= 300 || textOf(payload.error).length > 0) {
       const message = textOf(payload.error_description).length > 0 ? textOf(payload.error_description) : textOf(payload.error);
+      aiLogInfo('[AIPhone][GmailOAuthTokenError] code=' + response.responseCode.toString() +
+        ' oauthError=' + textOf(payload.error) +
+        ' descriptionChars=' + textOf(payload.error_description).length.toString());
       throw new Error(message.length > 0 ? message : 'Google OAuth token exchange failed');
     }
+    aiLogInfo('[AIPhone][GmailOAuthTokenOk] ' + tokenResponseSummary(payload));
     return payload;
   } finally {
     request.destroy();
@@ -326,6 +342,9 @@ export async function saveGmailOAuthTokenSet(
   const existing = await loadGmailOAuthTokenSet(store);
   const refreshToken = textOf(response.refresh_token).length > 0 ? textOf(response.refresh_token) :
     (existing === null ? await store.get(GMAIL_REFRESH_TOKEN_REF) : existing.refreshToken);
+  aiLogInfo('[AIPhone][GmailOAuthTokenSaveStart] ' + tokenResponseSummary(response) +
+    ' existingTokenSet=' + (existing === null ? 'false' : 'true') +
+    ' persistedRefreshChars=' + refreshToken.length.toString());
   const expiresIn = numberOf(response.expires_in, 3600);
   const token: GmailOAuthTokenSet = {
     accessToken: accessToken,
@@ -339,6 +358,9 @@ export async function saveGmailOAuthTokenSet(
   if (token.refreshToken.length > 0) {
     await store.put(GMAIL_REFRESH_TOKEN_REF, token.refreshToken);
   }
+  aiLogInfo('[AIPhone][GmailOAuthTokenSaved] tokenSetChars=' + JSON.stringify(token).length.toString() +
+    ' accessChars=' + token.accessToken.length.toString() +
+    ' refreshChars=' + token.refreshToken.length.toString());
   return token;
 }
 
@@ -371,10 +393,17 @@ export async function handleGmailOAuthRedirect(
   nowMs: number = Date.now()
 ): Promise<GmailOAuthTokenSet> {
   const redirect = parseGmailOAuthRedirect(uri);
+  aiLogInfo('[AIPhone][GmailOAuthRedirectParsed] ok=' + (redirect.ok ? 'true' : 'false') +
+    ' codeChars=' + redirect.code.length.toString() +
+    ' stateChars=' + redirect.state.length.toString() +
+    ' error=' + redirect.error);
   if (!redirect.ok) {
     throw new Error(redirect.error.length > 0 ? redirect.error : 'Gmail OAuth callback failed');
   }
   const pending = await consumeGmailOAuthPending(store);
+  aiLogInfo('[AIPhone][GmailOAuthPendingLoaded] found=' + (pending === null ? 'false' : 'true') +
+    ' stateMatch=' + (pending !== null && pending.state === redirect.state ? 'true' : 'false') +
+    ' ageMs=' + (pending === null ? '0' : (nowMs - pending.createdAtMs).toString()));
   if (pending === null || pending.state !== redirect.state) {
     throw new Error('Gmail OAuth state did not match');
   }

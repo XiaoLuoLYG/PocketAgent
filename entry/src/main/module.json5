@@ -84,6 +84,9 @@
             ],
             "uris": [
               {
+                "scheme": "com.example.aiphonedemo"
+              },
+              {
                 "scheme": "com.example.aiphonedemo",
                 "pathStartWith": "oauth/google"
               },
@@ -96,6 +99,13 @@
                 "scheme": "aiphone",
                 "host": "oauth",
                 "pathStartWith": "google"
+              },
+              {
+                "scheme": "com.googleusercontent.apps.358078200829-covuu6l8dgvs7kaejua7mrkke7e8833b"
+              },
+              {
+                "scheme": "com.googleusercontent.apps.358078200829-covuu6l8dgvs7kaejua7mrkke7e8833b",
+                "pathStartWith": "oauth2redirect"
               }
             ]
           }

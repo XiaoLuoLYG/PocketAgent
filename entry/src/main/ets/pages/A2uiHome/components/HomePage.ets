@@ -20,7 +20,8 @@ import { HistoryPanelView } from './HistoryPanelView';
 import { A2uiSurfaceView } from './A2uiSurfaceView';
 import {
   isPromptInputEnabled,
-  nextSendSpinnerRotation
+  nextSendSpinnerRotation,
+  shouldShowQueryPendingSurface
 } from '../state/A2uiHomeState';
 import {
   A2UI_HOME_MAX_WIDTH
@@ -40,6 +41,7 @@ export struct HomePage {
   @Prop messages: A2uiMessage[] = [];
   @Prop currentSurface: A2uiSurfaceState = emptyA2uiSurface();
   @Prop surfaceRenderTick: number = 0;
+  @Prop isAwaitingFirstSurface: boolean = false;
   @Prop inputPlaceholder: string = '告诉 PocketAgent 你想完成什么';
   @Prop isSocialReturnAvailable: boolean = false;
   @State sendSpinnerRotation: number = 0;
@@ -187,6 +189,7 @@ export struct HomePage {
         surface: this.currentSurface,
         renderTick: this.surfaceRenderTick,
         isBusy: this.isBusy,
+        showPendingSurface: shouldShowQueryPendingSurface(this.isBusy, this.isAwaitingFirstSurface),
         onAction: this.onAction,
         onPinNavigationCard: (item: A2uiFoodData) => {
           this.onPinNavigationCard(item);
