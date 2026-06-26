@@ -556,7 +556,7 @@ export class A2uiSurfaceStore {
         const nextRootId = envelope.createSurface.root === undefined || envelope.createSurface.root.length === 0 ?
           'root' : envelope.createSurface.root;
         const nextTitle = envelope.createSurface.title === undefined || envelope.createSurface.title.length === 0 ?
-          'HarmonyAgentPhone' : envelope.createSurface.title;
+          'Appless Phone' : envelope.createSurface.title;
         const nextIntent = envelope.createSurface.intent === undefined || envelope.createSurface.intent.length === 0 ?
           'general' : envelope.createSurface.intent;
         const nextStatus = envelope.createSurface.status === undefined || envelope.createSurface.status.length === 0 ?
@@ -654,7 +654,7 @@ export function createSeedA2uiSurface(): A2uiSurfaceState {
     createSurface: {
       surfaceId: 'surface_seed',
       root: 'root',
-      title: 'HarmonyAgentPhone',
+      title: 'Appless Phone',
       intent: 'general',
       status: 'idle',
       sendDataModel: true

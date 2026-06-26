@@ -1,4 +1,4 @@
-# HarmonyAgentPhone 社交通知权限准备清单
+# Appless Phone 社交通知权限准备清单
 
 ## 要申请的权限
 
@@ -9,7 +9,7 @@
 - 设备范围：Phone、Tablet
 - API 要求：通知订阅扩展能力从 API 22 开始支持。
 
-不要把第一版通知中心聚合申请成 `ohos.permission.NOTIFICATION_CONTROLLER`。那条更偏系统通知控制/系统 API 路线，普通三方应用通常不应该用它做通知订阅闭环。HarmonyAgentPhone 现在走官方 `NotificationSubscriberExtensionAbility` 路线，所以申请 `ohos.permission.SUBSCRIBE_NOTIFICATION`。
+不要把第一版通知中心聚合申请成 `ohos.permission.NOTIFICATION_CONTROLLER`。那条更偏系统通知控制/系统 API 路线，普通三方应用通常不应该用它做通知订阅闭环。Appless Phone 现在走官方 `NotificationSubscriberExtensionAbility` 路线，所以申请 `ohos.permission.SUBSCRIBE_NOTIFICATION`。
 
 ## 项目侧已准备
 
@@ -17,7 +17,7 @@
 - `entry/src/main/module.json5` 已注册 `NotificationSubscriberExtAbility`，类型为 `notificationSubscriber`。
 - `entry/src/main/ets/extensionability/NotificationSubscriberExtAbility.ets` 会接收系统通知回调，记录 `[AIPhone][SocialNotificationReceived]` 日志。
 - `entry/src/main/ets/model/SocialNotificationArchive.ets` 只归档识别为微信、且标题和正文都非空的真实通知。
-- HarmonyAgentPhone 的“社交权限诊断”里有“打开通知授权”按钮，调用系统通知订阅授权页。
+- Appless Phone 的“社交权限诊断”里有“打开通知授权”按钮，调用系统通知订阅授权页。
 
 ## AppGallery Connect 申请步骤
 
@@ -28,7 +28,7 @@
 5. 在权限搜索框里搜索并选择：`ohos.permission.SUBSCRIBE_NOTIFICATION`。
 6. 权限使用场景建议填写：
 
-   `HarmonyAgentPhone 社交收件箱需要在用户主动授权后读取本机微信通知，用于在 HarmonyAgentPhone 内展示真实新消息并支持用户输入原文转发回复。消息仅保存在设备本地短期缓存，不上传服务器，不生成模拟消息，不读取未授权应用通知。`
+   `Appless Phone 社交收件箱需要在用户主动授权后读取本机微信通知，用于在 Appless Phone 内展示真实新消息并支持用户输入原文转发回复。消息仅保存在设备本地短期缓存，不上传服务器，不生成模拟消息，不读取未授权应用通知。`
 
 7. 审核通过后，重新创建或更新调试 Profile。
 8. 在调试 Profile 的“申请权限”里选择“受限 ACL 权限（HarmonyOS API9及以上）”，确保已获批的 `ohos.permission.SUBSCRIBE_NOTIFICATION` 被加入 Profile。
@@ -40,13 +40,13 @@
 ## 设备侧授权步骤
 
 1. 安装带新 Profile 签名的 HAP。
-2. 打开 HarmonyAgentPhone，点击顶部“社交”。
+2. 打开 Appless Phone，点击顶部“社交”。
 3. 在“社交权限诊断”里点击“打开通知授权”。
 4. 在系统弹窗里开启“允许获取本机通知”。
 5. 在“已获取的本机通知”应用列表里开启微信。
-6. 确认微信系统通知和消息详情预览已开启，否则 HarmonyAgentPhone 只能拿到系统实际展示的隐藏文案。
+6. 确认微信系统通知和消息详情预览已开启，否则 Appless Phone 只能拿到系统实际展示的隐藏文案。
 7. 用另一台设备或另一个微信账号发送真实新消息。
-8. 回到 HarmonyAgentPhone 社交页，确认消息来源显示为“通知中心”。
+8. 回到 Appless Phone 社交页，确认消息来源显示为“通知中心”。
 
 ## 验证命令
 

@@ -29,7 +29,7 @@ struct NavigationCard {
   @LocalStorageProp('status') fallbackStatus: string = 'empty';
   @LocalStorageProp('cardStyle') cardStyle: string = 'destination';
   @LocalStorageProp('transport') transport: string = '';
-  @LocalStorageProp('title') title: string = 'HarmonyAgentPhone 导航';
+  @LocalStorageProp('title') title: string = 'Appless Phone 导航';
   @LocalStorageProp('subtitle') subtitle: string = '';
   @LocalStorageProp('address') address: string = '';
   @LocalStorageProp('location') location: string = '';
@@ -41,13 +41,13 @@ struct NavigationCard {
   @LocalStorageProp('sourceText') sourceText: string = '';
   @LocalStorageProp('mapUri') mapUri: string = '';
   @LocalStorageProp('destinationUri') destinationUri: string = '';
-  @LocalStorageProp('message') message: string = '从 HarmonyAgentPhone 对话生成导航卡片';
+  @LocalStorageProp('message') message: string = '从 Appless Phone 对话生成导航卡片';
   @LocalStorageProp('updatedText') updatedText: string = '';
   @LocalStorageProp('primaryAction') primaryAction: string = 'open_agent';
   @LocalStorageProp('secondaryAction') secondaryAction: string = 'refresh';
 
   private hasPinnedDestination(): boolean {
-    return this.title.length > 0 && this.title !== 'HarmonyAgentPhone 导航';
+    return this.title.length > 0 && this.title !== 'Appless Phone 导航';
   }
 
   private resolvedMapUri(): string {
@@ -117,7 +117,7 @@ struct NavigationCard {
   }
 
   private titleText(): string {
-    return this.title.length > 0 ? this.title : 'HarmonyAgentPhone 导航';
+    return this.title.length > 0 ? this.title : 'Appless Phone 导航';
   }
 
   private destinationTitleSize(): number {
@@ -368,7 +368,7 @@ struct NavigationCard {
 
       Column() {
         Row() {
-          Text('HarmonyAgentPhone')
+          Text('Appless Phone')
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
             .fontColor(CARD_MUTED)

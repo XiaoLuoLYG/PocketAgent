@@ -1,6 +1,6 @@
 # A2UI Notes
 
-A2UI is the message format HarmonyAgentPhone uses to convert model and tool output into native HarmonyOS task surfaces.
+A2UI is the message format Appless Phone uses to convert model and tool output into native HarmonyOS task surfaces.
 
 ## Goals
 

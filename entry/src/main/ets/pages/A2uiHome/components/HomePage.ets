@@ -43,7 +43,7 @@ export struct HomePage {
   @Prop currentSurface: A2uiSurfaceState = emptyA2uiSurface();
   @Prop surfaceRenderTick: number = 0;
   @Prop isAwaitingFirstSurface: boolean = false;
-  @Prop inputPlaceholder: string = '告诉 HarmonyAgentPhone 你想完成什么';
+  @Prop inputPlaceholder: string = '告诉 Appless Phone 你想完成什么';
   @Prop isSocialReturnAvailable: boolean = false;
   @Prop showWelcome: boolean = false;
   @State sendSpinnerRotation: number = 0;
@@ -145,7 +145,7 @@ export struct HomePage {
     Stack({ alignContent: Alignment.Center }) {
       Column() {
         Row() {
-          Text('HarmonyAgentPhone')
+          Text('Appless Phone')
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
             .fontColor(COLOR_INK)

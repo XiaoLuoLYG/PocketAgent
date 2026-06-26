@@ -1,8 +1,8 @@
-# HarmonyAgentPhone 快速开始
+# Appless Phone 快速开始
 
 这份教程帮你跑起一个真实边界的 HarmonyOS agent phone demo。
 
-HarmonyAgentPhone 的默认原则很简单：缺少本地模型、provider key、设备权限或真实执行器时，界面显示真实失败，不返回假车次、假航班、假餐厅、假邮件或假消息。
+Appless Phone 的默认原则很简单：缺少本地模型、provider key、设备权限或真实执行器时，界面显示真实失败，不返回假车次、假航班、假餐厅、假邮件或假消息。
 
 ## 1. 打开工程
 

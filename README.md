@@ -1,12 +1,12 @@
-# HarmonyAgentPhone
+# Appless Phone
 
-HarmonyAgentPhone is about OpenAI's AI phone idea: the agent is the entry point, and apps become tools behind the task.
+Appless Phone is about OpenAI's AI phone idea: the agent is the entry point, and apps become tools behind the task.
 
-Today, ordering milk tea can mean jumping between Meituan, Taobao Flash, and other apps. Travel has the same problem across rail and flight platforms. HarmonyAgentPhone points to a simpler pattern: ask once, compare the options in one place, and let the agent handle the rest of the flow.
+Today, ordering milk tea can mean jumping between Meituan, Taobao Flash, and other apps. Travel has the same problem across rail and flight platforms. Appless Phone points to a simpler pattern: ask once, compare the options in one place, and let the agent handle the rest of the flow.
 
 The HarmonyOS app is a temporary shell. The plan is to make the app layer optional.
 
-![HarmonyAgentPhone home screen](docs/assets/screenshots/home.jpg)
+![Appless Phone home screen](docs/assets/screenshots/home.jpg)
 
 ## What it can show now
 

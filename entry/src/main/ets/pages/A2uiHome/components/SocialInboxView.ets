@@ -274,7 +274,7 @@ export struct SocialInboxView {
             .margin({ top: 8 })
           if (this.socialReplyText(item.id).length > 0) {
             Column() {
-              Text('HarmonyAgentPhone 回复')
+              Text('Appless Phone 回复')
                 .fontSize(11)
                 .fontColor(COLOR_MUTED)
               Text(this.socialReplyText(item.id))

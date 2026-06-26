@@ -529,7 +529,7 @@ export function buildEmptyNavigationCardBindingData(): NavigationCardBindingData
     cardStatus: 'empty',
     cardStyle: 'destination',
     transport: '',
-    title: 'HarmonyAgentPhone 导航',
+    title: 'Appless Phone 导航',
     subtitle: '',
     address: '',
     location: '',
@@ -541,7 +541,7 @@ export function buildEmptyNavigationCardBindingData(): NavigationCardBindingData
     sourceText: '',
     mapUri: '',
     destinationUri: '',
-    message: '从 HarmonyAgentPhone 对话生成导航卡片',
+    message: '从 Appless Phone 对话生成导航卡片',
     updatedText: '',
     primaryAction: NAVIGATION_CARD_ACTION_OPEN_AGENT,
     secondaryAction: NAVIGATION_CARD_ACTION_REFRESH
@@ -597,7 +597,7 @@ export function buildNavigationCardBindingData(snapshot: NavigationCardSnapshot 
       sourceText: bindingSourceText(snapshot),
       mapUri: '',
       destinationUri: '',
-      message: '导航卡片已过期，请回到 HarmonyAgentPhone 刷新真实结果',
+      message: '导航卡片已过期，请回到 Appless Phone 刷新真实结果',
       updatedText: formatUpdatedText(snapshot.updatedAt),
       primaryAction: NAVIGATION_CARD_ACTION_OPEN_AGENT,
       secondaryAction: NAVIGATION_CARD_ACTION_REFRESH

@@ -188,7 +188,7 @@ export default function navigationCardSnapshotTest() {
       const expired = buildNavigationCardBindingData(readySnapshot(), 1770007200000);
       expect(expired.status).assertEqual('expired');
       expect(expired.primaryAction).assertEqual('open_agent');
-      expect(expired.message).assertEqual('导航卡片已过期，请回到 HarmonyAgentPhone 刷新真实结果');
+      expect(expired.message).assertEqual('导航卡片已过期，请回到 Appless Phone 刷新真实结果');
 
       const failed: NavigationCardSnapshot = readySnapshot();
       failed.status = 'error';
@@ -201,7 +201,7 @@ export default function navigationCardSnapshotTest() {
       const empty = buildEmptyNavigationCardBindingData();
       expect(empty.status).assertEqual('empty');
       expect(empty.primaryAction).assertEqual('open_agent');
-      expect(empty.message).assertEqual('从 HarmonyAgentPhone 对话生成导航卡片');
+      expect(empty.message).assertEqual('从 Appless Phone 对话生成导航卡片');
     });
 
     it('detects expiry by absolute timestamp', 0, () => {

@@ -2,47 +2,47 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "HarmonyAgentPhone"
+      "value": "Appless Phone"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "HarmonyAgentPhone"
+      "value": "Appless Phone"
     },
     {
       "name": "EntryAbility_label",
-      "value": "HarmonyAgentPhone"
+      "value": "Appless Phone"
     },
     {
       "name": "NotificationSubscriberExtAbility_desc",
-      "value": "HarmonyAgentPhone social notification subscriber"
+      "value": "Appless Phone social notification subscriber"
     },
     {
       "name": "NotificationSubscriberExtAbility_label",
-      "value": "HarmonyAgentPhone Social"
+      "value": "Appless Phone Social"
     },
     {
       "name": "SocialAccessibilityExtAbility_desc",
-      "value": "HarmonyAgentPhone social accessibility capture"
+      "value": "Appless Phone social accessibility capture"
     },
     {
       "name": "SocialAccessibilityExtAbility_label",
-      "value": "HarmonyAgentPhone Social Assist"
+      "value": "Appless Phone Social Assist"
     },
     {
       "name": "NavigationCardFormExtensionAbility_desc",
-      "value": "HarmonyAgentPhone navigation desktop card"
+      "value": "Appless Phone navigation desktop card"
     },
     {
       "name": "NavigationCardFormExtensionAbility_label",
-      "value": "HarmonyAgentPhone Navigation"
+      "value": "Appless Phone Navigation"
     },
     {
       "name": "NavigationCard_display_name",
-      "value": "HarmonyAgentPhone 导航"
+      "value": "Appless Phone 导航"
     },
     {
       "name": "NavigationCard_desc",
-      "value": "显示从 HarmonyAgentPhone 对话固定的真实导航目的地"
+      "value": "显示从 Appless Phone 对话固定的真实导航目的地"
     },
     {
       "name": "location_permission_reason",

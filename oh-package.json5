@@ -1,6 +1,6 @@
 {
   "modelVersion": "6.1.0",
-  "description": "HarmonyAgentPhone HarmonyOS agent phone demo.",
+  "description": "Appless Phone HarmonyOS agent phone demo.",
   "dependencies": {
   },
   "devDependencies": {

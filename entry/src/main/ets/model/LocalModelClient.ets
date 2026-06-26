@@ -100,16 +100,16 @@ function buildComponentCatalogPrompt(): string {
     entries.forEach((entry: ComponentCatalogEntry) => {
       descriptions.push(entry.name + '（' + entry.role + '：' + entry.usage + '）');
     });
-    return '可用 HarmonyAgentPhone catalog 组件：' + descriptions.join('；') + '。';
+    return '可用 Appless Phone catalog 组件：' + descriptions.join('；') + '。';
   } catch (error) {
     const message = error instanceof Error ? error.message : JSON.stringify(error);
     aiLogError('[AIPhone][ComponentCatalogPrompt] failed to parse catalog: ' + message);
-    return '可用 HarmonyAgentPhone catalog 组件：SurfaceRoot（布局组件）、Column（布局组件）、Row（布局组件）、Text（内容组件）、InfoRows（内容组件）、ActionBar（交互组件）、ErrorNotice（内容组件）、ThinkingStream（状态组件）、SocialInbox（业务组件）、TravelOptions（业务组件）、TrainOptions（业务组件）、FlightBoard（业务组件）、FoodChoices（业务组件）；ConfirmPanel 当前不要主动生成。';
+    return '可用 Appless Phone catalog 组件：SurfaceRoot（布局组件）、Column（布局组件）、Row（布局组件）、Text（内容组件）、InfoRows（内容组件）、ActionBar（交互组件）、ErrorNotice（内容组件）、ThinkingStream（状态组件）、SocialInbox（业务组件）、TravelOptions（业务组件）、TrainOptions（业务组件）、FlightBoard（业务组件）、FoodChoices（业务组件）；ConfirmPanel 当前不要主动生成。';
   }
 }
 
 const SYSTEM_PROMPT: string =
-  '你是 HarmonyAgentPhone 的本地模型。必须使用 no_think 模式，禁止输出 <think>、推理过程、普通中文分析、Markdown、代码块或自然语言前后缀；第一字符必须是 {。' +
+  '你是 Appless Phone 的本地模型。必须使用 no_think 模式，禁止输出 <think>、推理过程、普通中文分析、Markdown、代码块或自然语言前后缀；第一字符必须是 {。' +
   '必须只输出 A2UI v0.9.1 JSONL。每一行都是完整 JSON envelope；不要解释为什么这样选工具。' +
   'A2UI 正文每一行都是一个 JSON envelope，只能使用 createSurface, updateComponents, updateDataModel, deleteSurface 四种消息。' +
   '第一行必须 createSurface，字段包含 surfaceId, root, title, intent, status, sendDataModel。' +
@@ -134,11 +134,11 @@ const SYSTEM_PROMPT: string =
   '整理类 /rows 的 value 必须是 [{"label":"...","value":"..."}]；只写用户已给信息与下一步确认项，严禁编造精确班次、航班号、价格、耗时、库存、营业状态；尤其不要输出 G123、MU5101、自驾耗时等示例式假数据。' +
   '订票、下单、支付、抢票不能自动执行；交易请求只用 Text 或 ErrorNotice 告知需用户自行确认。' +
   '示例 A，寒暄：' +
-  '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"HarmonyAgentPhone","intent":"general","status":"ready","sendDataModel":true}}' + '\n' +
-  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"hello","title":"HarmonyAgentPhone","status":"ready"},{"id":"hello","component":"Text","text":"你好，我在。你可以让我查询高铁、航班或附近餐饮。","status":"ready"}]}}' + '\n' +
+  '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"Appless Phone","intent":"general","status":"ready","sendDataModel":true}}' + '\n' +
+  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"hello","title":"Appless Phone","status":"ready"},{"id":"hello","component":"Text","text":"你好，我在。你可以让我查询高铁、航班或附近餐饮。","status":"ready"}]}}' + '\n' +
   '示例 B，实时查高铁（到 /toolRequest 结束）：' +
   '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"正在准备查询","intent":"travel","status":"calling_tool","sendDataModel":true}}' + '\n' +
-  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在准备查询","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"HarmonyAgentPhone 正在处理","body":"正在把请求交给工具","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
+  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在准备查询","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"Appless Phone 正在处理","body":"正在把请求交给工具","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
   '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在识别出行约束","正在准备调用查询工具","正在等待工具返回"]}}' + '\n' +
   '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/toolRequest","value":{"toolId":"train.search","prompt":"帮我查询明天北京到上海高铁票","actionId":"model_tool_request"}}}' + '\n' +
   '示例 C，非实时整理规划思路（没有日期或明确实时查询词）：' +
@@ -147,12 +147,12 @@ const SYSTEM_PROMPT: string =
   '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/rows","value":[{"label":"时间","value":"需要出发日期或大致时段"},{"label":"地点","value":"需要出发地和目的地"},{"label":"下一步","value":"补充日期和城市后再发起实时查询"}]}}' + '\n' +
   '示例 D，实时搜索综合出行方案（到 /toolRequest 结束）：' +
   '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"正在搜索出行方案","intent":"travel","status":"calling_tool","sendDataModel":true}}' + '\n' +
-  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在搜索出行方案","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"HarmonyAgentPhone 正在处理","body":"正在同时查询高铁和航班","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
+  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在搜索出行方案","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"Appless Phone 正在处理","body":"正在同时查询高铁和航班","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
   '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在识别出发地、目的地和日期","正在准备调用综合出行工具","正在等待真实工具返回"]}}' + '\n' +
   '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/toolRequest","value":{"toolId":"travel.search","prompt":"我明天要从北京去上海，帮我搜索出行方案","actionId":"model_tool_request"}}}' + '\n' +
   '示例 E，查看 Gmail（到 /toolRequest 结束）：' +
   '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"正在准备 Gmail","intent":"gmail","status":"calling_tool","sendDataModel":true}}' + '\n' +
-  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在准备 Gmail","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"HarmonyAgentPhone 正在处理","body":"正在把 Gmail 请求交给工具","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
+  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在准备 Gmail","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"Appless Phone 正在处理","body":"正在把 Gmail 请求交给工具","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
   '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在识别 Gmail 请求","正在准备调用 Gmail 工具","正在等待真实账号会话或授权状态"]}}' + '\n' +
   '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/toolRequest","value":{"toolId":"gmail.mail.search","prompt":"帮我看 Gmail 里最新的重要邮件","actionId":"model_tool_request"}}}' + '\n' +
   '旧 aiphone.ui.v1 或 aiphone.ui.v2 格式不再受支持，绝不能输出。' +
@@ -341,7 +341,7 @@ function inferRootComponentId(envelope: A2uiEnvelope): string {
 
 function inferSurfaceTitle(envelope: A2uiEnvelope): string {
   if (envelope.updateComponents === undefined || envelope.updateComponents === null) {
-    return 'HarmonyAgentPhone';
+    return 'Appless Phone';
   }
   for (let index = 0; index < envelope.updateComponents.components.length; index++) {
     const component = envelope.updateComponents.components[index];
@@ -349,7 +349,7 @@ function inferSurfaceTitle(envelope: A2uiEnvelope): string {
       return component.title;
     }
   }
-  return 'HarmonyAgentPhone';
+  return 'Appless Phone';
 }
 
 function applyImplicitModelSurface(store: A2uiSurfaceStore, envelope: A2uiEnvelope): void {
