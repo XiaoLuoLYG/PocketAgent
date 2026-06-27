@@ -20,6 +20,7 @@ function baseModel(): A2uiRuntimeDataModel {
     summary: { text: '', toolName: '', dataLabel: '', count: 0 },
     trip: { rows: [] },
     rowGroups: { train: [], flight: [], food: [] },
+    form: {},
     toolRequest: { toolId: '', prompt: '', actionId: '' },
     dynamicToolConnect: {
       toolId: 'maps.weather',

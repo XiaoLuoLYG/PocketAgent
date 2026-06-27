@@ -25,6 +25,7 @@ export interface A2uiAction {
   prompt: string;
   variant: string;
   kind: string;
+  args?: Object;
 }
 
 export interface A2uiLabelValueData {
@@ -134,10 +135,19 @@ export interface A2uiRowGroupsData {
   food: A2uiLabelValueData[];
 }
 
+export interface A2uiFormData {
+  to?: string[];
+  subject?: string;
+  body?: string;
+  threadId?: string;
+  replyMode?: string;
+}
+
 export interface A2uiToolRequestData {
   toolId: string;
   prompt: string;
   actionId: string;
+  args?: Object;
 }
 
 export interface A2uiDynamicToolConnectData {
@@ -180,6 +190,7 @@ export interface A2uiRuntimeDataModel {
   summary: A2uiSummaryData;
   trip: A2uiTripData;
   rowGroups: A2uiRowGroupsData;
+  form: A2uiFormData;
   toolRequest: A2uiToolRequestData;
   dynamicToolConnect: A2uiDynamicToolConnectData;
   genericToolResults: A2uiGenericToolResultData[];
@@ -200,6 +211,7 @@ export type A2uiDataValue =
   A2uiSummaryData |
   A2uiTripData |
   A2uiRowGroupsData |
+  A2uiFormData |
   A2uiToolRequestData |
   A2uiDynamicToolConnectData |
   A2uiGenericToolResultData[] |

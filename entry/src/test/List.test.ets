@@ -27,6 +27,9 @@ import toolDefinitionRegistryTest from './ToolDefinitionRegistry.test';
 import gmailToolNormalizerTest from './GmailToolNormalizer.test';
 import gmailToolA2uiTest from './GmailToolA2ui.test';
 import gmailOAuthClientTest from './GmailOAuthClient.test';
+import htmlHomeSnapshotTest from './HtmlHomeSnapshot.test';
+import htmlHomeRendererTest from './HtmlHomeRenderer.test';
+import htmlHomeActionPolicyTest from './HtmlHomeActionPolicy.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -58,4 +61,7 @@ export default function testsuite() {
   gmailToolNormalizerTest();
   gmailToolA2uiTest();
   gmailOAuthClientTest();
+  htmlHomeSnapshotTest();
+  htmlHomeRendererTest();
+  htmlHomeActionPolicyTest();
 }

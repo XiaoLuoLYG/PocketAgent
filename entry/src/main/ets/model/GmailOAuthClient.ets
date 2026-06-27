@@ -86,15 +86,24 @@ export class GmailCreateDraftArgs {
   to: string[];
   subject: string;
   body: string;
+  threadId: string;
+  replyMode: string;
+  inReplyTo: string;
+  references: string;
 
-  constructor(to: string[], subject: string, body: string) {
+  constructor(to: string[], subject: string, body: string, threadId: string = '', replyMode: string = '', inReplyTo: string = '', references: string = '') {
     this.to = to;
     this.subject = subject;
     this.body = body;
+    this.threadId = threadId;
+    this.replyMode = replyMode;
+    this.inReplyTo = inReplyTo;
+    this.references = references;
   }
 }
 
 type QueryValueMap = Record<string, string>;
+type GmailArgRecord = Record<string, Object | string | number | boolean | null | undefined>;
 
 function textOf(value: Object | string | number | boolean | null | undefined): string {
   if (value === undefined || value === null) {
@@ -114,6 +123,56 @@ function numberOf(value: number | undefined, fallback: number): number {
     return fallback;
   }
   return value;
+}
+
+function gmailArgRecord(args: Object | null): GmailArgRecord {
+  if (args === null) {
+    return JSON.parse('{}') as GmailArgRecord;
+  }
+  return args as GmailArgRecord;
+}
+
+function stringArg(args: GmailArgRecord, key: string): string {
+  return textOf(args[key]);
+}
+
+function stringArrayArg(args: GmailArgRecord, key: string): string[] {
+  const value = args[key];
+  if (typeof value === 'string') {
+    const text = value.trim();
+    return text.length > 0 ? [text] : [];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const values = value as string[];
+  const result: string[] = [];
+  for (let index = 0; index < values.length; index++) {
+    const text = textOf(values[index]).trim();
+    if (text.length > 0) {
+      result.push(text);
+    }
+  }
+  return result;
+}
+
+function pageSizeArg(args: GmailArgRecord): number {
+  const value = args['pageSize'];
+  if (typeof value !== 'number' || value <= 0) {
+    return 10;
+  }
+  return value > 10 ? 10 : value;
+}
+
+function gmailSearchQueryFromArgs(args: GmailArgRecord): string {
+  let query = stringArg(args, 'query').trim();
+  if (query.length === 0) {
+    query = 'newer_than:30d';
+  }
+  if (query.indexOf('-in:draft') < 0) {
+    query += ' -in:draft';
+  }
+  return query;
 }
 
 function urlEncode(value: string): string {
@@ -424,48 +483,23 @@ export function gmailMcpToolNameForToolId(toolId: string): string {
   return '';
 }
 
-function firstEmail(text: string): string {
-  const match = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.exec(text);
-  return match === null ? '' : match[0];
-}
-
-function textAfterSay(prompt: string): string {
-  const marker = prompt.indexOf('说');
-  if (marker >= 0 && marker < prompt.length - 1) {
-    return prompt.substring(marker + 1).trim();
-  }
-  return prompt.trim();
-}
-
-function gmailSearchQuery(prompt: string): string {
-  const parts: string[] = [];
-  if (/重要|important/i.test(prompt)) {
-    parts.push('is:important');
-  }
-  if (/未读|unread/i.test(prompt)) {
-    parts.push('is:unread');
-  }
-  if (/收件箱|inbox/i.test(prompt)) {
-    parts.push('in:inbox');
-  }
-  if (parts.length === 0 || /最新|最近|latest|recent/i.test(prompt)) {
-    parts.push('newer_than:30d');
-  }
-  parts.push('-in:draft');
-  return parts.join(' ');
-}
-
-export function gmailMcpArgsForPrompt(toolId: string, prompt: string): Object {
+export function gmailMcpArgsForPrompt(toolId: string, prompt: string, args: Object | null = null): Object {
+  const record = gmailArgRecord(args);
   if (toolId === 'gmail.mail.search') {
-    return new GmailSearchThreadsArgs(gmailSearchQuery(prompt), 10);
+    return new GmailSearchThreadsArgs(gmailSearchQueryFromArgs(record), pageSizeArg(record));
   }
   if (toolId === 'gmail.thread.read') {
-    return new GmailGetThreadArgs(prompt.trim(), 'FULL_CONTENT');
+    const threadId = stringArg(record, 'threadId').trim();
+    return new GmailGetThreadArgs(threadId.length > 0 ? threadId : prompt.trim(), 'FULL_CONTENT');
   }
   if (toolId === 'gmail.draft.create' || toolId === 'gmail.draft.apply') {
-    const recipient = firstEmail(prompt);
-    const body = textAfterSay(prompt);
-    return new GmailCreateDraftArgs(recipient.length > 0 ? [recipient] : [], 'Gmail draft from AIPhone', body.length > 0 ? body : prompt);
+    return new GmailCreateDraftArgs(
+      stringArrayArg(record, 'to'),
+      stringArg(record, 'subject'),
+      stringArg(record, 'body'),
+      stringArg(record, 'threadId').trim(),
+      stringArg(record, 'replyMode').trim()
+    );
   }
   return new Object();
 }

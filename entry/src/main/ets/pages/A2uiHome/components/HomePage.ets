@@ -1,28 +1,28 @@
 import {
+  COLOR_ACCENT,
+  COLOR_ACCENT_SHADOW,
+  COLOR_ACCENT_SOFT,
+  COLOR_CARD,
   COLOR_CARD_EDGE,
+  COLOR_CARD_GLOW,
   COLOR_INK,
   COLOR_MUTED,
   COLOR_PAGE,
-  COLOR_PANEL,
-  COLOR_TEXT
+  COLOR_TEXT,
+  statusColor
 } from '../style/A2uiHomeTheme';
 import {
   A2uiAction,
-  A2uiFlightData,
-  A2uiFoodData,
   A2uiMessage,
   A2uiSurfaceState,
-  A2uiTrainData,
-  A2uiTravelOptionData,
   emptyA2uiSurface
 } from '../../../model/A2uiTypes';
 import { A2uiButtonView } from './common/A2uiButtonView';
 import { HistoryPanelView } from './HistoryPanelView';
-import { A2uiSurfaceView } from './A2uiSurfaceView';
+import { HtmlHomeSurfaceView } from './HtmlHomeSurfaceView';
 import {
   isPromptInputEnabled,
-  nextSendSpinnerRotation,
-  shouldShowQueryPendingSurface
+  nextSendSpinnerRotation
 } from '../state/A2uiHomeState';
 import {
   A2UI_HOME_MAX_WIDTH
@@ -41,6 +41,7 @@ export struct HomePage {
   @Prop showHistory: boolean = false;
   @Prop messages: A2uiMessage[] = [];
   @Prop currentSurface: A2uiSurfaceState = emptyA2uiSurface();
+  @Prop htmlHomeHtml: string = '';
   @Prop surfaceRenderTick: number = 0;
   @Prop isAwaitingFirstSurface: boolean = false;
   @Prop inputPlaceholder: string = '告诉 Appless Phone 你想完成什么';
@@ -55,10 +56,6 @@ export struct HomePage {
   onSendPrompt: () => void = () => {};
   onResetSession: () => void = () => {};
   onAction: (action: A2uiAction) => void = (_action: A2uiAction) => {};
-  onPinNavigationCard: (item: A2uiFoodData) => void = (_item: A2uiFoodData) => {};
-  onPinTravelNavigationCard: (item: A2uiTravelOptionData) => void = (_item: A2uiTravelOptionData) => {};
-  onPinTrainNavigationCard: (item: A2uiTrainData) => void = (_item: A2uiTrainData) => {};
-  onPinFlightNavigationCard: (item: A2uiFlightData) => void = (_item: A2uiFlightData) => {};
 
   aboutToAppear(): void {
     this.startSendSpinnerTimer();
@@ -104,49 +101,16 @@ export struct HomePage {
     return !this.isBusy && (!this.showWelcome || this.inputText.trim().length > 0);
   }
 
-  @Builder
-  private WelcomeCard() {
-    Row() {
-      Column() {
-        Text('开始一个任务')
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(COLOR_INK)
-          .maxLines(1)
-
-        Text('在底部输入一句话，生成原生任务卡片。')
-          .fontSize(12)
-          .fontColor(COLOR_MUTED)
-          .margin({ top: 5 })
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-      }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start)
-
-      Text('A2UI')
-        .fontSize(11)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(COLOR_INK)
-        .maxLines(1)
-        .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-        .backgroundColor('#12323A')
-        .borderRadius(12)
-    }
-    .width('100%')
-    .alignItems(VerticalAlign.Center)
-    .padding({ left: 14, right: 12, top: 12, bottom: 12 })
-    .backgroundColor(COLOR_PANEL)
-    .borderRadius(16)
-    .border({ width: 1, color: COLOR_CARD_EDGE })
-  }
-
   build() {
     Stack({ alignContent: Alignment.Center }) {
       Column() {
         Row() {
+          Circle({ width: 8, height: 8 })
+            .fill(statusColor(this.currentSurface.status))
+            .margin({ right: 8 })
+
           Text('Appless Phone')
-            .fontSize(18)
+            .fontSize(20)
             .fontWeight(FontWeight.Medium)
             .fontColor(COLOR_INK)
             .maxLines(1)
@@ -165,7 +129,8 @@ export struct HomePage {
             .margin({ left: 8 })
 
           A2uiButtonView({
-            label: '清',
+            icon: $r('app.media.icon_reset'),
+            hasIcon: true,
             shape: 'circle',
             tone: 'secondary',
             isEnabled: this.canResetSession()
@@ -192,10 +157,13 @@ export struct HomePage {
               .margin({ left: 8 })
           } else {
             A2uiButtonView({
-              label: '社',
+              icon: $r('app.media.icon_social'),
+              hasIcon: true,
               shape: 'circle',
               tone: 'secondary',
-              active: this.currentSurface.intent === 'social'
+              active: this.currentSurface.intent === 'social',
+              customBackgroundColor: this.currentSurface.intent === 'social' ? COLOR_ACCENT_SOFT : '',
+              customBorderColor: this.currentSurface.intent === 'social' ? COLOR_ACCENT : ''
             })
               .onClick(() => {
                 this.onOpenSocial();
@@ -226,8 +194,10 @@ export struct HomePage {
             .margin({ left: 8 })
         }
         .width('100%')
+        .height(44)
         .alignItems(VerticalAlign.Center)
-        .padding({ left: 4, right: 4, top: 10, bottom: 16 })
+        .padding({ left: 0, right: 0 })
+        .margin({ bottom: 12 })
 
       Column() {
         if (this.showHistory) {
@@ -244,37 +214,14 @@ export struct HomePage {
       .margin({ top: this.showHistory ? 14 : 0 })
       .animation({ duration: A2UI_MOTION_NORMAL_MS, curve: A2UI_MOTION_CURVE })
 
-      if (this.showWelcome) {
-        Column() {
-          this.WelcomeCard()
-          Blank()
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .margin({ top: 14 })
-      } else {
-        A2uiSurfaceView({
-          surface: this.currentSurface,
-          renderTick: this.surfaceRenderTick,
-          isBusy: this.isBusy,
-          showPendingSurface: shouldShowQueryPendingSurface(this.isBusy, this.isAwaitingFirstSurface),
-          onAction: this.onAction,
-          onPinNavigationCard: (item: A2uiFoodData) => {
-            this.onPinNavigationCard(item);
-          },
-          onPinTravelNavigationCard: (item: A2uiTravelOptionData) => {
-            this.onPinTravelNavigationCard(item);
-          },
-          onPinTrainNavigationCard: (item: A2uiTrainData) => {
-            this.onPinTrainNavigationCard(item);
-          },
-          onPinFlightNavigationCard: (item: A2uiFlightData) => {
-            this.onPinFlightNavigationCard(item);
-          }
-        })
-        .layoutWeight(1)
-        .margin({ top: 14 })
-      }
+      HtmlHomeSurfaceView({
+        html: this.htmlHomeHtml,
+        isBusy: this.isBusy,
+        renderTick: this.surfaceRenderTick,
+        onAction: this.onAction
+      })
+      .layoutWeight(1)
+      .margin({ top: 12 })
 
       Column() {
         Row() {
@@ -284,9 +231,9 @@ export struct HomePage {
           })
             .constraintSize({ minHeight: 32, maxHeight: 72 })
             .layoutWeight(1)
-            .fontSize(15)
+            .fontSize(16)
             .fontColor(COLOR_TEXT)
-            .lineHeight(21)
+            .lineHeight(24)
             .placeholderColor(COLOR_MUTED)
             .backgroundColor('#00000000')
             .borderRadius(0)
@@ -294,8 +241,8 @@ export struct HomePage {
             .padding({
               left: 0,
               right: 0,
-              top: 5,
-              bottom: 5
+              top: 4,
+              bottom: 4
             })
             .enabled(isPromptInputEnabled(this.isBusy))
             .onChange((value: string) => {
@@ -309,11 +256,11 @@ export struct HomePage {
             icon: this.isBusy ? $r('app.media.icon_wait_spinner') : $r('app.media.arrow_up'),
             hasIcon: true,
             shape: 'circle',
-            circleSize: 32,
-            iconSize: this.isBusy ? 20 : 16,
-            customBackgroundColor: '#0D9488',
+            circleSize: 40,
+            iconSize: this.isBusy ? 22 : 18,
+            customBackgroundColor: COLOR_ACCENT,
             customBorderWidth: 0,
-            shadowColor: '#0D948866',
+            shadowColor: COLOR_ACCENT_SHADOW,
             shadowRadius: 15,
             iconRotation: this.sendSpinnerRotation
           })
@@ -329,22 +276,22 @@ export struct HomePage {
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)
-        .constraintSize({ minHeight: 48 })
-        .padding({ left: 16, right: 8, top: 8, bottom: 8 })
-        .backgroundColor('#18181B')
-        .borderRadius(24)
-        .border({ width: 1, color: '#27272A' })
-        .shadow({ radius: 20, color: '#00000080', offsetX: 0, offsetY: 10 })
+        .constraintSize({ minHeight: 52 })
+        .padding({ left: 16, right: 6, top: 6, bottom: 6 })
+        .backgroundColor(COLOR_CARD)
+        .borderRadius(26)
+        .border({ width: 1, color: COLOR_CARD_EDGE })
+        .shadow({ radius: 24, color: COLOR_CARD_GLOW, offsetX: 0, offsetY: 8 })
 
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
-      .padding({ top: 12, left: 4, right: 4 })
+      .padding({ top: 12, left: 0, right: 0 })
       }
       .width('100%')
       .constraintSize({ maxWidth: A2UI_HOME_MAX_WIDTH })
       .height('100%')
-      .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+      .padding({ left: 16, right: 16, top: 16, bottom: 14 })
       .backgroundColor(COLOR_PAGE)
     }
     .width('100%')

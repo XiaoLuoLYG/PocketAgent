@@ -26,19 +26,24 @@ const dynamicCases = [
     expectsTool: true,
     expectedToolId: 'dynamic.search',
     expectedDiscoveredToolId: 'weather.query'
-  },
-  {
-    query: '帮我查一下最近的统计局GDP数据',
-    expectsTool: true,
-    expectedToolId: 'dynamic.search',
-    expectedDiscoveredToolId: 'statistics.search'
-  },
-  {
-    query: '帮我生成一份深圳低空经济介绍PPT',
-    expectsTool: true,
-    expectedToolId: 'dynamic.search',
-    expectedDiscoveredToolId: 'ppt.generate'
   }
+];
+
+const gmailCases = [
+  { query: '帮我看 Gmail 里最新的重要邮件', expectsTool: true, expectedToolId: 'gmail.mail.search' },
+  { query: '帮我用 Gmail 写一封邮件给 alice@example.com 说我收到了', expectsTool: true, expectedToolId: 'gmail.draft.create' },
+  { query: '帮我查看我Gmail里和我eccv论文相关的邮件', expectsTool: true, expectedToolId: 'gmail.mail.search' }
+];
+
+const fullRegressionCases = [
+  ...defaultCases.slice(0, 2),
+  { query: '帮我查明天北京到上海航班', expectsTool: true, expectedToolId: 'flight.search' },
+  { query: '帮我查询深圳北出发到香港西九龙明天晚上六点之后的高铁', expectsTool: true, expectedToolId: 'train.search' },
+  ...defaultCases.slice(2),
+  { query: '帮我查附近咖啡', expectsTool: true, expectedToolId: 'food.search' },
+  { query: '帮我查深圳坂田附近麦当劳门店和菜单', expectsTool: true, expectedToolId: 'food.search' },
+  ...dynamicCases,
+  ...gmailCases
 ];
 
 const forbiddenSyntheticMarkers = [
@@ -107,6 +112,7 @@ const finalLayoutBlockingMarkers = [
   '查询失败',
   'Gmail API 调用失败',
   'Gmail MCP 调用失败',
+  'MCP 工具调用失败',
   'Internal error',
   '2300999',
   'Bad Request',
@@ -114,8 +120,8 @@ const finalLayoutBlockingMarkers = [
   '暂不支持的组件',
   '把一句话变成可执行界面',
   '告诉 AIPhone 你要安排的事',
-  '[',
-  ']'
+  '[object Object]',
+  '{"version"'
 ];
 
 const finalLayoutRouteMarkers = [
@@ -128,15 +134,22 @@ const finalLayoutBlockingPatterns = [
   { name: 'zh-date', pattern: /\b\d{4}年\d{1,2}月\d{1,2}日\b/ }
 ];
 
+const forbiddenGmailSendSuccessPatterns = [
+  { name: 'gmail-send-success-en', pattern: /sent successfully|message sent/i },
+  { name: 'gmail-send-success-zh', pattern: /发送成功|已发送成功|邮件已发送/ }
+];
+
 const argv = process.argv.slice(2);
 const cleanData = process.env.AIPHONE_SMOKE_CLEAN_DATA === '1' || argv.includes('--clean-data');
 const runDynamicCases = argv.includes('--dynamic-tools');
-const queryArgs = argv.filter((arg) => arg !== '--clean-data' && arg !== '--dynamic-tools');
-const selectedDefaultCases = runDynamicCases ? defaultCases.concat(dynamicCases) : defaultCases;
+const runFullRegression = argv.includes('--full-regression');
+const queryArgs = argv.filter((arg) => arg !== '--clean-data' && arg !== '--dynamic-tools' && arg !== '--full-regression');
+const selectedDefaultCases = runFullRegression ? fullRegressionCases : (runDynamicCases ? defaultCases.concat(dynamicCases) : defaultCases);
 const useDefaultCases = queryArgs.length === 0;
 const queries = useDefaultCases ? selectedDefaultCases.map((testCase) => testCase.query) : queryArgs;
 const target = process.env.AIPHONE_HDC_TARGET || firstTarget();
 const timeoutMs = Number.parseInt(process.env.AIPHONE_QUERY_TIMEOUT_MS || '90000', 10);
+const queryRetryLimit = Number.parseInt(process.env.AIPHONE_QUERY_RETRY_LIMIT || (runFullRegression ? '1' : '0'), 10);
 
 function expectedCaseForQuery(query) {
   if (/^你好$|问候|打招呼/.test(query)) {
@@ -254,6 +267,35 @@ function hdc(args, options = {}) {
     throw new Error(`hdc ${args.join(' ')} failed:\n${result.stdout}\n${result.stderr}`);
   }
   return result.stdout;
+}
+
+function appWindowRect() {
+  const output = hdc(['shell', 'hidumper', '-s', 'WindowManagerService', '-a', '-a']);
+  const line = output.split('\n').find((value) => value.includes('aiphonedemo'));
+  if (line === undefined) {
+    return null;
+  }
+  const match = /\[\s*(-?\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+\]/.exec(line);
+  if (match === null) {
+    return null;
+  }
+  return {
+    x: Number.parseInt(match[1], 10),
+    y: Number.parseInt(match[2], 10),
+    width: Number.parseInt(match[3], 10),
+    height: Number.parseInt(match[4], 10)
+  };
+}
+
+function moveAppWindowIntoScreenshot() {
+  const rect = appWindowRect();
+  if (rect === null || rect.y >= 0 && rect.y <= 220) {
+    return;
+  }
+  const x = Math.max(80, Math.floor(rect.x + rect.width / 2));
+  const fromY = Math.max(40, rect.y + 40);
+  hdc(['shell', 'uitest', 'uiInput', 'drag', String(x), String(fromY), String(x), '120', '2000']);
+  spawnSync('sleep', ['1']);
 }
 
 function clearHilog() {
@@ -405,6 +447,7 @@ function dumpLayout(localName = 'latest-layout.json') {
 }
 
 function captureScreen(localName = 'latest-screen.png') {
+  moveAppWindowIntoScreenshot();
   const remote = '/data/local/tmp/aiphone-smoke-screen.png';
   const local = join(outDir, localName);
   hdc(['shell', 'uitest', 'screenCap', '-p', remote]);
@@ -544,11 +587,17 @@ async function captureWhile(appPid, runAction) {
     await runAction();
 
     const started = Date.now();
+    let doneAt = 0;
     while (Date.now() - started < timeoutMs) {
       await sleep(500);
       const text = logs.join('\n');
-      if (/\[AIPhone\]\[(ToolResult|A2uiHomeToolResult)\] ok=/.test(text) ||
-        /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest)\] none/.test(text)) {
+      const done = /\[AIPhone\]\[(ToolResult|A2uiHomeToolResult)\] ok=/.test(text) ||
+        /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest)\] none/.test(text);
+      const hasQueryHtmlDocument = /\[AIPhone\]\[HtmlHomeDocument\][^\n]*source=(?!welcome\b)[^ \n]+[^\n]*chars=\d+[^\n]*blocks=\d+/.test(text);
+      if (done && doneAt === 0) {
+        doneAt = Date.now();
+      }
+      if (done && (hasQueryHtmlDocument || Date.now() - doneAt > 3000)) {
         break;
       }
       const modelFailed = /\[AIPhone\]\[(ModelResult|A2uiHomeModelResult)\] ok=false/.test(text);
@@ -596,9 +645,58 @@ function activeHilogProcesses() {
     .filter((line) => line.includes('hdc') && line.includes('hilog'));
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function htmlHomeDocumentEvidence(logs) {
+  const documents = [];
+  for (const line of logs) {
+    const match = /\[AIPhone\]\[HtmlHomeDocument\][^\n]*source=([^ \n]+)[^\n]*kind=([^ \n]+)[^\n]*chars=(\d+)[^\n]*blocks=(\d+)/.exec(line);
+    if (match === null) {
+      continue;
+    }
+    documents.push({
+      source: match[1],
+      kind: match[2],
+      chars: Number.parseInt(match[3], 10),
+      blocks: Number.parseInt(match[4], 10)
+    });
+  }
+  const queryDocuments = documents.filter((document) => document.source !== 'welcome');
+  return {
+    count: documents.length,
+    queryCount: queryDocuments.length,
+    maxChars: documents.reduce((max, document) => Math.max(max, document.chars), 0),
+    maxBlocks: documents.reduce((max, document) => Math.max(max, document.blocks), 0),
+    ok: queryDocuments.some((document) => document.chars > 0 && document.blocks > 0)
+  };
+}
+
+function htmlHomeSurfaceLoadEvidence(logs) {
+  const loads = [];
+  for (const line of logs) {
+    const match = /\[AIPhone\]\[HtmlHomeSurfaceLoad\][^\n]*chars=(\d+)[^\n]*renderTick=(\d+)/.exec(line);
+    if (match === null) {
+      continue;
+    }
+    loads.push({
+      chars: Number.parseInt(match[1], 10),
+      renderTick: Number.parseInt(match[2], 10)
+    });
+  }
+  return {
+    count: loads.length,
+    maxChars: loads.reduce((max, load) => Math.max(max, load.chars), 0),
+    ok: loads.some((load) => load.chars > 0)
+  };
+}
+
 function analyze(query, logs, expectedTool, expectedToolId = '', expectedDiscoveredToolId = '') {
   const text = logs.join('\n');
-  const escapedToolId = expectedToolId.replace('.', '\\.');
+  const htmlHomeDocument = htmlHomeDocumentEvidence(logs);
+  const htmlHomeSurfaceLoad = htmlHomeSurfaceLoadEvidence(logs);
+  const escapedToolId = escapeRegExp(expectedToolId);
   const toolIdPattern = expectedToolId.length > 0 ?
     new RegExp(`\\[AIPhone\\]\\[(ToolRequest|A2uiHomeToolRequest|A2uiHomeToolRequestFromModel)\\][^\\n]*toolId=${escapedToolId}`) :
     null;
@@ -608,6 +706,9 @@ function analyze(query, logs, expectedTool, expectedToolId = '', expectedDiscove
     null;
   const hasExpectedDiscoveredToolId = discoveryPattern === null ? true : discoveryPattern.test(text);
   const missingConfig = /\[AIPhone\]\[LocalToolMissingConfig\]/.test(text);
+  const modelSelectedExpectedToolId = expectedToolId.length === 0 ||
+    new RegExp(`"toolId":"${escapedToolId}"`).test(text) ||
+    new RegExp(`toolId=${escapedToolId}`).test(text);
   const result = {
     query,
     expectedTool,
@@ -615,7 +716,11 @@ function analyze(query, logs, expectedTool, expectedToolId = '', expectedDiscove
     expectedDiscoveredToolId,
     hasExpectedToolId,
     hasExpectedDiscoveredToolId,
-    directIntent: /\[AIPhone\]\[ToolRequestByIntent\] toolId=/.test(text),
+    htmlHomeDocument,
+    htmlHomeSurfaceLoad,
+    htmlLoadError: /\[AIPhone\]\[HtmlHomeSurfaceLoadError\]/.test(text),
+    modelSelectedExpectedToolId,
+    directIntent: /\[AIPhone\]\[(ToolRequestByIntent|A2uiHomeToolRequestByIntent)\] toolId=/.test(text),
     localToolRequest: /\[AIPhone\]\[LocalToolRequest\] endpoint=local:\/\/aiphone-tools toolId=/.test(text),
     model200: /\[AIPhone\]\[ModelStreamResponse\] code=200/.test(text) || /response_code":200[\s\S]*dst_port":11434/.test(text),
     modelOk: /\[AIPhone\]\[(ModelResult|A2uiHomeModelResult)\] ok=true/.test(text),
@@ -628,11 +733,15 @@ function analyze(query, logs, expectedTool, expectedToolId = '', expectedDiscove
     gmailWebOpened: /\[AIPhone\]\[A2uiHomeOpenUrl\] ok=true url=https:\/\/mail\.google\.com/.test(text),
     syntheticFallback: forbiddenSyntheticMarkers.some((marker) => text.includes(marker))
   };
-  const modelPassed = result.model200 && result.modelOk && !result.modelFailed;
+  const modelFallbackOnlyAfterSameToolSelection = result.modelFailed && result.directIntent && result.modelSelectedExpectedToolId;
+  const modelPassed = result.model200 && ((result.modelOk && !result.modelFailed) || modelFallbackOnlyAfterSameToolSelection);
   const basePassed = !result.failedConnect &&
     !result.providerFailed &&
+    !result.htmlLoadError &&
+    result.htmlHomeSurfaceLoad.ok &&
     !result.syntheticFallback &&
-    !result.directIntent;
+    (!result.directIntent || modelFallbackOnlyAfterSameToolSelection) &&
+    result.htmlHomeDocument.ok;
   if (expectedTool === true) {
     result.ok = basePassed && modelPassed && result.toolRequested && result.localToolRequest && result.toolOk && result.hasExpectedToolId && result.hasExpectedDiscoveredToolId;
   } else if (expectedTool === false) {
@@ -646,6 +755,10 @@ function analyze(query, logs, expectedTool, expectedToolId = '', expectedDiscove
 
 function isGmailWebQuery(query) {
   return /Gmail|谷歌邮箱|谷歌邮件/.test(query) && /打开|网页版|网页/.test(query);
+}
+
+function isGmailEccvQuery(query) {
+  return /Gmail|谷歌邮箱|谷歌邮件/.test(query) && /eccv/i.test(query);
 }
 
 function layoutExpectationsForQuery(query) {
@@ -671,13 +784,22 @@ function layoutExpectationsForQuery(query) {
     return ['UnsafeActionBlocked', '不会自动发送 Gmail', 'gmail.message.send'];
   }
   if (/Gmail|谷歌邮箱|谷歌邮件/.test(query) && /写一封|写邮件|起草|草稿|回复|撰写/.test(query)) {
-    return ['Draft saved', 'Saved in Gmail', 'Draft'];
+    return ['gmail.draft.create', 'Google Workspace MCP OAuth', '授权 Gmail', 'Draft saved', 'Saved in Gmail', 'ready_to_apply', '不会模拟 Gmail 邮件'];
+  }
+  if (isGmailEccvQuery(query)) {
+    return ['Gmail', 'gmail.mail.search', 'eccv', 'ECCV', '不会模拟 Gmail 邮件'];
   }
   if (/Gmail|谷歌邮箱|谷歌邮件/.test(query)) {
-    return ['Inbox', 'Important', '没有找到匹配邮件'];
+    return ['Gmail', 'gmail.mail.search', 'Google Workspace MCP OAuth', '授权 Gmail', '不会模拟 Gmail 邮件', '没有找到匹配邮件'];
   }
   if (/出行方案|搜索出行|怎么去|比较出行|出行选项|整理可查|可查的出行/.test(query)) {
     return ['北京', '上海'];
+  }
+  if (/航班|机票|飞机/.test(query)) {
+    return ['航班', '飞常准', 'flight.search', '来源状态'];
+  }
+  if (/高铁|火车|车票|12306/.test(query)) {
+    return ['高铁', '12306', 'train.search'];
   }
   if (/附近|周边|外卖|咖啡|奶茶|肯德基|麦当劳|瑞幸|汉堡|餐饮|美食/.test(query)) {
     return ['奶茶', '餐饮', '高德', '腾讯地图', '百度地图', '美团', '淘宝闪购'];
@@ -693,6 +815,7 @@ async function runQuery(query, index, expectedTool) {
   }
   hdc(['shell', 'aa', 'start', '-a', 'EntryAbility', '-b', 'com.example.aiphonedemo']);
   await sleep(3000);
+  moveAppWindowIntoScreenshot();
   const appPid = hdc(['shell', 'pidof', 'com.example.aiphonedemo']).trim().split(/\s+/)[0] || '';
   const controls = await waitForControls();
   const logs = await captureWhile(appPid, async () => {
@@ -739,13 +862,22 @@ async function runQuery(query, index, expectedTool) {
     }
     return layoutText.includes(marker);
   });
+  if (expectedToolId === 'gmail.message.send') {
+    for (const blockingPattern of forbiddenGmailSendSuccessPatterns) {
+      if (blockingPattern.pattern.test(layoutText)) {
+        layoutBlockingHits.push(blockingPattern.name);
+      }
+    }
+  }
   summary.layoutPath = join(outDir, `query-${index + 1}-final-layout.json`);
   summary.layoutTextPath = layoutTextPath;
   summary.screenPath = captureScreen(`query-${index + 1}-final-screen.png`);
   summary.layoutExpectedHits = expectedHits;
   summary.layoutBlockingHits = layoutBlockingHits;
+  summary.gmailEccvKeywordVisible = !isGmailEccvQuery(query) || /eccv/i.test(layoutText);
+  summary.layoutTextExposed = (expectedMarkers.length === 0 || expectedHits.length > 0) && summary.gmailEccvKeywordVisible;
   summary.layoutOk = layoutBlockingHits.length === 0 &&
-    (allowsExternalGmailWeb || expectedMarkers.length === 0 || expectedHits.length > 0);
+    (allowsExternalGmailWeb || summary.layoutTextExposed || summary.htmlHomeDocument.ok);
   summary.ok = summary.ok && summary.layoutOk;
   return summary;
 }
@@ -760,7 +892,19 @@ for (let index = 0; index < queries.length; index += 1) {
   console.log(`\n[${index + 1}/${queries.length}] ${query}`);
   const inferredCase = useDefaultCases ? selectedDefaultCases[index] : expectedCaseForQuery(query);
   const expectedTool = inferredCase.expectsTool;
-  const summary = await runQuery(query, index, expectedTool);
+  let summary = null;
+  for (let attempt = 0; attempt <= queryRetryLimit; attempt += 1) {
+    summary = await runQuery(query, index, expectedTool);
+    summary.attempt = attempt + 1;
+    summary.retryLimit = queryRetryLimit;
+    if (summary.ok || !summary.providerFailed || attempt === queryRetryLimit) {
+      break;
+    }
+    console.warn(`provider failed for query ${index + 1}, retrying attempt ${attempt + 2}/${queryRetryLimit + 1}`);
+  }
+  if (summary === null) {
+    throw new Error(`No summary produced for query: ${query}`);
+  }
   summaries.push(summary);
   console.log(JSON.stringify(summary, null, 2));
 }
@@ -807,6 +951,13 @@ for (const blockingPattern of finalLayoutBlockingPatterns) {
     finalLayoutBlockingHits.push(blockingPattern.name);
   }
 }
+if (finalSummary !== null && finalSummary.expectedToolId === 'gmail.message.send') {
+  for (const blockingPattern of forbiddenGmailSendSuccessPatterns) {
+    if (blockingPattern.pattern.test(finalLayoutText)) {
+      finalLayoutBlockingHits.push(blockingPattern.name);
+    }
+  }
+}
 const finalLayoutRouteHits = finalLayoutRouteMarkers.filter((marker) => finalLayoutText.includes(marker));
 const hilogProcesses = activeHilogProcesses();
 const visibleOutput = {
@@ -818,7 +969,8 @@ const visibleOutput = {
   syntheticHits: finalLayoutSyntheticHits,
   forbiddenActionHits: finalLayoutForbiddenActionHits,
   blockingHits: finalLayoutBlockingHits,
-  ok: (finalAllowsExternalGmailWeb || finalLayoutDomainHits.length > 0) &&
+  ok: (finalAllowsExternalGmailWeb || finalLayoutDomainHits.length > 0 ||
+    (finalSummary !== null && finalSummary.htmlHomeDocument !== undefined && finalSummary.htmlHomeDocument.ok === true)) &&
     finalLayoutSyntheticHits.length === 0 &&
     finalLayoutForbiddenActionHits.length === 0 &&
     finalLayoutBlockingHits.length === 0

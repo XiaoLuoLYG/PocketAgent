@@ -7,6 +7,7 @@ import {
   emptyA2uiSurface
 } from '../../../model/A2uiTypes';
 import { actionsOf, genericToolResults } from '../../../model/A2uiData';
+import { gmailOpenDraftAction, gmailReplyDraftAction } from '../../../model/GmailToolA2ui';
 import {
   COLOR_ACCENT,
   COLOR_ACCENT_DARK,
@@ -211,6 +212,19 @@ export struct GenericToolResultsView {
       rows.push(row);
     });
     return rows;
+  }
+
+  private gmailActions(item: A2uiGenericToolResultData): A2uiAction[] {
+    const actions: A2uiAction[] = [];
+    const replyAction = gmailReplyDraftAction(item);
+    if (replyAction !== null) {
+      actions.push(replyAction);
+    }
+    const openDraftAction = gmailOpenDraftAction(item);
+    if (openDraftAction !== null) {
+      actions.push(openDraftAction);
+    }
+    return actions;
   }
 
   private gmailHeaderTitle(): string {
@@ -525,6 +539,12 @@ export struct GenericToolResultsView {
                         .alignItems(VerticalAlign.Top)
                         .margin({ top: 8 })
                       }, (row: A2uiGenericToolResultRowData, rowIndex: number) => row.label + row.value + rowIndex.toString())
+
+                      ActionBarView({
+                        actions: this.gmailActions(item),
+                        isBusy: this.isBusy,
+                        onAction: this.onAction
+                      })
                     }
                     .width('100%')
                     .padding({ left: 10, right: 10, top: 10, bottom: 10 })

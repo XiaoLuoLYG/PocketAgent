@@ -63,6 +63,7 @@ function modelJson(
       flight: [],
       food: []
     },
+    form: {},
     toolRequest: {
       toolId: '',
       prompt: '',

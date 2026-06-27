@@ -15,6 +15,32 @@ import {
   saveGmailOAuthTokenSet
 } from '../main/ets/model/GmailOAuthClient';
 
+interface GmailSearchArgsFixture {
+  query: string;
+  pageSize: number;
+}
+
+interface GmailDraftArgsFixture {
+  threadId: string;
+  to: string[];
+  subject: string;
+  body: string;
+  replyMode: string;
+}
+
+interface GmailDraftArgsWithHeadersFixture extends GmailDraftArgsFixture {
+  inReplyTo: string;
+  references: string;
+}
+
+interface GmailDraftScalarRecipientArgsFixture {
+  threadId: string;
+  to: string;
+  subject: string;
+  body: string;
+  replyMode: string;
+}
+
 export default function gmailOAuthClientTest() {
   describe('gmailOAuthClient', () => {
     it('builds Google OAuth URLs with PKCE and the Gmail MCP scopes', 0, () => {
@@ -107,10 +133,71 @@ export default function gmailOAuthClientTest() {
 
       const searchArgs = gmailMcpArgsForPrompt('gmail.mail.search', '帮我看 Gmail 里最新的重要邮件');
       const draftArgs = gmailMcpArgsForPrompt('gmail.draft.create', '帮我用 Gmail 写一封邮件给 alice@example.com 说我收到了');
-      expect(JSON.stringify(searchArgs).indexOf('is:important')).assertLarger(-1);
-      expect(JSON.stringify(searchArgs).indexOf('pageSize')).assertLarger(-1);
-      expect(JSON.stringify(draftArgs).indexOf('alice@example.com')).assertLarger(-1);
-      expect(JSON.stringify(draftArgs).indexOf('我收到了')).assertLarger(-1);
+      expect(JSON.stringify(searchArgs).indexOf('"query":"newer_than:30d -in:draft"')).assertLarger(-1);
+      expect(JSON.stringify(searchArgs).indexOf('"pageSize":10')).assertLarger(-1);
+      expect(JSON.stringify(searchArgs).indexOf('is:important')).assertEqual(-1);
+      expect(JSON.stringify(draftArgs).indexOf('alice@example.com')).assertEqual(-1);
+      expect(JSON.stringify(draftArgs).indexOf('我收到了')).assertEqual(-1);
+    });
+
+    it('uses structured Gmail search and draft args without semantic prompt parsing', 0, () => {
+      const providedSearchArgs: GmailSearchArgsFixture = {
+        query: 'from:committee@example.edu',
+        pageSize: 7
+      };
+      const providedDraftArgs: GmailDraftArgsFixture = {
+        threadId: 'thread-123',
+        to: ['committee@example.edu'],
+        subject: 'Admission reply',
+        body: 'Thanks for the update.',
+        replyMode: 'reply'
+      };
+      const providedDraftArgsWithIgnoredHeaders: GmailDraftArgsWithHeadersFixture = {
+        threadId: providedDraftArgs.threadId,
+        to: providedDraftArgs.to,
+        subject: providedDraftArgs.subject,
+        body: providedDraftArgs.body,
+        replyMode: providedDraftArgs.replyMode,
+        inReplyTo: '<parent@example.edu>',
+        references: '<root@example.edu> <parent@example.edu>'
+      };
+      const searchArgs = gmailMcpArgsForPrompt('gmail.mail.search', '帮我看 Gmail 里最新的重要邮件', providedSearchArgs);
+      const defaultSearchArgs = gmailMcpArgsForPrompt('gmail.mail.search', '帮我看 Gmail 里最新的重要邮件');
+      const draftArgs = gmailMcpArgsForPrompt('gmail.draft.create', '帮我给 alice@example.com 回复 <parent@example.edu> 说我收到了', providedDraftArgsWithIgnoredHeaders);
+
+      const searchJson = JSON.stringify(searchArgs);
+      const defaultSearchJson = JSON.stringify(defaultSearchArgs);
+      const draftJson = JSON.stringify(draftArgs);
+
+      expect(searchJson.indexOf('committee@example.edu')).assertLarger(-1);
+      expect(searchJson.indexOf('-in:draft')).assertLarger(-1);
+      expect(searchJson.indexOf('"pageSize":7')).assertLarger(-1);
+      expect(searchJson.indexOf('is:important')).assertEqual(-1);
+      expect(defaultSearchJson.indexOf('"query":"newer_than:30d -in:draft"')).assertLarger(-1);
+      expect(defaultSearchJson.indexOf('"pageSize":10')).assertLarger(-1);
+      expect(draftJson.indexOf('thread-123')).assertLarger(-1);
+      expect(draftJson.indexOf('committee@example.edu')).assertLarger(-1);
+      expect(draftJson.indexOf('Admission reply')).assertLarger(-1);
+      expect(draftJson.indexOf('Thanks for the update.')).assertLarger(-1);
+      expect(draftJson.indexOf('"replyMode":"reply"')).assertLarger(-1);
+      expect(draftJson.indexOf('<parent@example.edu>')).assertEqual(-1);
+      expect(draftJson.indexOf('<root@example.edu>')).assertEqual(-1);
+      expect(draftJson.indexOf('alice@example.com')).assertEqual(-1);
+    });
+
+    it('accepts scalar Gmail draft recipients from model structured args', 0, () => {
+      const providedDraftArgs: GmailDraftScalarRecipientArgsFixture = {
+        threadId: 'thread-123',
+        to: 'committee@example.edu',
+        subject: 'Re: Admission decision',
+        body: 'Thanks for the update.',
+        replyMode: 'reply'
+      };
+      const draftArgs = gmailMcpArgsForPrompt('gmail.draft.create', '创建 Gmail 回复草稿', providedDraftArgs);
+      const draftJson = JSON.stringify(draftArgs);
+
+      expect(draftJson.indexOf('"to":["committee@example.edu"]')).assertLarger(-1);
+      expect(draftJson.indexOf('"threadId":"thread-123"')).assertLarger(-1);
     });
   });
 }

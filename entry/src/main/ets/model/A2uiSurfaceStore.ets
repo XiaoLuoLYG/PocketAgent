@@ -6,6 +6,7 @@ import {
   A2uiDataValue,
   A2uiDynamicToolConnectData,
   A2uiFlightData,
+  A2uiFormData,
   A2uiFoodData,
   A2uiGenericToolResultData,
   A2uiGenericToolResultRowData,
@@ -88,6 +89,7 @@ function emptyDataModel(): A2uiRuntimeDataModel {
       rows: []
     },
     rowGroups: emptyRowGroups(),
+    form: {},
     toolRequest: {
       toolId: '',
       prompt: '',
@@ -240,6 +242,38 @@ function labelRowsFromDataValue(value: A2uiDataValue): A2uiLabelValueData[] {
   return [];
 }
 
+function stringArrayFromDataValue(value: A2uiDataValue | undefined): string[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    const values: string[] = [];
+    value.forEach((item: Object | string | number | boolean | null) => {
+      const text = textOf(item);
+      if (text.length > 0) {
+        values.push(text);
+      }
+    });
+    return values;
+  }
+  const text = textOf(value);
+  return text.length > 0 ? [text] : [];
+}
+
+function normalizeFormData(parsed: A2uiRuntimeDataModel, fallback: A2uiFormData): A2uiFormData {
+  if (parsed.form === undefined || parsed.form === null) {
+    return fallback;
+  }
+  const form = parsed.form as A2uiFormData;
+  return {
+    to: stringArrayFromDataValue(form.to),
+    subject: textOf(form.subject),
+    body: textOf(form.body),
+    threadId: textOf(form.threadId),
+    replyMode: textOf(form.replyMode)
+  };
+}
+
 function normalizeToolRequest(parsed: A2uiRuntimeDataModel, fallback: A2uiToolRequestData): A2uiToolRequestData {
   if (parsed.toolRequest !== undefined && parsed.toolRequest !== null && parsed.toolRequest.toolId !== undefined) {
     return parsed.toolRequest;
@@ -355,6 +389,7 @@ function parseDataModel(json: string): A2uiRuntimeDataModel {
         rows: Array.isArray(parsed.trip.rows) ? parsed.trip.rows : fallback.trip.rows
       },
       rowGroups: normalizeRowGroups(parsed, fallback.rowGroups),
+      form: normalizeFormData(parsed, fallback.form),
       toolRequest: normalizeToolRequest(parsed, fallback.toolRequest),
       dynamicToolConnect: normalizeDynamicToolConnect(parsed, fallback.dynamicToolConnect),
       genericToolResults: normalizeGenericToolResults(parsed, fallback.genericToolResults),
@@ -468,6 +503,19 @@ function setKnownDataPath(model: A2uiRuntimeDataModel, path: string, value: A2ui
     next.rowGroups.flight = labelRowsFromDataValue(value);
   } else if (path === '/rows/food') {
     next.rowGroups.food = labelRowsFromDataValue(value);
+  } else if (path === '/form') {
+    const wrapper = parseDataModel(JSON.stringify({ form: value }));
+    next.form = wrapper.form;
+  } else if (path === '/form/to') {
+    next.form.to = stringArrayFromDataValue(value);
+  } else if (path === '/form/subject') {
+    next.form.subject = textOf(value);
+  } else if (path === '/form/body') {
+    next.form.body = textOf(value);
+  } else if (path === '/form/threadId') {
+    next.form.threadId = textOf(value);
+  } else if (path === '/form/replyMode') {
+    next.form.replyMode = textOf(value);
   } else if (path === '/toolRequest') {
     next.toolRequest = value as A2uiToolRequestData;
     next.toolRequests = [next.toolRequest];

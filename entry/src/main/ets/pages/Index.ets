@@ -1550,6 +1550,7 @@ struct Index {
         flight: [],
         food: []
       },
+      form: {},
       toolRequest: {
         toolId: '',
         prompt: '',

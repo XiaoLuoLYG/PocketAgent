@@ -6,6 +6,7 @@ import {
   A2UI_COMPONENT_THINKING_CARD,
   A2uiCallResult,
   A2uiComponent,
+  A2uiDataValue,
   A2uiEnvelope,
   A2uiLabelValueData,
   A2uiMessage,
@@ -129,8 +130,9 @@ const SYSTEM_PROMPT: string =
   '可用工具：travel.search 用于同时查询并混排高铁和航班出行方案；train.search 用于用户明确只查铁路车次和余票；flight.search 用于用户明确只查航班或机票；food.search 用于查询周边餐饮、POI、麦当劳官方 MCP 查询结果和瑞幸官方 MCP 查询结果；dynamic.search 用于当前没有内置工具但可通过 MCP/API 候选目录接入的场景。food.search 只做门店、菜单、商品、优惠、价格计算、订单状态等查询聚合，禁止创建订单、支付、自动领券、兑换积分商品或取消订单。Gmail 工具：gmail.mail.search 用于搜索/查看 Gmail 收件箱或邮件列表；gmail.thread.read 用于读取指定 Gmail 线程；gmail.draft.create 用于生成 Gmail 回复或新邮件草稿预览；gmail.draft.apply 用于把已确认草稿交给真实 Gmail 会话继续处理；gmail.open.web 用于打开 Gmail 网页版；gmail.message.send 只用于用户明确要求绕过确认直接发送，并会被客户端阻断。模型阶段禁止编造 Gmail 邮件、联系人、正文、线程或发送结果。社交消息入口和 social.reply.send 由客户端在选中真实消息后处理，模型禁止编造社交消息或联系人。必须由你根据完整用户意图选择是否需要工具以及唯一 toolId。' +
   '泛化出行搜索，例如“从北京去上海帮我搜索出行方案”“明天北京到上海怎么去”“帮我比较出行方案”，只要日期、出发地、目的地明确，就必须选择 travel.search；如果明确说只查高铁/火车/动车，选择 train.search；如果明确说只查飞机/航班/机票，选择 flight.search。' +
   '如果出行查询缺少出发地、目的地或日期，禁止调用工具，只输出 InfoRows 说明需要补充的字段。' +
-  '如果用户请求 Gmail：查找/查看邮件/收件箱/最新重要邮件选择 gmail.mail.search；读取特定线程选择 gmail.thread.read；回复、写邮件、撰写、起草、草稿选择 gmail.draft.create；打开网页版选择 gmail.open.web；明确要求直接发送、立刻发送、马上发送、不确认直接发才选择 gmail.message.send。' +
-  '如果你选择 status=calling_tool，同一次响应中必须包含 /toolRequest；/toolRequest 是唯一合法路径，禁止 /toolRequests；值必须是 {"toolId":"travel.search|train.search|flight.search|food.search|dynamic.search|gmail.mail.search|gmail.thread.read|gmail.draft.create|gmail.draft.apply|gmail.open.web|gmail.message.send","prompt":"原始中文请求","actionId":"model_tool_request"}。' +
+  '当前邮件能力只有 Gmail；用户只说邮件或收件箱也按 Gmail 请求处理。如果用户请求 Gmail 或邮件：查找/查看邮件/收件箱/最新重要邮件选择 gmail.mail.search；读取特定线程选择 gmail.thread.read；回复、写邮件、撰写、起草、草稿选择 gmail.draft.create；gmail.ai.reply.draft 是客户端按钮动作，携带真实 Gmail 线程上下文；收到它时必须选择 gmail.draft.create，并返回 args.threadId、args.to、args.subject、args.body、args.replyMode；打开网页版选择 gmail.open.web；明确要求直接发送、立刻发送、马上发送、不确认直接发才选择 gmail.message.send。' +
+  '客户端禁止把论文、录取、导师等词写成本地规则；Gmail 模糊意图必须由模型写入 args.query，用 Gmail 搜索语法表达时间、重要性、发件人或主题词。生成 args.query 时优先保留用户给出的发件人、机构、主题和事件短语；中文意图必须扩展英文同义词和常见邮件措辞，例如论文/学术可补充 paper、manuscript、submission、review、conference、journal、camera-ready，录取/申请结果可补充 admission decision、decision letter、offer letter、accepted、admitted、congratulations、waitlist、rejection、application status。如果同一句同时包含论文/学术和录取/申请结果，必须把两个意图的英文词都放入同一个 args.query。不要把所有示例词都塞进同一个查询；每次只选最相关 6-10 个 OR 项。可使用 from:、subject:、newer_than:、OR/{ }、引号短语、-category:promotions 和 -in:draft 降低噪音；不要把容易误命中营销邮件的泛词单独作为 OR 项。' +
+  '如果你选择 status=calling_tool，同一次响应中必须包含 /toolRequest；/toolRequest 是唯一合法路径，禁止 /toolRequests；值必须是 {"toolId":"travel.search|train.search|flight.search|food.search|dynamic.search|gmail.mail.search|gmail.thread.read|gmail.draft.create|gmail.draft.apply|gmail.open.web|gmail.message.send","prompt":"原始中文请求","actionId":"model_tool_request","args":{"可选":"结构化参数"}}。非 Gmail 工具可以省略 args。Gmail 查询必须由你生成 args.query；Gmail 读取线程必须包含 args.threadId；Gmail 草稿必须包含 args.to、args.subject、args.body。' +
   '整理类 /rows 的 value 必须是 [{"label":"...","value":"..."}]；只写用户已给信息与下一步确认项，严禁编造精确班次、航班号、价格、耗时、库存、营业状态；尤其不要输出 G123、MU5101、自驾耗时等示例式假数据。' +
   '订票、下单、支付、抢票不能自动执行；交易请求只用 Text 或 ErrorNotice 告知需用户自行确认。' +
   '示例 A，寒暄：' +
@@ -154,7 +156,22 @@ const SYSTEM_PROMPT: string =
   '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"正在准备 Gmail","intent":"gmail","status":"calling_tool","sendDataModel":true}}' + '\n' +
   '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在准备 Gmail","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"Appless Phone 正在处理","body":"正在把 Gmail 请求交给工具","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
   '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在识别 Gmail 请求","正在准备调用 Gmail 工具","正在等待真实账号会话或授权状态"]}}' + '\n' +
-  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/toolRequest","value":{"toolId":"gmail.mail.search","prompt":"帮我看 Gmail 里最新的重要邮件","actionId":"model_tool_request"}}}' + '\n' +
+  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/toolRequest","value":{"toolId":"gmail.mail.search","prompt":"帮我看 Gmail 里最新的重要邮件","actionId":"model_tool_request","args":{"query":"newer_than:30d is:important","pageSize":10,"intentSummary":"查看最近重要 Gmail 邮件"}}}}' + '\n' +
+  '示例 F，Gmail 模糊搜索（用户问“帮我找最近学校发来的录取决定邮件”，到 /toolRequest 结束）：' +
+  '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"正在搜索 Gmail","intent":"gmail","status":"calling_tool","sendDataModel":true}}' + '\n' +
+  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在搜索 Gmail","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"Appless Phone 正在处理","body":"正在生成 Gmail 查询","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
+  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在理解录取相关意图","正在生成 Gmail 搜索语法","正在等待真实账号会话或授权状态"]}}' + '\n' +
+  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/toolRequest","value":{"toolId":"gmail.mail.search","prompt":"帮我找最近学校发来的录取决定邮件","actionId":"model_tool_request","args":{"query":"newer_than:365d {\\"录取结果\\" \\"admission decision\\" \\"decision letter\\" \\"offer letter\\" \\"accepted\\" \\"admitted\\" \\"application status\\" \\"congratulations\\"} -category:promotions -in:draft","pageSize":10,"intentSummary":"搜索最近录取决定相关 Gmail 邮件"}}}}' + '\n' +
+  '示例 H，Gmail 学术复合搜索（用户问“查最近学术投稿和申请结果邮件”，到 /toolRequest 结束）：' +
+  '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"正在搜索 Gmail","intent":"gmail","status":"calling_tool","sendDataModel":true}}' + '\n' +
+  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在搜索 Gmail","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"Appless Phone 正在处理","body":"正在生成 Gmail 查询","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
+  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在合并学术和申请结果意图","正在补充英文邮件关键词","正在等待真实账号会话或授权状态"]}}' + '\n' +
+  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/toolRequest","value":{"toolId":"gmail.mail.search","prompt":"查最近学术投稿和申请结果邮件","actionId":"model_tool_request","args":{"query":"newer_than:365d {\\"paper\\" \\"manuscript\\" \\"submission\\" \\"review\\" \\"camera-ready\\" \\"admission decision\\" \\"decision letter\\" \\"offer letter\\" \\"accepted\\" \\"admitted\\"} -category:promotions -in:draft","pageSize":10,"intentSummary":"搜索最近学术投稿和申请结果相关 Gmail 邮件"}}}}' + '\n' +
+  '示例 G，Gmail AI 回复草稿（收到 Action ID: gmail.ai.reply.draft 和 Structured action args JSON，到 /toolRequest 结束）：' +
+  '{"version":"v0.9.1","createSurface":{"surfaceId":"surface_model","root":"root","title":"正在创建 Gmail 回复草稿","intent":"gmail","status":"calling_tool","sendDataModel":true}}' + '\n' +
+  '{"version":"v0.9.1","updateComponents":{"surfaceId":"surface_model","components":[{"id":"root","component":"SurfaceRoot","child":"thinking","title":"正在创建 Gmail 回复草稿","status":"calling_tool"},{"id":"thinking","component":"ThinkingStream","title":"Appless Phone 正在处理","body":"正在为选中的 Gmail 线程生成回复正文","status":"calling_tool","dataPath":"/thoughts","actions":[]}]}}' + '\n' +
+  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/thoughts","value":["正在读取按钮携带的真实线程上下文","正在撰写可审核回复正文","正在准备创建 Gmail 草稿"]}}' + '\n' +
+  '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","path":"/toolRequest","value":{"toolId":"gmail.draft.create","prompt":"Create a Gmail reply draft for the selected thread","actionId":"model_tool_request","args":{"threadId":"thread-123","to":["committee@example.edu"],"subject":"Re: Admission decision","body":"Thanks for sharing the update. I appreciate the information and will review the details carefully.","replyMode":"reply"}}}}' + '\n' +
   '旧 aiphone.ui.v1 或 aiphone.ui.v2 格式不再受支持，绝不能输出。' +
   '客户端能力如下：' + JSON.stringify(defaultA2uiCapabilities()) + '。';
 
@@ -740,7 +757,10 @@ interface A2uiEnvelopeProbe {
   updateComponents?: Object | null;
   updateDataModel?: Object | null;
   deleteSurface?: Object | null;
+  toolRequest?: Object | string | number | boolean | null;
 }
+
+type CompactRecord = Record<string, Object | string | number | boolean | null | undefined>;
 
 interface CompactInfoRowsProbe {
   title?: Object | string | number | boolean | null;
@@ -760,6 +780,26 @@ interface CompactDataModelProbe {
   columns?: Object[];
   value?: Object | string | number | boolean | null;
   values?: Object | string | number | boolean | null;
+}
+
+interface CompactToolRequestPatchProbe {
+  path?: Object | string | number | boolean | null;
+  surfaceId?: Object | string | number | boolean | null;
+  value?: Object | string | number | boolean | null;
+  merge?: (Object | string | number | boolean | null)[] | null;
+  toolRequest?: Object | string | number | boolean | null;
+}
+
+interface CompactCreateSurfaceProbe {
+  surfaceId?: Object | string | number | boolean | null;
+  title?: Object | string | number | boolean | null;
+  intent?: Object | string | number | boolean | null;
+  sendDataModel?: Object | string | number | boolean | null;
+}
+
+interface CompactUpdateComponentsProbe {
+  surfaceId?: Object | string | number | boolean | null;
+  components?: Object[] | CompactRecord | null;
 }
 
 interface ActionStyleModelProbe {
@@ -1186,6 +1226,192 @@ function compactLabelRowsToA2uiJsonl(rows: A2uiLabelValueData[], title: string):
   return JSON.stringify(createSurface) + '\n' + JSON.stringify(updateComponents) + '\n' + JSON.stringify(updateDataModel) + '\n';
 }
 
+function compactToolRequestToA2uiJsonl(parsed: A2uiEnvelopeProbe): string {
+  let toolRequest: Object | null = null;
+  if (parsed.updateDataModel !== undefined && parsed.updateDataModel !== null) {
+    const patch = parsed.updateDataModel as CompactToolRequestPatchProbe;
+    const hasNestedToolRequest = patch.toolRequest !== undefined && patch.toolRequest !== null;
+    if (compactTextOf(patch.path) === '/toolRequest' || hasNestedToolRequest) {
+      toolRequest = compactToolRequestValue(patch);
+    }
+  }
+  if (toolRequest === null) {
+    toolRequest = compactObjectValue(parsed.toolRequest);
+  }
+  const create = parsed.createSurface === undefined || parsed.createSurface === null ||
+    typeof parsed.createSurface === 'string' ? null : parsed.createSurface as CompactCreateSurfaceProbe;
+  if (toolRequest === null && create !== null) {
+    const sendDataModel = compactObjectValue(create.sendDataModel);
+    if (sendDataModel !== null) {
+      const sendDataRecord = sendDataModel as CompactRecord;
+      toolRequest = compactObjectValue(sendDataRecord['/toolRequest']);
+    }
+  }
+  if (toolRequest === null) {
+    return '';
+  }
+  const surfaceId = create !== null ? compactTextOf(create.surfaceId) : '';
+  const normalizedSurfaceId = surfaceId.length > 0 ? surfaceId : 'surface_model';
+  const title = create !== undefined && create !== null && compactTextOf(create.title).length > 0 ?
+    compactTextOf(create.title) : '正在调用工具';
+  const intent = create !== undefined && create !== null && compactTextOf(create.intent).length > 0 ?
+    compactTextOf(create.intent) : 'general';
+  const createSurface: A2uiEnvelope = {
+    version: 'v0.9.1',
+    createSurface: {
+      surfaceId: normalizedSurfaceId,
+      root: 'root',
+      title: title,
+      intent: intent,
+      status: 'calling_tool',
+      sendDataModel: true
+    }
+  };
+  const updateComponents: A2uiEnvelope = {
+    version: 'v0.9.1',
+    updateComponents: {
+      surfaceId: normalizedSurfaceId,
+      components: [
+        {
+          id: 'root',
+          component: 'SurfaceRoot',
+          child: 'thinking',
+          title: title,
+          status: 'calling_tool'
+        },
+        {
+          id: 'thinking',
+          component: 'ThinkingStream',
+          title: 'Appless Phone 正在处理',
+          body: '正在准备调用工具',
+          status: 'calling_tool',
+          dataPath: '/thoughts',
+          actions: []
+        }
+      ]
+    }
+  };
+  const updateDataModel: A2uiEnvelope = {
+    version: 'v0.9.1',
+    updateDataModel: {
+      surfaceId: normalizedSurfaceId,
+      path: '/toolRequest',
+      value: toolRequest as A2uiDataValue
+    }
+  };
+  return JSON.stringify(createSurface) + '\n' + JSON.stringify(updateComponents) + '\n' + JSON.stringify(updateDataModel) + '\n';
+}
+
+function compactSurfaceId(parsed: A2uiEnvelopeProbe): string {
+  const create = parsed.createSurface === undefined || parsed.createSurface === null ||
+    typeof parsed.createSurface === 'string' ? null : parsed.createSurface as CompactCreateSurfaceProbe;
+  const createSurfaceId = create === null ? '' : compactTextOf(create.surfaceId);
+  if (createSurfaceId.length > 0) {
+    return createSurfaceId;
+  }
+  if (parsed.updateComponents !== undefined && parsed.updateComponents !== null) {
+    const update = parsed.updateComponents as CompactUpdateComponentsProbe;
+    const updateSurfaceId = compactTextOf(update.surfaceId);
+    if (updateSurfaceId.length > 0) {
+      return updateSurfaceId;
+    }
+  }
+  if (parsed.updateDataModel !== undefined && parsed.updateDataModel !== null) {
+    const patch = parsed.updateDataModel as CompactToolRequestPatchProbe;
+    const patchSurfaceId = compactTextOf(patch.surfaceId);
+    if (patchSurfaceId.length > 0) {
+      return patchSurfaceId;
+    }
+  }
+  return 'main';
+}
+
+function compactComponentsToA2uiJsonl(parsed: A2uiEnvelopeProbe): string {
+  if (parsed.updateComponents === undefined || parsed.updateComponents === null) {
+    return '';
+  }
+  const update = parsed.updateComponents as CompactUpdateComponentsProbe;
+  if (Array.isArray(update.components) && compactTextOf(update.surfaceId).length > 0) {
+    return '';
+  }
+  if (update.components === undefined || update.components === null || Array.isArray(update.components)) {
+    return '';
+  }
+  const components: A2uiComponent[] = [];
+  const record = update.components as CompactRecord;
+  Object.keys(record).forEach((key: string) => {
+    const value = record[key];
+    if (value === undefined || value === null ||
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return;
+    }
+    const component = value as A2uiComponent;
+    component.id = compactTextOf(component.id).length > 0 ? component.id : key;
+    components.push(component);
+  });
+  if (components.length === 0) {
+    return '';
+  }
+  const envelope: A2uiEnvelope = {
+    version: 'v0.9.1',
+    updateComponents: {
+      surfaceId: compactSurfaceId(parsed),
+      components: components
+    }
+  };
+  return JSON.stringify(envelope) + '\n';
+}
+
+function compactShorthandDataModelToA2uiJsonl(parsed: A2uiEnvelopeProbe): string {
+  if (parsed.updateDataModel === undefined || parsed.updateDataModel === null) {
+    return '';
+  }
+  const patch = parsed.updateDataModel as CompactToolRequestPatchProbe;
+  if (compactTextOf(patch.path).length > 0 || patch.toolRequest !== undefined && patch.toolRequest !== null) {
+    return '';
+  }
+  const record = parsed.updateDataModel as CompactRecord;
+  let jsonl = '';
+  Object.keys(record).forEach((key: string) => {
+    if (!key.startsWith('/')) {
+      return;
+    }
+    const envelope: A2uiEnvelope = {
+      version: 'v0.9.1',
+      updateDataModel: {
+        surfaceId: compactSurfaceId(parsed),
+        path: key,
+        value: record[key] as A2uiDataValue
+      }
+    };
+    jsonl += JSON.stringify(envelope) + '\n';
+  });
+  return jsonl;
+}
+
+function compactToolRequestValue(patch: CompactToolRequestPatchProbe): Object | null {
+  const nested = compactObjectValue(patch.toolRequest);
+  if (nested !== null) {
+    return nested;
+  }
+  const value = compactObjectValue(patch.value);
+  if (value !== null) {
+    return value;
+  }
+  if (patch.merge === undefined || patch.merge === null || !Array.isArray(patch.merge) || patch.merge.length === 0) {
+    return null;
+  }
+  return compactObjectValue(patch.merge[0]);
+}
+
+function compactObjectValue(value: Object | string | number | boolean | null | undefined): Object | null {
+  if (value === undefined || value === null ||
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return null;
+  }
+  return value;
+}
+
 function extractJsonStringAfter(text: string, marker: string, startIndex: number): ExtractedString {
   const markerIndex = text.indexOf(marker, startIndex);
   if (markerIndex < 0) {
@@ -1250,6 +1476,24 @@ function normalizeModelEnvelopeCandidate(candidate: string): string {
     const normalizedCandidate = candidate.split('"/rows":').join('"rows":');
     const parsed = JSON.parse(normalizedCandidate) as A2uiEnvelopeProbe;
     const messageCount = candidateMessageCount(parsed);
+    if (hasNestedToolRequest(parsed)) {
+      const nestedToolRequestJsonl = compactToolRequestToA2uiJsonl(parsed);
+      if (nestedToolRequestJsonl.length > 0) {
+        return nestedToolRequestJsonl;
+      }
+    }
+    const toolRequestJsonl = compactToolRequestToA2uiJsonl(parsed);
+    if (toolRequestJsonl.length > 0) {
+      return toolRequestJsonl;
+    }
+    const componentsJsonl = compactComponentsToA2uiJsonl(parsed);
+    if (componentsJsonl.length > 0) {
+      return componentsJsonl;
+    }
+    const shorthandDataModelJsonl = compactShorthandDataModelToA2uiJsonl(parsed);
+    if (shorthandDataModelJsonl.length > 0) {
+      return shorthandDataModelJsonl;
+    }
     if (messageCount === 1 && normalizedCandidate.indexOf('"version"') >= 0) {
       return candidate + '\n';
     }
@@ -1261,6 +1505,17 @@ function normalizeModelEnvelopeCandidate(candidate: string): string {
   } catch (_error) {
     return compactLabelRowsToA2uiJsonl(compactLabelRowsFromMalformedText(candidate), '整理结果');
   }
+}
+
+function hasNestedToolRequest(parsed: A2uiEnvelopeProbe): boolean {
+  if (parsed.toolRequest !== undefined && parsed.toolRequest !== null) {
+    return true;
+  }
+  if (parsed.updateDataModel === undefined || parsed.updateDataModel === null) {
+    return false;
+  }
+  const patch = parsed.updateDataModel as CompactToolRequestPatchProbe;
+  return patch.toolRequest !== undefined && patch.toolRequest !== null;
 }
 
 export function extractA2uiJsonlFromModelChunk(chunk: string, previousRemainder: string = ''): ModelA2uiChunk {

@@ -8,6 +8,7 @@ import {
   GmailSearchThreadsArgs,
   gmailMcpArgsForPrompt
 } from './GmailOAuthClient';
+import { aiLogError, aiLogInfo } from './AiphoneLogger';
 
 const GMAIL_API_BASE_URL: string = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -63,6 +64,7 @@ interface GmailDraftResponse {
 
 interface GmailDraftCreateMessage {
   raw: string;
+  threadId?: string;
 }
 
 interface GmailDraftCreateRequest {
@@ -124,6 +126,39 @@ function bearerHeaders(accessToken: string): Record<string, string> {
   };
 }
 
+function requestMethodName(method: http.RequestMethod): string {
+  if (method === http.RequestMethod.POST) {
+    return 'POST';
+  }
+  if (method === http.RequestMethod.GET) {
+    return 'GET';
+  }
+  return method.toString();
+}
+
+function gmailApiPath(url: string): string {
+  let path = url;
+  if (path.startsWith(GMAIL_API_BASE_URL)) {
+    path = path.substring(GMAIL_API_BASE_URL.length);
+  }
+  const queryIndex = path.indexOf('?');
+  return queryIndex >= 0 ? path.substring(0, queryIndex) : path;
+}
+
+function describeRequestError(error: Error | Object | string | number | boolean | null | undefined): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (typeof error === 'number' || typeof error === 'boolean') {
+    return error.toString();
+  }
+  const json = JSON.stringify(error);
+  return json.length > 0 && json !== '{}' ? json : String(error);
+}
+
 async function requestJson(
   method: http.RequestMethod,
   url: string,
@@ -131,6 +166,8 @@ async function requestJson(
   body: Object | null
 ): Promise<Object> {
   const request = http.createHttp();
+  const methodName = requestMethodName(method);
+  const path = gmailApiPath(url);
   try {
     const headers = bearerHeaders(accessToken);
     const options: http.HttpRequestOptions = {
@@ -144,8 +181,15 @@ async function requestJson(
       headers['Content-Type'] = 'application/json';
       options.extraData = JSON.stringify(body);
     }
+    aiLogInfo('[AIPhone][GmailApiHttpStart] method=' + methodName +
+      ' path=' + path +
+      ' bodyChars=' + (body === null ? '0' : JSON.stringify(body).length.toString()));
     const response = await request.request(url, options);
     const text = responseText(response.result);
+    aiLogInfo('[AIPhone][GmailApiHttpEnd] method=' + methodName +
+      ' path=' + path +
+      ' code=' + response.responseCode.toString() +
+      ' chars=' + text.length.toString());
     const payload = text.length > 0 ? JSON.parse(text) as Object : new Object();
     if (response.responseCode < 200 || response.responseCode >= 300) {
       const errorPayload = payload as GoogleApiErrorPayload;
@@ -154,6 +198,12 @@ async function requestJson(
       throw new Error(message.length > 0 ? message : (status.length > 0 ? status : 'HTTP ' + response.responseCode.toString()));
     }
     return payload;
+  } catch (error) {
+    const message = describeRequestError(error);
+    aiLogError('[AIPhone][GmailApiHttpError] method=' + methodName +
+      ' path=' + path +
+      ' error=' + message.substring(0, 220));
+    throw new Error(message);
   } finally {
     request.destroy();
   }
@@ -261,6 +311,22 @@ function noResultsResult(query: string, estimate: number): DynamicGenericToolRes
   };
 }
 
+function searchSummaryResult(query: string, returned: number, estimate: number): DynamicGenericToolResult {
+  return {
+    sourceTag: 'Gmail API',
+    toolName: 'users.threads.list',
+    title: 'Gmail 搜索条件',
+    status: 'success',
+    summary: '已使用真实 Gmail API 搜索邮件线程；下面展示匹配结果。',
+    rows: [
+      { label: 'Query', value: query },
+      { label: 'Returned threads', value: returned.toString() },
+      { label: 'Result size', value: estimate.toString() }
+    ],
+    rawPreview: 'query=' + query + ' returned=' + returned.toString() + ' resultSize=' + estimate.toString()
+  };
+}
+
 function errorResult(toolName: string, message: string): DynamicGenericToolResult {
   return {
     sourceTag: 'Gmail API',
@@ -286,33 +352,40 @@ async function getThread(accessToken: string, threadId: string): Promise<GmailTh
   return await requestJson(http.RequestMethod.GET, url, accessToken, null) as GmailThread;
 }
 
-async function searchThreads(accessToken: string, prompt: string): Promise<DynamicGenericToolResult[]> {
-  const args = gmailMcpArgsForPrompt('gmail.mail.search', prompt) as GmailSearchThreadsArgs;
-  const pageSize = args.pageSize > 0 ? args.pageSize : 10;
+async function searchThreads(accessToken: string, prompt: string, args: Object | null = null): Promise<DynamicGenericToolResult[]> {
+  const gmailArgs = gmailMcpArgsForPrompt('gmail.mail.search', prompt, args) as GmailSearchThreadsArgs;
+  const pageSize = gmailArgs.pageSize > 0 ? Math.min(gmailArgs.pageSize, 10) : 10;
   const url = urlWithParams(GMAIL_API_BASE_URL + '/threads', [
-    ['q', args.query],
+    ['q', gmailArgs.query],
     ['maxResults', pageSize.toString()],
     ['includeSpamTrash', 'false']
   ]);
   const listed = await requestJson(http.RequestMethod.GET, url, accessToken, null) as GmailThreadsListResponse;
   const items = Array.isArray(listed.threads) ? listed.threads : [];
   if (items.length === 0) {
-    return [noResultsResult(args.query, listed.resultSizeEstimate === undefined ? 0 : listed.resultSizeEstimate)];
+    return [noResultsResult(gmailArgs.query, listed.resultSizeEstimate === undefined ? 0 : listed.resultSizeEstimate)];
   }
-  const results: DynamicGenericToolResult[] = [];
+  const tasks: Promise<GmailThread>[] = [];
   for (let index = 0; index < items.length && index < pageSize; index++) {
     const threadId = textOf(items[index].id);
     if (threadId.length === 0) {
       continue;
     }
-    results.push(threadResult(await getThread(accessToken, threadId)));
+    tasks.push(getThread(accessToken, threadId));
   }
-  return results.length > 0 ? results : [noResultsResult(args.query, listed.resultSizeEstimate === undefined ? 0 : listed.resultSizeEstimate)];
+  const results: DynamicGenericToolResult[] = [];
+  const threads = await Promise.all(tasks);
+  for (let index = 0; index < threads.length; index++) {
+    results.push(threadResult(threads[index]));
+  }
+  const estimate = listed.resultSizeEstimate === undefined ? results.length : listed.resultSizeEstimate;
+  return results.length > 0 ? [searchSummaryResult(gmailArgs.query, results.length, estimate)].concat(results) :
+    [noResultsResult(gmailArgs.query, estimate)];
 }
 
-async function readThread(accessToken: string, prompt: string): Promise<DynamicGenericToolResult[]> {
-  const args = gmailMcpArgsForPrompt('gmail.thread.read', prompt) as GmailGetThreadArgs;
-  const threadId = args.threadId.trim();
+async function readThread(accessToken: string, prompt: string, args: Object | null = null): Promise<DynamicGenericToolResult[]> {
+  const gmailArgs = gmailMcpArgsForPrompt('gmail.thread.read', prompt, args) as GmailGetThreadArgs;
+  const threadId = gmailArgs.threadId.trim();
   if (threadId.length === 0) {
     return [errorResult('users.threads.get', 'Missing Gmail thread ID.')];
   }
@@ -321,54 +394,75 @@ async function readThread(accessToken: string, prompt: string): Promise<DynamicG
 
 function rfc2822Message(args: GmailCreateDraftArgs): string {
   const to = args.to.join(', ');
-  return 'To: ' + to + '\r\n' +
-    'Subject: ' + args.subject + '\r\n' +
-    'MIME-Version: 1.0\r\n' +
-    'Content-Type: text/plain; charset=UTF-8\r\n' +
-    '\r\n' +
+  const headers: string[] = [
+    'To: ' + to,
+    'Subject: ' + args.subject
+  ];
+  if (args.inReplyTo.trim().length > 0) {
+    headers.push('In-Reply-To: ' + args.inReplyTo.trim());
+  }
+  if (args.references.trim().length > 0) {
+    headers.push('References: ' + args.references.trim());
+  }
+  headers.push('MIME-Version: 1.0');
+  headers.push('Content-Type: text/plain; charset=UTF-8');
+  return headers.join('\r\n') +
+    '\r\n\r\n' +
     args.body + '\r\n';
 }
 
-async function createDraft(accessToken: string, prompt: string): Promise<DynamicGenericToolResult[]> {
-  const args = gmailMcpArgsForPrompt('gmail.draft.create', prompt) as GmailCreateDraftArgs;
-  if (args.to.length === 0) {
+async function createDraft(accessToken: string, prompt: string, args: Object | null = null): Promise<DynamicGenericToolResult[]> {
+  const gmailArgs = gmailMcpArgsForPrompt('gmail.draft.create', prompt, args) as GmailCreateDraftArgs;
+  if (gmailArgs.to.length === 0) {
     return [errorResult('users.drafts.create', 'Missing recipient email address.')];
   }
-  const raw = bytesToBase64Url(utf8Bytes(rfc2822Message(args)));
+  if (gmailArgs.body.trim().length === 0) {
+    return [errorResult('users.drafts.create', 'Missing email body.')];
+  }
+  const threadId = gmailArgs.threadId.trim();
+  const raw = bytesToBase64Url(utf8Bytes(rfc2822Message(gmailArgs)));
   const draftBody: GmailDraftCreateRequest = {
     message: {
       raw: raw
     }
   };
+  if (threadId.length > 0) {
+    draftBody.message.threadId = threadId;
+  }
   const created = await requestJson(http.RequestMethod.POST, GMAIL_API_BASE_URL + '/drafts', accessToken, draftBody) as GmailDraftResponse;
   const draftId = textOf(created.id);
   const messageId = created.message === undefined ? '' : textOf(created.message.id);
+  const resultThreadId = threadId.length > 0 ? threadId : (created.message === undefined ? '' : textOf(created.message.threadId));
+  const rows: A2uiLabelValueData[] = [
+    { label: 'To', value: gmailArgs.to.join(', ') },
+    { label: 'Subject', value: gmailArgs.subject },
+    { label: 'Draft ID', value: draftId },
+    { label: 'Message ID', value: messageId }
+  ];
+  if (resultThreadId.length > 0) {
+    rows.push({ label: 'Thread ID', value: resultThreadId });
+  }
   return [{
     sourceTag: 'Gmail API',
     toolName: 'users.drafts.create',
     title: 'Gmail 草稿已创建',
     status: 'success',
     summary: '已在真实 Gmail 账号中创建草稿；尚未发送。',
-    rows: [
-      { label: 'To', value: args.to.join(', ') },
-      { label: 'Subject', value: args.subject },
-      { label: 'Draft ID', value: draftId },
-      { label: 'Message ID', value: messageId }
-    ],
-    rawPreview: 'draftId=' + draftId + ' messageId=' + messageId
+    rows: rows,
+    rawPreview: 'draftId=' + draftId + ' messageId=' + messageId + (resultThreadId.length > 0 ? ' threadId=' + resultThreadId : '')
   }];
 }
 
-export async function callGmailApiTool(toolId: string, prompt: string, accessToken: string): Promise<DynamicGenericToolResult[]> {
+export async function callGmailApiTool(toolId: string, prompt: string, accessToken: string, args: Object | null = null): Promise<DynamicGenericToolResult[]> {
   try {
     if (toolId === 'gmail.mail.search') {
-      return await searchThreads(accessToken, prompt);
+      return await searchThreads(accessToken, prompt, args);
     }
     if (toolId === 'gmail.thread.read') {
-      return await readThread(accessToken, prompt);
+      return await readThread(accessToken, prompt, args);
     }
     if (toolId === 'gmail.draft.create' || toolId === 'gmail.draft.apply') {
-      return await createDraft(accessToken, prompt);
+      return await createDraft(accessToken, prompt, args);
     }
     return [errorResult(toolId, 'Unsupported Gmail API tool.')];
   } catch (error) {

@@ -12,13 +12,15 @@ import {
   COLOR_CARD_RAISED,
   COLOR_ERROR,
   COLOR_ERROR_SOFT,
-  COLOR_INK
+  COLOR_INK,
+  COLOR_LINE,
+  COLOR_PAGE
 } from './A2uiHomeTheme';
 
-export const A2UI_CIRCLE_BUTTON_SIZE: number = 32;
-export const A2UI_CIRCLE_BUTTON_ICON_SIZE: number = 16;
-export const A2UI_CIRCLE_BUTTON_BACKGROUND: string = '#18181B';
-export const A2UI_CIRCLE_BUTTON_BORDER: string = '#27272A';
+export const A2UI_CIRCLE_BUTTON_SIZE: number = 44;
+export const A2UI_CIRCLE_BUTTON_ICON_SIZE: number = 22;
+export const A2UI_CIRCLE_BUTTON_BACKGROUND: string = COLOR_PAGE;
+export const A2UI_CIRCLE_BUTTON_BORDER: string = COLOR_LINE;
 
 export interface A2uiButtonVisualStyle {
   backgroundColor: string;

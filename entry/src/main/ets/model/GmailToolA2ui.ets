@@ -13,6 +13,7 @@ import {
 } from './A2uiTypes';
 
 export const GMAIL_WEB_URL: string = 'https://mail.google.com/mail/u/0/#inbox';
+export const GMAIL_DRAFTS_URL: string = 'https://mail.google.com/mail/u/0/#drafts';
 export const GMAIL_MCP_SERVER_URL: string = 'https://gmailmcp.googleapis.com/mcp/v1';
 export const GMAIL_MCP_AUTH_SETUP_URL: string = 'https://developers.google.com/workspace/gmail/api/guides/configure-mcp-server';
 const GMAIL_MANIFEST_ID: string = 'google.gmail';
@@ -21,14 +22,26 @@ const GENERIC_RESULTS_PATH: string = '/genericToolResults';
 const SUMMARY_PATH: string = '/summary';
 const CONNECT_PATH: string = '/dynamicToolConnect';
 
-function action(id: string, label: string, prompt: string, variant: string, kind: string): A2uiAction {
-  return {
+interface GmailReplyDraftActionArgs {
+  threadId: string;
+  to: string[];
+  subject: string;
+  replyMode: string;
+  contextSummary: string;
+}
+
+function action(id: string, label: string, prompt: string, variant: string, kind: string, args: Object | null = null): A2uiAction {
+  const next: A2uiAction = {
     id: id,
     label: label,
     prompt: prompt,
     variant: variant,
     kind: kind
   };
+  if (args !== null) {
+    next.args = args;
+  }
+  return next;
 }
 
 function jsonLine(envelope: A2uiEnvelope): string {
@@ -133,10 +146,64 @@ function genericResultsFromDynamic(results: DynamicGenericToolResult[]): A2uiGen
       status: result.status,
       summary: result.summary,
       rows: result.rows,
-      rawPreview: result.rawPreview
+      rawPreview: ''
     });
   });
   return mapped;
+}
+
+function rowValue(result: A2uiGenericToolResultData, label: string): string {
+  for (let index = 0; index < result.rows.length; index++) {
+    if (result.rows[index].label === label) {
+      return result.rows[index].value.trim();
+    }
+  }
+  return '';
+}
+
+function emailFromHeader(value: string): string {
+  const trimmed = value.trim();
+  const left = trimmed.indexOf('<');
+  const right = trimmed.indexOf('>');
+  if (left >= 0 && right > left) {
+    return trimmed.substring(left + 1, right).trim();
+  }
+  return trimmed;
+}
+
+export function gmailReplyDraftAction(result: A2uiGenericToolResultData): A2uiAction | null {
+  if (result.status !== 'success' || result.sourceTag !== 'Gmail API' || result.toolName.indexOf('users.threads') !== 0) {
+    return null;
+  }
+  const threadId = rowValue(result, 'Thread ID');
+  const from = rowValue(result, 'From');
+  if (threadId.length === 0 || from.length === 0) {
+    return null;
+  }
+  const email = emailFromHeader(from);
+  if (email.length === 0) {
+    return null;
+  }
+  const subject = result.title.indexOf('Re:') === 0 ? result.title : 'Re: ' + result.title;
+  const args: GmailReplyDraftActionArgs = {
+    threadId: threadId,
+    to: [email],
+    subject: subject,
+    replyMode: 'reply',
+    contextSummary: result.summary
+  };
+  const prompt = 'Action ID: gmail.ai.reply.draft。请基于真实 Gmail 线程生成一封简短、礼貌、可审核的回复草稿。只选择 gmail.draft.create，不要发送，不要编造事实。' +
+    '/toolRequest.args 必须保留 threadId、to、subject、replyMode，并由你撰写 args.body。Structured action args JSON: ' + JSON.stringify(args);
+  return action('gmail.ai.reply.draft', 'AI 回复草稿', prompt, 'primary', 'prompt', args);
+}
+
+export function gmailOpenDraftAction(result: A2uiGenericToolResultData): A2uiAction | null {
+  if (result.toolName !== 'gmail.draft.create' &&
+    result.toolName !== 'create_draft' &&
+    result.toolName.indexOf('users.drafts') !== 0) {
+    return null;
+  }
+  return action('gmail.open.web', '跳转到Gmail', GMAIL_DRAFTS_URL, 'secondary', 'client');
 }
 
 export function gmailAuthRequiredA2ui(

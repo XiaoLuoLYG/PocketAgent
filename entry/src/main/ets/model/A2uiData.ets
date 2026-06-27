@@ -4,6 +4,7 @@ import {
   A2uiDataValue,
   A2uiDynamicToolConnectData,
   A2uiFlightData,
+  A2uiFormData,
   A2uiFoodData,
   A2uiGenericToolResultData,
   A2uiGenericToolResultRowData,
@@ -76,6 +77,7 @@ function emptyModel(): A2uiRuntimeDataModel {
       rows: []
     },
     rowGroups: emptyRowGroups(),
+    form: {},
     toolRequest: {
       toolId: '',
       prompt: '',
@@ -194,6 +196,13 @@ function normalizeToolRequest(parsed: A2uiRuntimeDataModel, fallback: A2uiToolRe
   return fallback;
 }
 
+function normalizeForm(parsed: A2uiRuntimeDataModel, fallback: A2uiFormData): A2uiFormData {
+  if (parsed.form === undefined || parsed.form === null) {
+    return fallback;
+  }
+  return parsed.form;
+}
+
 function normalizeRowGroups(parsed: A2uiRuntimeDataModel, fallback: A2uiRowGroupsData): A2uiRowGroupsData {
   if (parsed.rowGroups === undefined || parsed.rowGroups === null) {
     return fallback;
@@ -233,6 +242,7 @@ function parseModel(surface: A2uiSurfaceState): A2uiRuntimeDataModel {
         rows: Array.isArray(parsed.trip.rows) ? parsed.trip.rows : fallback.trip.rows
       },
       rowGroups: normalizeRowGroups(parsed, fallback.rowGroups),
+      form: normalizeForm(parsed, fallback.form),
       toolRequest: normalizeToolRequest(parsed, fallback.toolRequest),
       dynamicToolConnect: normalizeDynamicToolConnect(parsed, fallback.dynamicToolConnect),
       genericToolResults: normalizeGenericToolResults(parsed, fallback.genericToolResults),

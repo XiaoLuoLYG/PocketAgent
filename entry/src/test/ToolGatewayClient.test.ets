@@ -56,6 +56,32 @@ class FixtureGmailMcpClient extends GenericMcpClient {
   }
 }
 
+class FailingGmailMcpClient extends GenericMcpClient {
+  async callTool(_registration: DynamicToolRegistration, _credentialValue: string, _args: Object): Promise<DynamicGenericToolResult> {
+    throw new Error('Operation timeout');
+  }
+}
+
+class ErrorResultGmailMcpClient extends GenericMcpClient {
+  async callTool(registration: DynamicToolRegistration, _credentialValue: string, _args: Object): Promise<DynamicGenericToolResult> {
+    return {
+      sourceTag: 'Gmail',
+      toolName: registration.mcpToolName,
+      title: 'Gmail API 调用失败',
+      status: 'error',
+      summary: 'Missing recipient email address.',
+      rows: [{ label: 'Error', value: 'Missing recipient email address.' }],
+      rawPreview: 'error=Missing recipient email address.'
+    };
+  }
+}
+
+interface GmailToolArgsFixture {
+  query: string;
+  pageSize: number;
+  intentSummary: string;
+}
+
 interface McDonaldsStoreFixture {
   storeName: string;
   address: string;
@@ -226,33 +252,37 @@ export default function toolGatewayClientTest() {
     });
 
     it('builds a Google OAuth authorization URL for Gmail MCP when client config is present', 0, async () => {
-      configureLocalProviderConfigFromRawJson(JSON.stringify({
-        GMAIL_OAUTH_CLIENT_ID: 'client-123.apps.googleusercontent.com',
-        GMAIL_OAUTH_REDIRECT_URI: 'com.example.aiphonedemo:/oauth/google'
-      }));
+      try {
+        configureLocalProviderConfigFromRawJson(JSON.stringify({
+          GMAIL_OAUTH_CLIENT_ID: 'client-123.apps.googleusercontent.com',
+          GMAIL_OAUTH_REDIRECT_URI: 'com.example.aiphonedemo:/oauth/google'
+        }));
 
-      const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
-      const authResult: A2uiCallResult = await callToolGateway(
-        defaultToolGatewayUrl(),
-        'gmail.mail.search',
-        '帮我看下 Gmail 最近的重要邮件',
-        'surface_gmail_auth_with_client',
-        'client_intent_fallback',
-        noop
-      );
+        const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
+        const authResult: A2uiCallResult = await callToolGateway(
+          defaultToolGatewayUrl(),
+          'gmail.mail.search',
+          '帮我看下 Gmail 最近的重要邮件',
+          'surface_gmail_auth_with_client',
+          'client_intent_fallback',
+          noop
+        );
 
-      configureLocalProviderConfigFromRawJson('{}');
-
-      const authAction = dynamicToolConnect(authResult.surface).actions[0];
-      expect(authResult.ok).assertTrue();
-      expect(authAction.id).assertEqual('gmail.authorize');
-      expect(authAction.prompt.indexOf('https://accounts.google.com/o/oauth2/v2/auth?')).assertEqual(0);
-      expect(authAction.prompt.indexOf('client_id=client-123.apps.googleusercontent.com')).assertLarger(-1);
-      expect(authAction.prompt.indexOf('redirect_uri=com.example.aiphonedemo%3A%2Foauth%2Fgoogle')).assertLarger(-1);
-      expect(authAction.prompt.indexOf('gmail.readonly')).assertLarger(-1);
-      expect(authAction.prompt.indexOf('gmail.compose')).assertLarger(-1);
-      expect(authAction.prompt.indexOf('code_challenge=')).assertLarger(-1);
-      expect(authAction.prompt.indexOf('code_challenge_method=S256')).assertLarger(-1);
+        const authAction = dynamicToolConnect(authResult.surface).actions[0];
+        expect(authResult.ok).assertTrue();
+        expect(authAction.id).assertEqual('gmail.authorize');
+        expect(authAction.prompt.indexOf('https://accounts.google.com/o/oauth2/v2/auth?')).assertEqual(0);
+        expect(authAction.prompt.indexOf('client_id=client-123.apps.googleusercontent.com')).assertLarger(-1);
+        expect(authAction.prompt.indexOf('redirect_uri=com.example.aiphonedemo%3A%2Foauth%2Fgoogle')).assertLarger(-1);
+        expect(authAction.prompt.indexOf('gmail.readonly')).assertLarger(-1);
+        expect(authAction.prompt.indexOf('gmail.compose')).assertLarger(-1);
+        expect(authAction.prompt.indexOf('code_challenge=')).assertLarger(-1);
+        expect(authAction.prompt.indexOf('code_challenge_method=S256')).assertLarger(-1);
+      } finally {
+        configureGmailCredentialStoreForTests(null);
+        configureGmailMcpClientForTests(null);
+        configureLocalProviderConfigFromRawJson('{}');
+      }
     });
 
     it('uses stored Gmail OAuth tokens to call Gmail MCP without asking auth again', 0, async () => {
@@ -265,33 +295,164 @@ export default function toolGatewayClientTest() {
         scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose'
       });
       const mcp = new FixtureGmailMcpClient();
-      configureLocalProviderConfigFromRawJson(JSON.stringify({
-        GMAIL_OAUTH_CLIENT_ID: 'client-123.apps.googleusercontent.com',
-        GMAIL_OAUTH_REDIRECT_URI: 'com.example.aiphonedemo:/oauth/google'
-      }));
-      configureGmailCredentialStoreForTests(store);
-      configureGmailMcpClientForTests(mcp);
+      try {
+        configureLocalProviderConfigFromRawJson(JSON.stringify({
+          GMAIL_OAUTH_CLIENT_ID: 'client-123.apps.googleusercontent.com',
+          GMAIL_OAUTH_REDIRECT_URI: 'com.example.aiphonedemo:/oauth/google'
+        }));
+        configureGmailCredentialStoreForTests(store);
+        configureGmailMcpClientForTests(mcp);
 
-      const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
-      const result: A2uiCallResult = await callToolGateway(
-        defaultToolGatewayUrl(),
-        'gmail.mail.search',
-        '帮我看 Gmail 里最新的重要邮件',
-        'surface_gmail_mcp',
-        'client_intent_fallback',
-        noop
-      );
+        const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
+        const result: A2uiCallResult = await callToolGateway(
+          defaultToolGatewayUrl(),
+          'gmail.mail.search',
+          '帮我看 Gmail 里最新的重要邮件',
+          'surface_gmail_mcp',
+          'client_intent_fallback',
+          noop
+        );
 
-      configureGmailCredentialStoreForTests(null);
-      configureGmailMcpClientForTests(null);
-      configureLocalProviderConfigFromRawJson('{}');
+        expect(result.ok).assertTrue();
+        expect(result.surface.status).assertEqual('ready');
+        expect(genericToolResults(result.surface)[0].title).assertEqual('Important launch thread');
+        expect(mcp.lastToolName).assertEqual('search_threads');
+        expect(mcp.lastCredential).assertEqual('stored-access-token');
+        expect(mcp.lastArgs.indexOf('newer_than:30d')).assertLarger(-1);
+        expect(mcp.lastArgs.indexOf('-in:draft')).assertLarger(-1);
+        expect(mcp.lastArgs.indexOf('is:important')).assertEqual(-1);
+      } finally {
+        configureGmailCredentialStoreForTests(null);
+        configureGmailMcpClientForTests(null);
+        configureLocalProviderConfigFromRawJson('{}');
+      }
+    });
 
-      expect(result.ok).assertTrue();
-      expect(result.surface.status).assertEqual('ready');
-      expect(genericToolResults(result.surface)[0].title).assertEqual('Important launch thread');
-      expect(mcp.lastToolName).assertEqual('search_threads');
-      expect(mcp.lastCredential).assertEqual('stored-access-token');
-      expect(mcp.lastArgs.indexOf('is:important')).assertLarger(-1);
+    it('passes structured Gmail args to stored-token Gmail MCP calls', 0, async () => {
+      const store = new MemoryCredentialStore();
+      await saveGmailOAuthTokenSet(store, {
+        access_token: 'stored-access-token',
+        refresh_token: 'stored-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer',
+        scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose'
+      });
+      const mcp = new FixtureGmailMcpClient();
+      try {
+        configureLocalProviderConfigFromRawJson(JSON.stringify({
+          GMAIL_OAUTH_CLIENT_ID: 'client-123.apps.googleusercontent.com',
+          GMAIL_OAUTH_REDIRECT_URI: 'com.example.aiphonedemo:/oauth/google'
+        }));
+        configureGmailCredentialStoreForTests(store);
+        configureGmailMcpClientForTests(mcp);
+
+        const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
+        const args: GmailToolArgsFixture = {
+          query: 'from:committee@example.edu subject:"decision"',
+          pageSize: 4,
+          intentSummary: '模型结构化查询'
+        };
+        const result: A2uiCallResult = await callToolGateway(
+          defaultToolGatewayUrl(),
+          'gmail.mail.search',
+          '原始 prompt 不应决定 Gmail 搜索语义',
+          'surface_gmail_mcp_args',
+          'model_tool_request',
+          noop,
+          null,
+          args
+        );
+
+        expect(result.ok).assertTrue();
+        expect(mcp.lastToolName).assertEqual('search_threads');
+        expect(mcp.lastArgs.indexOf('committee@example.edu')).assertLarger(-1);
+        expect(mcp.lastArgs.indexOf('-in:draft')).assertLarger(-1);
+        expect(mcp.lastArgs.indexOf('is:important')).assertEqual(-1);
+      } finally {
+        configureGmailCredentialStoreForTests(null);
+        configureGmailMcpClientForTests(null);
+        configureLocalProviderConfigFromRawJson('{}');
+      }
+    });
+
+    it('renders a Gmail error result when stored Gmail token cannot reach MCP', 0, async () => {
+      const store = new MemoryCredentialStore();
+      await saveGmailOAuthTokenSet(store, {
+        access_token: 'stored-access-token',
+        refresh_token: 'stored-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer',
+        scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose'
+      });
+      try {
+        configureLocalProviderConfigFromRawJson(JSON.stringify({
+          GMAIL_OAUTH_CLIENT_ID: 'client-123.apps.googleusercontent.com',
+          GMAIL_OAUTH_REDIRECT_URI: 'com.example.aiphonedemo:/oauth/google'
+        }));
+        configureGmailCredentialStoreForTests(store);
+        configureGmailMcpClientForTests(new FailingGmailMcpClient());
+
+        const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
+        const result: A2uiCallResult = await callToolGateway(
+          defaultToolGatewayUrl(),
+          'gmail.mail.search',
+          '帮我看 Gmail 里最新的重要邮件',
+          'surface_gmail_mcp_timeout',
+          'client_intent_fallback',
+          noop
+        );
+
+        expect(result.ok).assertTrue();
+        expect(genericToolResults(result.surface)[0].status).assertEqual('error');
+        expect(genericToolResults(result.surface)[0].title).assertEqual('Gmail MCP 调用失败');
+        expect(genericToolResults(result.surface)[0].summary.indexOf('Operation timeout')).assertLarger(-1);
+        expect(result.raw.indexOf('Gmail MCP 调用失败')).assertLarger(-1);
+        expect(result.raw.indexOf('打开 Gmail Web')).assertEqual(-1);
+      } finally {
+        configureGmailCredentialStoreForTests(null);
+        configureGmailMcpClientForTests(null);
+        configureLocalProviderConfigFromRawJson('{}');
+      }
+    });
+
+    it('renders Gmail returned error results instead of relabeling them as auth', 0, async () => {
+      const store = new MemoryCredentialStore();
+      await saveGmailOAuthTokenSet(store, {
+        access_token: 'stored-access-token',
+        refresh_token: 'stored-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer',
+        scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose'
+      });
+      try {
+        configureLocalProviderConfigFromRawJson(JSON.stringify({
+          GMAIL_OAUTH_CLIENT_ID: 'client-123.apps.googleusercontent.com',
+          GMAIL_OAUTH_REDIRECT_URI: 'com.example.aiphonedemo:/oauth/google'
+        }));
+        configureGmailCredentialStoreForTests(store);
+        configureGmailMcpClientForTests(new ErrorResultGmailMcpClient());
+
+        const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
+        const result: A2uiCallResult = await callToolGateway(
+          defaultToolGatewayUrl(),
+          'gmail.draft.create',
+          '帮我用 Gmail 写一封邮件给 alice@example.com 说我收到了',
+          'surface_gmail_error_result',
+          'client_intent_fallback',
+          noop
+        );
+
+        expect(result.ok).assertTrue();
+        expect(genericToolResults(result.surface)[0].status).assertEqual('error');
+        expect(genericToolResults(result.surface)[0].title).assertEqual('Gmail API 调用失败');
+        expect(genericToolResults(result.surface)[0].summary.indexOf('Missing recipient email address')).assertLarger(-1);
+        expect(result.raw.indexOf('Gmail API 调用失败')).assertLarger(-1);
+        expect(result.raw.indexOf('打开 Gmail Web')).assertEqual(-1);
+      } finally {
+        configureGmailCredentialStoreForTests(null);
+        configureGmailMcpClientForTests(null);
+        configureLocalProviderConfigFromRawJson('{}');
+      }
     });
 
     it('keeps brand MCP adapters query-only', 0, () => {

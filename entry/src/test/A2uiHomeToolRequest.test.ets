@@ -3,6 +3,7 @@ import { resolveA2uiHomeToolRequest } from '../main/ets/pages/A2uiHome/render/A2
 import {
   A2uiComponent,
   A2uiFlightData,
+  A2uiFormData,
   A2uiFoodData,
   A2uiLabelValueData,
   A2uiRuntimeDataModel,
@@ -16,7 +17,30 @@ import {
   A2uiTripData
 } from '../main/ets/model/A2uiTypes';
 
-function surfaceWithToolRequest(toolId: string, prompt: string, actionId: string): A2uiSurfaceState {
+interface ToolRequestArgsFixture {
+  query: string;
+  pageSize: number;
+  intentSummary: string;
+}
+
+interface GmailReplyActionArgsFixture {
+  threadId: string;
+  to: string[];
+  subject: string;
+  replyMode: string;
+}
+
+interface GmailReplyModelArgsFixture {
+  body: string;
+}
+
+function surfaceWithToolRequest(
+  toolId: string,
+  prompt: string,
+  actionId: string,
+  args: Object | null = null,
+  form: A2uiFormData | null = null
+): A2uiSurfaceState {
   const rows: A2uiLabelValueData[] = [];
   const thoughts: string[] = [];
   const tripRows: A2uiLabelValueData[] = [];
@@ -51,6 +75,9 @@ function surfaceWithToolRequest(toolId: string, prompt: string, actionId: string
     prompt: prompt,
     actionId: actionId
   };
+  if (args !== null) {
+    request.args = args;
+  }
   const model: A2uiRuntimeDataModel = {
     rows: rows,
     trains: trains,
@@ -61,8 +88,9 @@ function surfaceWithToolRequest(toolId: string, prompt: string, actionId: string
     thoughts: thoughts,
     summary: summary,
     trip: trip,
-    rowGroups: rowGroups,
-    toolRequest: request,
+      rowGroups: rowGroups,
+      form: form === null ? {} : form,
+      toolRequest: request,
     dynamicToolConnect: {
       toolId: '',
       prompt: '',
@@ -204,7 +232,7 @@ export default function a2uiHomeToolRequestTest() {
       expect(resolved.toolId).assertEqual('travel.search');
     });
 
-    it('infers Gmail read and draft intents without disturbing dynamic tool reroutes', 0, () => {
+    it('infers Gmail tools when the model omits a tool request', 0, () => {
       const inbox = resolveA2uiHomeToolRequest(
         surfaceWithToolRequest('', '', ''),
         '帮我看下 Gmail 最近的重要邮件',
@@ -230,9 +258,102 @@ export default function a2uiHomeToolRequestTest() {
       expect(draft.toolId).assertEqual('gmail.draft.create');
       expect(blockedSend.toolId).assertEqual('gmail.message.send');
       expect(openWeb.toolId).assertEqual('gmail.open.web');
+      expect(blockedSend.actionId).assertEqual('client_intent_fallback');
     });
 
-    it('routes requested Gmail visual smoke prompts to safe Gmail tools', 0, () => {
+    it('preserves model-provided Gmail structured args', 0, () => {
+      const args: ToolRequestArgsFixture = {
+        query: 'from:committee@example.edu newer_than:30d',
+        pageSize: 7,
+        intentSummary: '模型生成的 Gmail 查询'
+      };
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('gmail.mail.search', '查 Gmail 委员会邮件', 'model_tool_request', args),
+        '用户原始请求',
+        ''
+      );
+      const serializedArgs = JSON.stringify(resolved.args);
+
+      expect(resolved.toolId).assertEqual('gmail.mail.search');
+      expect(serializedArgs.indexOf('committee@example.edu')).assertLarger(-1);
+      expect(serializedArgs.indexOf('pageSize')).assertLarger(-1);
+    });
+
+    it('routes Gmail AI reply action and merges action context with model body args', 0, () => {
+      const actionArgs: GmailReplyActionArgsFixture = {
+        threadId: 'thread-123',
+        to: ['committee@example.edu'],
+        subject: 'Re: Admission decision',
+        replyMode: 'reply'
+      };
+      const modelArgs: GmailReplyModelArgsFixture = {
+        body: 'Thank you for the update.'
+      };
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('gmail.draft.create', '创建 Gmail 回复草稿', 'model_tool_request', modelArgs),
+        'Create reply draft',
+        'gmail.ai.reply.draft',
+        actionArgs
+      );
+      const serializedArgs = JSON.stringify(resolved.args);
+
+      expect(resolved.toolId).assertEqual('gmail.draft.create');
+      expect(serializedArgs.indexOf('thread-123')).assertLarger(-1);
+      expect(serializedArgs.indexOf('committee@example.edu')).assertLarger(-1);
+      expect(serializedArgs.indexOf('Re: Admission decision')).assertLarger(-1);
+      expect(serializedArgs.indexOf('Thank you for the update.')).assertLarger(-1);
+    });
+
+    it('uses model form fields as Gmail draft args when toolRequest args are missing', 0, () => {
+      const form: A2uiFormData = {
+        to: ['alice@example.com'],
+        subject: '邮件确认',
+        body: '我收到了'
+      };
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', '', null, form),
+        '帮我用 Gmail 写一封邮件给 alice@example.com 说我收到了',
+        ''
+      );
+      const serializedArgs = JSON.stringify(resolved.args);
+
+      expect(resolved.toolId).assertEqual('gmail.draft.create');
+      expect(serializedArgs.indexOf('alice@example.com')).assertLarger(-1);
+      expect(serializedArgs.indexOf('邮件确认')).assertLarger(-1);
+      expect(serializedArgs.indexOf('我收到了')).assertLarger(-1);
+    });
+
+    it('does not call Gmail draft for AI reply action ids until the model provides body args', 0, () => {
+      const actionArgs: GmailReplyActionArgsFixture = {
+        threadId: 'thread-123',
+        to: ['committee@example.edu'],
+        subject: 'Re: Admission decision',
+        replyMode: 'reply'
+      };
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        'Create reply draft',
+        'gmail.ai.reply.draft',
+        actionArgs
+      );
+
+      expect(resolved.hasTool).assertFalse();
+      expect(resolved.toolId).assertEqual('');
+      expect(JSON.stringify(resolved.args).indexOf('thread-123')).assertLarger(-1);
+    });
+
+    it('forces direct Gmail send prompts into the blocked send tool even when the model selects draft', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('gmail.draft.create', '创建 Gmail 草稿', 'model_tool_request'),
+        '用 Gmail 直接发送一封邮件给 alice@example.com 说测试',
+        ''
+      );
+
+      expect(resolved.toolId).assertEqual('gmail.message.send');
+      expect(resolved.actionId).assertEqual('client_gmail_safety_reroute');
+    });
+
+    it('routes smoke Gmail prompts without relying on model-provided tool requests', 0, () => {
       const latestImportant = resolveA2uiHomeToolRequest(
         surfaceWithToolRequest('', '', ''),
         '帮我看 Gmail 里最新的重要邮件',

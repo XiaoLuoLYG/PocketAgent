@@ -46,8 +46,14 @@ import {
 } from '../../model/SocialBridge';
 import { detectSocialAccessibilitySync, detectWechatBundleSync } from '../../model/SocialCapabilityProbe';
 import { readNotificationCaptureArchive, SocialNotificationArchiveRead } from '../../model/SocialNotificationArchive';
+import { AssetCredentialStore } from '../../model/DynamicCredentialStore';
+import { buildSystemFoodNavigationUri } from '../../model/FoodNavigation';
 import { HomePage } from './components/HomePage';
 import { ConfigPage } from './components/ConfigPage';
+import { createHtmlHomeDocument } from './html/HtmlHomeSnapshot';
+import { renderHtmlHomeDocument } from './html/HtmlHomeRenderer';
+import { isHtmlHomeActionAllowed } from './html/HtmlHomeActionPolicy';
+import { HtmlHomeDocument } from './html/HtmlHomeTypes';
 import {
   A2UI_FOOD_PARTIAL_THROTTLE_DEFAULT_MS,
   normalizeFoodPartialThrottleMs,
@@ -58,6 +64,7 @@ import {
   createInitialConnectionPanelState,
   inputTextAfterPromptSubmit,
   shouldApplySurfaceUpdate,
+  shouldShowQueryPendingSurface,
   shouldShowWelcome,
   updateConnectionPanelState
 } from './state/A2uiHomeState';
@@ -75,11 +82,46 @@ const SOCIAL_NOTIFICATION_UNSUPPORTED_HINT: string = '当前 PC 系统未向三�
 const SOCIAL_MESSAGE_STORE: SocialMessageStore = new SocialMessageStore();
 const NAVIGATION_CARD_TTL_MS: number = 60 * 60 * 1000;
 
+type HtmlActionValue = Object | string | number | boolean | null | undefined;
+
+interface HtmlDynamicCredentialPayload {
+  credentialRef?: HtmlActionValue;
+  credentialValue?: HtmlActionValue;
+  toolId?: HtmlActionValue;
+  prompt?: HtmlActionValue;
+}
+
+interface HtmlPinPayload {
+  index?: HtmlActionValue;
+  id?: HtmlActionValue;
+  source?: HtmlActionValue;
+  trainCode?: HtmlActionValue;
+  flightNo?: HtmlActionValue;
+  name?: HtmlActionValue;
+  address?: HtmlActionValue;
+  location?: HtmlActionValue;
+  distance?: HtmlActionValue;
+  depart?: HtmlActionValue;
+  depTime?: HtmlActionValue;
+  from?: HtmlActionValue;
+  to?: HtmlActionValue;
+  dep?: HtmlActionValue;
+  arr?: HtmlActionValue;
+}
+
 function logSnippet(text: string): string {
   if (text.length <= LOG_SNIPPET_LIMIT) {
     return text;
   }
   return text.substring(0, LOG_SNIPPET_LIMIT) + '...<truncated>';
+}
+
+function modelPromptWithActionContext(prompt: string, actionId: string, args: Object | null): string {
+  if (actionId.length === 0 && args === null) {
+    return prompt;
+  }
+  return prompt + '\n\nAction ID: ' + actionId + '\nStructured action args JSON: ' +
+    (args === null ? '{}' : JSON.stringify(args));
 }
 
 @Entry
@@ -116,6 +158,8 @@ struct Index {
   @State socialReturnSurface: A2uiSurfaceState = initialSurface;
   @State socialReturnInputText: string = '';
   @State socialReturnInputPlaceholder: string = DEFAULT_INPUT_PLACEHOLDER;
+  private htmlHomeCacheKey: string = '';
+  private htmlHomeCacheHtml: string = '';
 
   private getSettings(): LocalModelSettings {
     return {
@@ -228,6 +272,7 @@ struct Index {
         flight: [],
         food: []
       },
+      form: {},
       toolRequest: {
         toolId: '',
         prompt: '',
@@ -248,6 +293,55 @@ struct Index {
       },
       genericToolResults: []
     };
+  }
+
+  private currentHtmlHomeDocument(): HtmlHomeDocument {
+    if (shouldShowWelcome(this.isBusy, this.messages.length, this.currentSurface) ||
+      shouldShowQueryPendingSurface(this.isBusy, this.isAwaitingFirstSurface)) {
+      return createHtmlHomeDocument({
+        messages: this.messages,
+        isBusy: this.isBusy,
+        isAwaitingFirstSurface: this.isAwaitingFirstSurface,
+        inputText: this.inputText
+      });
+    }
+    return createHtmlHomeDocument({
+      surface: this.currentSurface,
+      messages: this.messages,
+      isBusy: this.isBusy,
+      isAwaitingFirstSurface: this.isAwaitingFirstSurface
+    });
+  }
+
+  private currentHtmlHomeCacheKey(): string {
+    const needsInputText = shouldShowQueryPendingSurface(this.isBusy, this.isAwaitingFirstSurface);
+    const sequenceKey = this.isBusy ? 'busy' : this.currentSurface.sequence.toString();
+    return [
+      this.currentSurface.surfaceId,
+      sequenceKey,
+      this.currentSurface.status,
+      this.isBusy ? 'busy' : 'idle',
+      this.isAwaitingFirstSurface ? 'awaiting' : 'ready',
+      this.messages.length.toString(),
+      needsInputText ? this.inputText : ''
+    ].join('|');
+  }
+
+  private currentHtmlHomeHtml(): string {
+    const key = this.currentHtmlHomeCacheKey();
+    if (key === this.htmlHomeCacheKey && this.htmlHomeCacheHtml.length > 0) {
+      return this.htmlHomeCacheHtml;
+    }
+    const document = this.currentHtmlHomeDocument();
+    const html = renderHtmlHomeDocument(document, this.isBusy);
+    this.htmlHomeCacheKey = key;
+    this.htmlHomeCacheHtml = html;
+    aiLogInfo('[AIPhone][HtmlHomeDocument] source=' + document.source +
+      ' kind=' + document.kind +
+      ' chars=' + html.length.toString() +
+      ' blocks=' + document.blocks.length.toString() +
+      ' renderTick=' + this.surfaceRenderTick.toString());
+    return html;
   }
 
   private applySurface(surface: A2uiSurfaceState): void {
@@ -712,11 +806,12 @@ struct Index {
     }
   }
 
-  private async submitPrompt(prompt: string, visibleText: string, actionId: string = ''): Promise<void> {
+  private async submitPrompt(prompt: string, visibleText: string, actionId: string = '', actionArgs: Object | null = null): Promise<void> {
     const trimmed = prompt.trim();
     if (trimmed.length === 0 || this.isBusy) {
       return;
     }
+    const modelPrompt = modelPromptWithActionContext(trimmed, actionId, actionArgs);
     if (this.baseUrl.trim().length === 0) {
       aiLogError('[AIPhone][A2uiHomeSubmitBlocked] missingBaseUrl');
       this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
@@ -734,7 +829,7 @@ struct Index {
     this.selectedSocialConversationTitle = '';
     this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
     this.appendMessage('user', visibleText);
-    aiLogInfo('[AIPhone][A2uiHomeSubmitPrompt] chars=' + trimmed.length.toString() +
+    aiLogInfo('[AIPhone][A2uiHomeSubmitPrompt] chars=' + modelPrompt.length.toString() +
       ' model=' + this.selectedModel +
       ' baseUrl=' + this.baseUrl);
     this.inputText = inputTextAfterPromptSubmit(this.inputText);
@@ -744,7 +839,7 @@ struct Index {
     try {
       const result: A2uiCallResult = await callLocalModel(
         this.getSettings(),
-        trimmed,
+        modelPrompt,
         this.recentMessages(),
         (surface: A2uiSurfaceState, raw: string, meta?: A2uiStreamMeta) => {
           this.isAwaitingFirstSurface = false;
@@ -778,13 +873,13 @@ struct Index {
       }));
       if (result.ok) {
         this.appendMessage('assistant', result.assistantDebug.length > 0 ? result.assistantDebug : result.surface.title);
-        await this.callModelRequestedTool(result.surface, trimmed, actionId);
+        await this.callModelRequestedTool(result.surface, modelPrompt, actionId, actionArgs);
       } else {
-        const fallbackRequest: A2uiHomeResolvedToolRequest = resolveA2uiHomeToolRequest(result.surface, trimmed, actionId);
+        const fallbackRequest: A2uiHomeResolvedToolRequest = resolveA2uiHomeToolRequest(result.surface, modelPrompt, actionId, actionArgs);
         if (fallbackRequest.hasTool) {
           aiLogInfo('[AIPhone][A2uiHomeToolRequestByIntent] toolId=' + fallbackRequest.toolId +
             ' reason=model_failed promptChars=' + fallbackRequest.prompt.length.toString());
-          await this.callToolById(fallbackRequest.toolId, fallbackRequest.prompt, fallbackRequest.actionId);
+          await this.callToolById(fallbackRequest.toolId, fallbackRequest.prompt, fallbackRequest.actionId, fallbackRequest.args);
         } else {
           this.appendMessage('assistant', 'A2UI 生成失败：' + result.error);
         }
@@ -820,8 +915,364 @@ struct Index {
     await this.submitPrompt(this.inputText, this.inputText);
   }
 
+  private htmlPinPayload(action: A2uiAction): HtmlPinPayload {
+    if (action.prompt.trim().charAt(0) !== '{') {
+      return { index: action.prompt };
+    }
+    try {
+      const payload = JSON.parse(action.prompt) as HtmlPinPayload;
+      return payload === null ? { index: action.prompt } : payload;
+    } catch (_error) {
+      return { index: action.prompt };
+    }
+  }
+
+  private htmlActionIndex(action: A2uiAction, payload: HtmlPinPayload): number {
+    const payloadValue = Number.parseInt(this.actionText(payload.index), 10);
+    if (payloadValue === payloadValue && payloadValue >= 0) {
+      return payloadValue;
+    }
+    const value = Number.parseInt(action.prompt, 10);
+    return value === value && value >= 0 ? value : -1;
+  }
+
+  private htmlPinTravelMatches(item: A2uiTravelOptionData, payload: HtmlPinPayload): boolean {
+    if (!this.htmlPinTravelPayloadHasIdentity(payload)) {
+      return false;
+    }
+    const id = this.actionText(payload.id);
+    const source = this.actionText(payload.source);
+    const depart = this.actionText(payload.depart);
+    const from = this.actionText(payload.from);
+    const to = this.actionText(payload.to);
+    return id === this.actionText(item.id) &&
+      source === this.actionText(item.source) &&
+      depart === this.actionText(item.depart) &&
+      from === this.actionText(item.from) &&
+      to === this.actionText(item.to);
+  }
+
+  private htmlPinTrainMatches(item: A2uiTrainData, payload: HtmlPinPayload): boolean {
+    if (!this.htmlPinTrainPayloadHasIdentity(payload)) {
+      return false;
+    }
+    const trainCode = this.actionText(payload.trainCode);
+    const depart = this.actionText(payload.depart);
+    const from = this.actionText(payload.from);
+    const to = this.actionText(payload.to);
+    return trainCode === this.actionText(item.trainCode) &&
+      depart === this.actionText(item.depart) &&
+      from === this.actionText(item.from) &&
+      to === this.actionText(item.to);
+  }
+
+  private htmlPinFlightMatches(item: A2uiFlightData, payload: HtmlPinPayload): boolean {
+    if (!this.htmlPinFlightPayloadHasIdentity(payload)) {
+      return false;
+    }
+    const flightNo = this.actionText(payload.flightNo);
+    const depTime = this.actionText(payload.depTime);
+    const dep = this.actionText(payload.dep);
+    const arr = this.actionText(payload.arr);
+    return flightNo === this.actionText(item.flightNo) &&
+      depTime === this.actionText(item.depTime) &&
+      dep === this.actionText(item.dep) &&
+      arr === this.actionText(item.arr);
+  }
+
+  private htmlPinFoodMatches(item: A2uiFoodData, payload: HtmlPinPayload): boolean {
+    if (!this.htmlPinFoodPayloadHasIdentity(payload)) {
+      return false;
+    }
+    const name = this.actionText(payload.name);
+    const address = this.actionText(payload.address);
+    const location = this.actionText(payload.location);
+    const distance = this.actionText(payload.distance);
+    return name === this.actionText(item.name) &&
+      address === this.actionText(item.address) &&
+      location === this.actionText(item.location) &&
+      distance === this.actionText(item.distance);
+  }
+
+  private htmlPinTravelPayloadHasIdentity(payload: HtmlPinPayload): boolean {
+    return this.actionText(payload.id).length + this.actionText(payload.source).length +
+      this.actionText(payload.depart).length + this.actionText(payload.from).length +
+      this.actionText(payload.to).length > 0;
+  }
+
+  private htmlPinTrainPayloadHasIdentity(payload: HtmlPinPayload): boolean {
+    return this.actionText(payload.trainCode).length + this.actionText(payload.depart).length +
+      this.actionText(payload.from).length + this.actionText(payload.to).length > 0;
+  }
+
+  private htmlPinFlightPayloadHasIdentity(payload: HtmlPinPayload): boolean {
+    return this.actionText(payload.flightNo).length + this.actionText(payload.depTime).length +
+      this.actionText(payload.dep).length + this.actionText(payload.arr).length > 0;
+  }
+
+  private htmlPinFoodPayloadHasIdentity(payload: HtmlPinPayload): boolean {
+    return this.actionText(payload.name).length + this.actionText(payload.address).length +
+      this.actionText(payload.location).length + this.actionText(payload.distance).length > 0;
+  }
+
+  private htmlPinTravelRow(model: A2uiRuntimeDataModel, payload: HtmlPinPayload, index: number): A2uiTravelOptionData | null {
+    if (!Array.isArray(model.travelOptions)) {
+      return null;
+    }
+    for (let rowIndex = 0; rowIndex < model.travelOptions.length; rowIndex++) {
+      if (this.htmlPinTravelMatches(model.travelOptions[rowIndex], payload)) {
+        return model.travelOptions[rowIndex];
+      }
+    }
+    if (this.htmlPinTravelPayloadHasIdentity(payload)) {
+      return null;
+    }
+    return index >= 0 && index < model.travelOptions.length ? model.travelOptions[index] : null;
+  }
+
+  private htmlPinTrainRow(model: A2uiRuntimeDataModel, payload: HtmlPinPayload, index: number): A2uiTrainData | null {
+    if (!Array.isArray(model.trains)) {
+      return null;
+    }
+    for (let rowIndex = 0; rowIndex < model.trains.length; rowIndex++) {
+      if (this.htmlPinTrainMatches(model.trains[rowIndex], payload)) {
+        return model.trains[rowIndex];
+      }
+    }
+    if (this.htmlPinTrainPayloadHasIdentity(payload)) {
+      return null;
+    }
+    return index >= 0 && index < model.trains.length ? model.trains[index] : null;
+  }
+
+  private htmlPinFlightRow(model: A2uiRuntimeDataModel, payload: HtmlPinPayload, index: number): A2uiFlightData | null {
+    if (!Array.isArray(model.flights)) {
+      return null;
+    }
+    for (let rowIndex = 0; rowIndex < model.flights.length; rowIndex++) {
+      if (this.htmlPinFlightMatches(model.flights[rowIndex], payload)) {
+        return model.flights[rowIndex];
+      }
+    }
+    if (this.htmlPinFlightPayloadHasIdentity(payload)) {
+      return null;
+    }
+    return index >= 0 && index < model.flights.length ? model.flights[index] : null;
+  }
+
+  private htmlPinFoodRow(model: A2uiRuntimeDataModel, payload: HtmlPinPayload, index: number): A2uiFoodData | null {
+    if (!Array.isArray(model.foods)) {
+      return null;
+    }
+    for (let rowIndex = 0; rowIndex < model.foods.length; rowIndex++) {
+      if (this.htmlPinFoodMatches(model.foods[rowIndex], payload)) {
+        return model.foods[rowIndex];
+      }
+    }
+    if (this.htmlPinFoodPayloadHasIdentity(payload)) {
+      return null;
+    }
+    return index >= 0 && index < model.foods.length ? model.foods[index] : null;
+  }
+
+  private logHtmlHomeActionError(action: A2uiAction, reason: string): void {
+    aiLogError('[AIPhone][HtmlHomeAction] id=' + action.id +
+      ' ok=false reason=' + reason +
+      ' promptChars=' + action.prompt.length.toString());
+  }
+
+  private async handleHtmlPinAction(action: A2uiAction): Promise<boolean> {
+    if (action.id !== 'html_pin_travel' && action.id !== 'html_pin_train' &&
+      action.id !== 'html_pin_flight' && action.id !== 'html_pin_food') {
+      return false;
+    }
+    const model = this.parsedDataModel();
+    const payload = this.htmlPinPayload(action);
+    const index = this.htmlActionIndex(action, payload);
+    if (model === null) {
+      this.logHtmlHomeActionError(action, 'invalid_model');
+      return true;
+    }
+    if (action.id === 'html_pin_travel') {
+      const row = this.htmlPinTravelRow(model, payload, index);
+      if (row === null) {
+        this.logHtmlHomeActionError(action, 'missing_travel_row');
+        return true;
+      }
+      await this.pinTravelNavigationCard(row);
+      return true;
+    }
+    if (action.id === 'html_pin_train') {
+      const row = this.htmlPinTrainRow(model, payload, index);
+      if (row === null) {
+        this.logHtmlHomeActionError(action, 'missing_train_row');
+        return true;
+      }
+      await this.pinTrainNavigationCard(row);
+      return true;
+    }
+    if (action.id === 'html_pin_flight') {
+      const row = this.htmlPinFlightRow(model, payload, index);
+      if (row === null) {
+        this.logHtmlHomeActionError(action, 'missing_flight_row');
+        return true;
+      }
+      await this.pinFlightNavigationCard(row);
+      return true;
+    }
+    const row = this.htmlPinFoodRow(model, payload, index);
+    if (row === null) {
+      this.logHtmlHomeActionError(action, 'missing_food_row');
+      return true;
+    }
+    await this.pinNavigationCard(row);
+    return true;
+  }
+
+  private async handleHtmlFoodMapAction(action: A2uiAction): Promise<boolean> {
+    if (action.id !== 'html_open_food_map') {
+      return false;
+    }
+    const model = this.parsedDataModel();
+    const payload = this.htmlPinPayload(action);
+    const index = this.htmlActionIndex(action, payload);
+    if (model === null) {
+      this.logHtmlHomeActionError(action, 'invalid_model');
+      return true;
+    }
+    const row = this.htmlPinFoodRow(model, payload, index);
+    if (row === null) {
+      this.logHtmlHomeActionError(action, 'missing_food_row');
+      return true;
+    }
+    const uri = buildSystemFoodNavigationUri(this.actionText(row.location), '', row.name);
+    if (uri.length === 0) {
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: false,
+        status: 'error',
+        message: '缺少真实坐标，不能打开地图。',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: ''
+      }));
+      this.logHtmlHomeActionError(action, 'missing_food_coordinate');
+      return true;
+    }
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      try {
+        await context.openLink(uri);
+      } catch (_linkError) {
+        await context.startAbility({
+          action: 'ohos.want.action.viewData',
+          entities: ['entity.system.browsable'],
+          uri: uri
+        });
+      }
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: true,
+        status: 'ready',
+        message: '已打开系统地图：' + row.name,
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: ''
+      }));
+      aiLogInfo('[AIPhone][HtmlHomeFoodMap] ok=true uriChars=' + uri.length.toString() + ' name=' + row.name);
+    } catch (error) {
+      const businessError = error as BusinessError;
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: false,
+        status: 'error',
+        message: '地图打开失败。',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: businessError.message
+      }));
+      aiLogError('[AIPhone][HtmlHomeFoodMap] ok=false message=' + businessError.message);
+    }
+    return true;
+  }
+
+  private actionText(value: HtmlActionValue): string {
+    if (value === undefined || value === null) {
+      return '';
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return value.toString();
+    }
+    return '';
+  }
+
+  private async saveDynamicCredentialAndTest(action: A2uiAction): Promise<void> {
+    let payload: HtmlDynamicCredentialPayload;
+    try {
+      payload = JSON.parse(action.prompt) as HtmlDynamicCredentialPayload;
+    } catch (_error) {
+      this.logHtmlHomeActionError(action, 'invalid_dynamic_payload');
+      return;
+    }
+    const credentialRef = this.actionText(payload.credentialRef);
+    const credentialValue = this.actionText(payload.credentialValue).trim();
+    const data = this.currentDynamicToolConnect();
+    let toolId = this.actionText(payload.toolId);
+    let testPrompt = this.actionText(payload.prompt);
+    if (toolId.length === 0 && data !== null) {
+      toolId = data.toolId;
+    }
+    if (testPrompt.length === 0 && data !== null) {
+      testPrompt = data.prompt;
+    }
+    if (testPrompt.length === 0) {
+      testPrompt = toolId;
+    }
+    if (data === null || credentialRef !== data.credentialRef || toolId !== data.toolId) {
+      this.logHtmlHomeActionError(action, 'dynamic_credential_not_allowed');
+      return;
+    }
+    if (credentialRef.length === 0 || credentialValue.length === 0 || toolId.length === 0) {
+      this.logHtmlHomeActionError(action, 'missing_dynamic_credential');
+      return;
+    }
+    try {
+      await new AssetCredentialStore().put(credentialRef, credentialValue);
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: true,
+        status: 'checking',
+        message: '已保存到本机，正在测试连接。',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: ''
+      }));
+      await this.callToolById(toolId, testPrompt, 'dynamic_test_connection');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : JSON.stringify(error);
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: false,
+        status: 'error',
+        message: '凭据保存失败，请检查本机安全存储状态。',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: message
+      }));
+      aiLogError('[AIPhone][HtmlHomeAction] id=' + action.id + ' ok=false reason=credential_save_failed message=' + message);
+    }
+  }
+
   private async handleClientAction(action: A2uiAction): Promise<void> {
     aiLogInfo('[AIPhone][A2uiHomeClientAction] id=' + action.id);
+    if (await this.handleHtmlFoodMapAction(action)) {
+      return;
+    }
+    if (await this.handleHtmlPinAction(action)) {
+      return;
+    }
+    if (action.id === 'html_dynamic_save_and_test') {
+      await this.saveDynamicCredentialAndTest(action);
+      return;
+    }
     if (action.id === 'gmail.authorize') {
       const authorizeUrl = await prepareGmailOAuthAuthorizationUrl();
       await this.openExternalUrl(authorizeUrl.length > 0 ? authorizeUrl : GMAIL_MCP_AUTH_SETUP_URL);
@@ -992,6 +1443,14 @@ struct Index {
   }
 
   private async sendAction(action: A2uiAction): Promise<void> {
+    if (this.isBusy) {
+      aiLogInfo('[AIPhone][A2uiHomeActionIgnored] id=' + action.id + ' reason=busy');
+      return;
+    }
+    if (!isHtmlHomeActionAllowed(this.currentHtmlHomeDocument(), action)) {
+      this.logHtmlHomeActionError(action, 'not_allowed');
+      return;
+    }
     const kind = action.kind.length > 0 ? action.kind : 'prompt';
     if (kind === 'client') {
       await this.handleClientAction(action);
@@ -1001,7 +1460,7 @@ struct Index {
       this.focusEditQuery(action.id);
       return;
     }
-    await this.submitPrompt(action.prompt, action.label, action.id);
+    await this.submitPrompt(action.prompt, action.label, action.id, action.args === undefined ? null : action.args);
   }
 
   private toolSurfaceId(): string {
@@ -1011,8 +1470,13 @@ struct Index {
     return this.currentSurface.surfaceId;
   }
 
-  private async callModelRequestedTool(surface: A2uiSurfaceState, fallbackPrompt: string, fallbackActionId: string): Promise<void> {
-    const request: A2uiHomeResolvedToolRequest = resolveA2uiHomeToolRequest(surface, fallbackPrompt, fallbackActionId);
+  private async callModelRequestedTool(
+    surface: A2uiSurfaceState,
+    fallbackPrompt: string,
+    fallbackActionId: string,
+    fallbackArgs: Object | null = null
+  ): Promise<void> {
+    const request: A2uiHomeResolvedToolRequest = resolveA2uiHomeToolRequest(surface, fallbackPrompt, fallbackActionId, fallbackArgs);
     if (!request.hasTool) {
       aiLogInfo('[AIPhone][A2uiHomeToolRequest] none');
       return;
@@ -1021,10 +1485,10 @@ struct Index {
       ' modelPromptChars=' + request.modelPromptChars.toString() +
       ' userPromptChars=' + fallbackPrompt.length.toString() +
       ' sentPromptChars=' + request.prompt.length.toString());
-    await this.callToolById(request.toolId, request.prompt, request.actionId);
+    await this.callToolById(request.toolId, request.prompt, request.actionId, request.args);
   }
 
-  private async callToolById(toolId: string, prompt: string, actionId: string): Promise<boolean> {
+  private async callToolById(toolId: string, prompt: string, actionId: string, args: Object | null = null): Promise<boolean> {
     if (!isRegisteredToolId(toolId)) {
       const message = '模型请求了未注册工具：' + toolId;
       aiLogError('[AIPhone][A2uiHomeToolRequestInvalid] toolId=' + toolId);
@@ -1066,7 +1530,8 @@ struct Index {
           error: ''
         }));
       },
-      null
+      null,
+      args
     );
 
     aiLogInfo('[AIPhone][A2uiHomeToolResult] ok=' + (result.ok ? 'true' : 'false') +
@@ -1078,7 +1543,7 @@ struct Index {
       ok: result.ok,
       status: result.ok ? 'ready' : 'error',
       message: result.ok ? result.surface.title + ' 已返回工具结果。' : '工具返回异常，请到配置页查看详情。',
-      requestDebug: this.lastModelRequest,
+      requestDebug: result.requestDebug,
       assistantDebug: result.raw.length > 0 ? result.raw : this.lastModelOutput,
       error: result.error
     }));
@@ -1192,6 +1657,7 @@ struct Index {
         showHistory: this.showHistory,
         messages: this.messages,
         currentSurface: this.currentSurface,
+        htmlHomeHtml: this.currentHtmlHomeHtml(),
         surfaceRenderTick: this.surfaceRenderTick,
         isAwaitingFirstSurface: this.isAwaitingFirstSurface,
         inputPlaceholder: this.inputPlaceholder,
@@ -1221,18 +1687,6 @@ struct Index {
         },
         onAction: (action: A2uiAction) => {
           this.sendAction(action);
-        },
-        onPinNavigationCard: (item: A2uiFoodData) => {
-          this.pinNavigationCard(item);
-        },
-        onPinTravelNavigationCard: (item: A2uiTravelOptionData) => {
-          this.pinTravelNavigationCard(item);
-        },
-        onPinTrainNavigationCard: (item: A2uiTrainData) => {
-          this.pinTrainNavigationCard(item);
-        },
-        onPinFlightNavigationCard: (item: A2uiFlightData) => {
-          this.pinFlightNavigationCard(item);
         }
       })
     }

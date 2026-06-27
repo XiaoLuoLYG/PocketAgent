@@ -91,6 +91,7 @@ function businessSurface(): A2uiSurfaceState {
     summary: summary,
     trip: trip,
     rowGroups: rowGroups,
+    form: {},
     toolRequest: toolRequest,
     dynamicToolConnect: {
       toolId: '',

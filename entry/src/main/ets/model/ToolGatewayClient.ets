@@ -74,6 +74,7 @@ interface ToolGatewayRequestBody {
   prompt: string;
   surfaceId: string;
   actionId: string;
+  args?: Object;
   stream: boolean;
   a2uiClientCapabilities: Object;
 }
@@ -5834,11 +5835,27 @@ function gmailMcpRegistration(toolId: string, mcpToolName: string): DynamicToolR
   };
 }
 
+async function gmailUnavailableA2ui(surfaceId: string, toolId: string, prompt: string, reason: string): Promise<string> {
+  aiLogError('[AIPhone][GmailUnavailable] toolId=' + toolId + ' reason=' + reason.substring(0, 220));
+  return gmailAuthRequiredA2ui(surfaceId, toolId, gmailAuthUnavailableMessage(toolId, prompt), await prepareGmailOAuthAuthorizationUrl());
+}
+
 function gmailErrorResult(toolName: string, message: string): DynamicGenericToolResult {
   return dynamicErrorResult('Gmail', toolName, 'Gmail MCP 调用失败', message);
 }
 
-async function callLocalGmailTool(toolId: string, prompt: string, surfaceId: string): Promise<string> {
+function gmailResultsHaveError(results: DynamicGenericToolResult[]): boolean {
+  return results.length > 0 && results[0].status === 'error';
+}
+
+function gmailResultErrorSummary(results: DynamicGenericToolResult[]): string {
+  if (results.length === 0) {
+    return 'empty Gmail API result';
+  }
+  return results[0].summary.length > 0 ? results[0].summary : results[0].title;
+}
+
+async function callLocalGmailTool(toolId: string, prompt: string, surfaceId: string, args: Object | null = null): Promise<string> {
   if (toolId === 'gmail.message.send') {
     return gmailBlockedSendA2ui(surfaceId, toolId);
   }
@@ -5854,7 +5871,7 @@ async function callLocalGmailTool(toolId: string, prompt: string, surfaceId: str
   try {
     accessToken = await gmailAccessTokenForMcp();
   } catch (error) {
-    return gmailThreadResultsA2ui(surfaceId, toolId, [gmailErrorResult(mcpToolName, describeThrown(error))]);
+    return gmailUnavailableA2ui(surfaceId, toolId, prompt, describeThrown(error));
   }
   if (accessToken.length === 0) {
     aiLogInfo('[AIPhone][GmailAccessMissing] toolId=' + toolId);
@@ -5864,7 +5881,20 @@ async function callLocalGmailTool(toolId: string, prompt: string, surfaceId: str
   try {
     if (gmailMcpClient === genericMcpClient) {
       aiLogInfo('[AIPhone][GmailApiRequest] toolId=' + toolId);
-      const apiResults = await callGmailApiTool(toolId, prompt, accessToken);
+      const apiResults = await callGmailApiTool(toolId, prompt, accessToken, args);
+      if (gmailResultsHaveError(apiResults)) {
+        aiLogInfo('[AIPhone][GmailApiFallbackToMcp] toolId=' + toolId +
+          ' reason=' + gmailResultErrorSummary(apiResults).substring(0, 180));
+        const fallback = await genericMcpClient.callTool(
+          gmailMcpRegistration(toolId, mcpToolName),
+          accessToken,
+          gmailMcpArgsForPrompt(toolId, prompt, args)
+        );
+        if (toolId === 'gmail.draft.create' || toolId === 'gmail.draft.apply') {
+          return gmailDraftPreviewA2ui(surfaceId, fallback);
+        }
+        return gmailThreadResultsA2ui(surfaceId, toolId, [fallback]);
+      }
       if (toolId === 'gmail.draft.create' || toolId === 'gmail.draft.apply') {
         return gmailDraftPreviewA2ui(surfaceId, apiResults[0]);
       }
@@ -5872,7 +5902,7 @@ async function callLocalGmailTool(toolId: string, prompt: string, surfaceId: str
     }
     aiLogInfo('[AIPhone][GmailMcpRequest] toolId=' + toolId +
       ' mcpToolName=' + mcpToolName);
-    const result = await gmailMcpClient.callTool(gmailMcpRegistration(toolId, mcpToolName), accessToken, gmailMcpArgsForPrompt(toolId, prompt));
+    const result = await gmailMcpClient.callTool(gmailMcpRegistration(toolId, mcpToolName), accessToken, gmailMcpArgsForPrompt(toolId, prompt, args));
     if (toolId === 'gmail.draft.create' || toolId === 'gmail.draft.apply') {
       return gmailDraftPreviewA2ui(surfaceId, result);
     }
@@ -5882,9 +5912,9 @@ async function callLocalGmailTool(toolId: string, prompt: string, surfaceId: str
   }
 }
 
-async function buildLocalToolJsonl(toolId: string, prompt: string, surfaceId: string, emitJsonl: LocalA2uiEmitter | null = null): Promise<string> {
+async function buildLocalToolJsonl(toolId: string, prompt: string, surfaceId: string, emitJsonl: LocalA2uiEmitter | null = null, args: Object | null = null): Promise<string> {
   if (isGmailToolId(toolId)) {
-    return callLocalGmailTool(toolId, prompt, surfaceId);
+    return callLocalGmailTool(toolId, prompt, surfaceId, args);
   }
   if (toolId === 'social.reply.send') {
     return errorA2ui(
@@ -5911,7 +5941,7 @@ async function buildLocalToolJsonl(toolId: string, prompt: string, surfaceId: st
   return buildDynamicToolJsonl(toolId, prompt, surfaceId);
 }
 
-async function callLocalTool(toolId: string, prompt: string, surfaceId: string, actionId: string, onSurface: A2uiSurfaceCallback, initialSurface: A2uiSurfaceState | null = null): Promise<A2uiCallResult> {
+async function callLocalTool(toolId: string, prompt: string, surfaceId: string, actionId: string, onSurface: A2uiSurfaceCallback, initialSurface: A2uiSurfaceState | null = null, args: Object | null = null): Promise<A2uiCallResult> {
   const store = new A2uiSurfaceStore();
   if (initialSurface !== null) {
     store.seed(initialSurface);
@@ -5955,6 +5985,9 @@ async function callLocalTool(toolId: string, prompt: string, surfaceId: string, 
     stream: false,
     a2uiClientCapabilities: defaultA2uiCapabilities()
   };
+  if (args !== null) {
+    localDebugBody.args = args;
+  }
   const localDebugPayload: ToolRequestDebug = {
     endpoint: LOCAL_TOOL_GATEWAY_URL,
     body: localDebugBody
@@ -5969,7 +6002,7 @@ async function callLocalTool(toolId: string, prompt: string, surfaceId: string, 
   }
 
   try {
-    const resultJsonl = await buildLocalToolJsonl(toolId, prompt, surfaceId, emitJsonl);
+    const resultJsonl = await buildLocalToolJsonl(toolId, prompt, surfaceId, emitJsonl, args);
     emitJsonl(resultJsonl);
     surfaceThrottle.flush();
     aiLogInfo('[AIPhone][LocalToolResult] ok=' + (streamError.length === 0 ? 'true' : 'false') + ' rawChars=' + rawResponse.length.toString());
@@ -6008,10 +6041,10 @@ async function callLocalTool(toolId: string, prompt: string, surfaceId: string, 
   }
 }
 
-export async function callToolGateway(baseUrl: string, toolId: string, prompt: string, surfaceId: string, actionId: string, onSurface: A2uiSurfaceCallback, initialSurface: A2uiSurfaceState | null = null): Promise<A2uiCallResult> {
+export async function callToolGateway(baseUrl: string, toolId: string, prompt: string, surfaceId: string, actionId: string, onSurface: A2uiSurfaceCallback, initialSurface: A2uiSurfaceState | null = null, args: Object | null = null): Promise<A2uiCallResult> {
   const endpoint = buildToolGatewayUrl(baseUrl);
   if (isLocalToolGatewayUrl(endpoint)) {
-    return callLocalTool(toolId, prompt, surfaceId, actionId, onSurface, initialSurface);
+    return callLocalTool(toolId, prompt, surfaceId, actionId, onSurface, initialSurface, args);
   }
 
   const request = http.createHttp();
@@ -6043,6 +6076,9 @@ export async function callToolGateway(baseUrl: string, toolId: string, prompt: s
     stream: true,
     a2uiClientCapabilities: defaultA2uiCapabilities()
   };
+  if (args !== null) {
+    body.args = args;
+  }
   const debugPayload: ToolRequestDebug = {
     endpoint: endpoint,
     body: body

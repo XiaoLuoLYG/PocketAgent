@@ -133,6 +133,120 @@ export default function a2uiParserTest() {
       expect(request.actionId).assertEqual('model_tool_request');
     });
 
+    it('recovers model tool request args from compact single-object output', 0, () => {
+      const compact =
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"main","root":"root","title":"正在搜索 Gmail","intent":"gmail","status":"calling_tool","sendDataModel":true},"updateComponents":{"components":{"root":{"component":"SurfaceRoot","child":"thinking"}}},"updateDataModel":{"path":"/thoughts","merge":[["正在补充英文邮件关键词"]]},"updateDataModel":{"path":"/toolRequest","merge":[{"toolId":"gmail.mail.search","prompt":"帮我用 Gmail 搜索最近和我论文相关的邮件，帮我查看录取结果","actionId":"model_tool_request","args":{"query":"newer_than:365d {\\"paper\\" \\"manuscript\\" \\"submission\\" \\"admission decision\\" \\"decision letter\\" \\"offer letter\\" \\"accepted\\"} -category:promotions -in:draft","pageSize":10}}]}}';
+      const extracted = extractA2uiJsonlFromModelChunk(compact + '\n');
+      const parsed = parseA2uiJsonl(extracted.jsonl);
+      const store = new A2uiSurfaceStore();
+      parsed.envelopes.forEach(envelope => {
+        store.apply(envelope);
+      });
+      const request = toolRequest(store.getSurface());
+      const argsJson = JSON.stringify(request.args);
+
+      expect(parsed.error).assertEqual('');
+      expect(request.toolId).assertEqual('gmail.mail.search');
+      expect(argsJson.indexOf('paper')).assertLarger(-1);
+      expect(argsJson.indexOf('admission decision')).assertLarger(-1);
+    });
+
+    it('recovers model tool request args from updateDataModel toolRequest output', 0, () => {
+      const compact =
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"gmail-reply","root":"root","title":"正在创建 Gmail 回复草稿","intent":"gmail","status":"calling_tool","sendDataModel":false},"updateComponents":{"components":{"root":{"component":"SurfaceRoot","child":"thinking"},"thinking":{"component":"ThinkingStream","title":"Appless Phone 正在处理","body":"正在为选中的 Gmail 线程生成回复正文","status":"calling_tool","dataPath":"/thoughts"}}},"updateDataModel":{"/thoughts":["正在读取按钮携带的真实线程上下文"]},"updateDataModel":{"toolRequest":{"toolId":"gmail.draft.create","prompt":"Create a Gmail reply draft for the selected thread","actionId":"model_tool_request","args":{"threadId":"thread-123","to":["committee@example.edu"],"subject":"Re: Admission decision","body":"Thanks for the update.","replyMode":"reply"}}}}';
+      const extracted = extractA2uiJsonlFromModelChunk(compact + '\n');
+      const parsed = parseA2uiJsonl(extracted.jsonl);
+      const store = new A2uiSurfaceStore();
+      parsed.envelopes.forEach(envelope => {
+        store.apply(envelope);
+      });
+      const request = toolRequest(store.getSurface());
+      const argsJson = JSON.stringify(request.args);
+
+      expect(parsed.error).assertEqual('');
+      expect(request.toolId).assertEqual('gmail.draft.create');
+      expect(argsJson.indexOf('thread-123')).assertLarger(-1);
+      expect(argsJson.indexOf('committee@example.edu')).assertLarger(-1);
+      expect(argsJson.indexOf('Thanks for the update.')).assertLarger(-1);
+    });
+
+    it('recovers a single updateDataModel toolRequest envelope before strict parsing', 0, () => {
+      const compact =
+        '{"version":"v0.9.1","updateDataModel":{"surfaceId":"surface_model","toolRequest":{"toolId":"gmail.draft.create","prompt":"Create a Gmail reply draft for the selected thread","actionId":"model_tool_request","args":{"threadId":"thread-789","to":["committee@example.edu"],"subject":"Re: Admission decision","body":"Thank you for letting me know.","replyMode":"reply"}}}}';
+      const extracted = extractA2uiJsonlFromModelChunk(compact + '\n');
+      const parsed = parseA2uiJsonl(extracted.jsonl);
+      const store = new A2uiSurfaceStore();
+      parsed.envelopes.forEach(envelope => {
+        store.apply(envelope);
+      });
+      const request = toolRequest(store.getSurface());
+      const argsJson = JSON.stringify(request.args);
+
+      expect(parsed.error).assertEqual('');
+      expect(request.toolId).assertEqual('gmail.draft.create');
+      expect(argsJson.indexOf('thread-789')).assertLarger(-1);
+      expect(argsJson.indexOf('Thank you for letting me know.')).assertLarger(-1);
+    });
+
+    it('recovers shorthand Gmail draft form updates from model output', 0, () => {
+      const compact =
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"main","root":"root","title":"写邮件","intent":"gmail","status":"ready","sendDataModel":{"toolId":"gmail.draft.create"}}}\n' +
+        '{"version":"v0.9.1","updateComponents":{"components":{"root":{"component":"SurfaceRoot","child":"draftForm"},"draftForm":{"component":"Column","children":["toField","subjectField","bodyField"]},"toField":{"component":"Text","text":"To"},"subjectField":{"component":"Text","text":"Subject"},"bodyField":{"component":"Text","text":"Body"}}}}\n' +
+        '{"version":"v0.9.1","updateDataModel":{"/form/to":["alice@example.com"]}}\n' +
+        '{"version":"v0.9.1","updateDataModel":{"/form/body":"我收到了"}}\n' +
+        '{"version":"v0.9.1","updateDataModel":{"/form/subject":"邮件确认"}}\n';
+      const extracted = extractA2uiJsonlFromModelChunk(compact);
+      const parsed = parseA2uiJsonl(extracted.jsonl);
+      const store = new A2uiSurfaceStore();
+      parsed.envelopes.forEach(envelope => {
+        store.apply(envelope);
+      });
+      const dataModelJson = store.getSurface().dataModelJson;
+
+      expect(parsed.error).assertEqual('');
+      expect(dataModelJson.indexOf('alice@example.com')).assertLarger(-1);
+      expect(dataModelJson.indexOf('我收到了')).assertLarger(-1);
+      expect(dataModelJson.indexOf('邮件确认')).assertLarger(-1);
+    });
+
+    it('recovers model tool request args from top-level toolRequest output', 0, () => {
+      const compact =
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"gmail-reply","root":"root","title":"正在创建 Gmail 回复草稿","intent":"gmail","status":"calling_tool","sendDataModel":false},"updateComponents":{"components":{"root":{"component":"SurfaceRoot","child":"thinking"}}},"updateDataModel":{"path":"/thoughts","value":["正在撰写回复"]},"toolRequest":{"toolId":"gmail.draft.create","prompt":"Create a Gmail reply draft for the selected thread","actionId":"model_tool_request","args":{"threadId":"thread-456","to":["advisor@example.edu"],"subject":"Re: Manuscript review","body":"Thank you for the guidance.","replyMode":"reply"}}}';
+      const extracted = extractA2uiJsonlFromModelChunk(compact + '\n');
+      const parsed = parseA2uiJsonl(extracted.jsonl);
+      const store = new A2uiSurfaceStore();
+      parsed.envelopes.forEach(envelope => {
+        store.apply(envelope);
+      });
+      const request = toolRequest(store.getSurface());
+      const argsJson = JSON.stringify(request.args);
+
+      expect(parsed.error).assertEqual('');
+      expect(request.toolId).assertEqual('gmail.draft.create');
+      expect(argsJson.indexOf('thread-456')).assertLarger(-1);
+      expect(argsJson.indexOf('advisor@example.edu')).assertLarger(-1);
+      expect(argsJson.indexOf('Thank you for the guidance.')).assertLarger(-1);
+    });
+
+    it('recovers model tool request args nested in createSurface sendDataModel', 0, () => {
+      const compact =
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"main","root":"root","title":"撰写 Gmail 邮件","intent":"gmail","status":"ready","sendDataModel":{"/thoughts":"正在准备撰写 Gmail 邮件","/toolRequest":{"toolId":"gmail.draft.create","prompt":"帮我写一封邮件给 alice@example.com 说我收到了","actionId":"model_tool_request","args":{"to":["alice@example.com"],"subject":"邮件主题","body":"我收到了","replyMode":"single"}}}}}';
+      const extracted = extractA2uiJsonlFromModelChunk(compact + '\n');
+      const parsed = parseA2uiJsonl(extracted.jsonl);
+      const store = new A2uiSurfaceStore();
+      parsed.envelopes.forEach(envelope => {
+        store.apply(envelope);
+      });
+      const request = toolRequest(store.getSurface());
+      const argsJson = JSON.stringify(request.args);
+
+      expect(parsed.error).assertEqual('');
+      expect(request.toolId).assertEqual('gmail.draft.create');
+      expect(argsJson.indexOf('alice@example.com')).assertLarger(-1);
+      expect(argsJson.indexOf('我收到了')).assertLarger(-1);
+      expect(argsJson.indexOf('single')).assertLarger(-1);
+    });
+
     it('accepts dynamic tool components and stores dynamic tool data', 0, () => {
       const stream =
         '{"version":"v0.9.1","createSurface":{"surfaceId":"dynamic","root":"root","title":"动态工具","intent":"dynamic_tool","status":"ready"}}\n' +

@@ -7,7 +7,9 @@ import {
   gmailAuthRequiredA2ui,
   gmailBlockedSendA2ui,
   gmailDraftPreviewA2ui,
+  gmailOpenDraftAction,
   gmailOpenWebA2ui,
+  gmailReplyDraftAction,
   gmailThreadResultsA2ui
 } from '../main/ets/model/GmailToolA2ui';
 import { DynamicGenericToolResult } from '../main/ets/model/DynamicToolTypes';
@@ -31,7 +33,7 @@ function genericResult(): DynamicGenericToolResult {
     status: 'success',
     summary: 'From a***@example.com: Alice shared a snippet.',
     rows: [{ label: 'From', value: 'a***@example.com' }],
-    rawPreview: '{"id":"thread_fixture_1"}'
+    rawPreview: '{"id":"thread_fixture_1","body":"FULL BODY SHOULD NOT LEAK"}'
   };
 }
 
@@ -44,6 +46,37 @@ function draftResult(): DynamicGenericToolResult {
     summary: 'Draft prepared for review. It has not been sent.',
     rows: [{ label: 'Status', value: 'ready_to_apply' }],
     rawPreview: '{"status":"ready_to_apply"}'
+  };
+}
+
+function gmailApiThreadResult(): A2uiGenericToolResultData {
+  return {
+    sourceTag: 'Gmail API',
+    toolName: 'users.threads.get',
+    title: 'Project launch notes',
+    status: 'success',
+    summary: 'Alice asked for a quick confirmation before Friday.',
+    rows: [
+      { label: 'Thread ID', value: 'thread-123' },
+      { label: 'From', value: 'Alice Example <alice@example.com>' },
+      { label: 'Date', value: 'Fri, 26 Jun 2026 09:30:00 +0800' }
+    ],
+    rawPreview: '{"id":"thread-123"}'
+  };
+}
+
+function gmailApiDraftResult(): A2uiGenericToolResultData {
+  return {
+    sourceTag: 'Gmail API',
+    toolName: 'users.drafts.create',
+    title: 'Re: Project launch notes',
+    status: 'success',
+    summary: 'Draft created for review.',
+    rows: [
+      { label: 'Thread ID', value: 'thread-123' },
+      { label: 'From', value: 'Alice Example <alice@example.com>' }
+    ],
+    rawPreview: '{"id":"draft-123"}'
   };
 }
 
@@ -105,6 +138,7 @@ export default function gmailToolA2uiTest() {
       }
       expect(rendered.length).assertEqual(1);
       expect(rendered[0].title).assertEqual('Project launch notes');
+      expect(rendered[0].rawPreview.indexOf('FULL BODY SHOULD NOT LEAK')).assertEqual(-1);
       expect(store.getSurface().dataModelJson.indexOf('FULL BODY SHOULD NOT LEAK')).assertEqual(-1);
     });
 
@@ -142,6 +176,48 @@ export default function gmailToolA2uiTest() {
       expect(rendered.toolName).assertEqual('gmail.open.web');
       expect(rendered.status).assertEqual('needs_user');
       expect(rowValue(rendered, 'URL')).assertEqual(url);
+    });
+
+    it('builds a per-thread AI reply draft action from real Gmail rows', 0, () => {
+      const action = gmailReplyDraftAction(gmailApiThreadResult());
+
+      expect(action !== null).assertTrue();
+      if (action !== null) {
+        expect(action.id).assertEqual('gmail.ai.reply.draft');
+        expect(action.label).assertEqual('AI 回复草稿');
+        expect(action.kind).assertEqual('prompt');
+        expect(action.variant).assertEqual('primary');
+        expect(action.prompt.indexOf('thread-123')).assertLarger(-1);
+        expect(action.prompt.indexOf('alice@example.com')).assertLarger(-1);
+        expect(action.prompt.indexOf('Alice asked for a quick confirmation before Friday.')).assertLarger(-1);
+        expect(action.prompt.indexOf('gmail.draft.create')).assertLarger(-1);
+        expect(action.prompt.indexOf('gmail.ai.reply.draft')).assertLarger(-1);
+        expect(action.prompt.indexOf('args.body')).assertLarger(-1);
+        expect(action.args === undefined).assertFalse();
+        expect(JSON.stringify(action.args).indexOf('thread-123')).assertLarger(-1);
+        expect(JSON.stringify(action.args).indexOf('alice@example.com')).assertLarger(-1);
+        expect(JSON.stringify(action.args).indexOf('"replyMode":"reply"')).assertLarger(-1);
+      }
+      expect(gmailReplyDraftAction(gmailApiDraftResult()) === null).assertTrue();
+    });
+
+    it('adds Gmail jump action for MCP draft results too', 0, () => {
+      const mcpDraft: A2uiGenericToolResultData = {
+        sourceTag: 'Gmail',
+        toolName: 'create_draft',
+        title: 'MCP draft',
+        status: 'success',
+        summary: 'Draft created.',
+        rows: [{ label: 'Draft ID', value: 'draft-123' }],
+        rawPreview: ''
+      };
+      const action = gmailOpenDraftAction(mcpDraft);
+
+      expect(action !== null).assertTrue();
+      if (action !== null) {
+        expect(action.id).assertEqual('gmail.open.web');
+        expect(action.label).assertEqual('跳转到Gmail');
+      }
     });
   });
 }
