@@ -265,12 +265,13 @@ const foodChoicesSurface: A2uiSurfaceState = surface(
       id: 'results',
       component: A2UI_COMPONENT_FOOD_CHOICES,
       title: '外卖聚合搜索',
-      body: '以下结果来自高德、腾讯地图、百度地图；仅展示真实返回字段，不下单、不支付。',
+      body: 'StyleLab 模拟数据，用于食物卡片视觉与来源颜色覆盖；不代表实时结果。',
       status: 'ready',
       dataPath: '/foods',
       actions: [
         action('food_show_all', '全部范围', 'activated'),
-        action('food_filter_1km', '1公里内')
+        action('food_filter_1km', '1公里内'),
+        action('food_show_more', '展示更多')
       ]
     }
   ],
@@ -290,6 +291,38 @@ const foodChoicesSurface: A2uiSurfaceState = surface(
       distance: '0米',
       location: '114.029506,22.609878',
       sourceTags: ['高德']
+    },
+    {
+      name: '肯德基 (深圳北站东广场店)',
+      category: '餐饮服务; 快餐厅; 西式快餐',
+      address: '深圳北站东广场商业区',
+      distance: '180米',
+      location: '114.030218,22.610112',
+      sourceTags: ['百度地图']
+    },
+    {
+      name: '瑞幸咖啡 (StyleLab Mock 北站枢纽店)',
+      category: '餐饮服务; 咖啡厅; 咖啡厅',
+      address: '深圳北站综合交通枢纽负一层',
+      distance: '1500米',
+      location: '114.032118,22.611912',
+      sourceTags: ['腾讯地图', '瑞幸']
+    },
+    {
+      name: '淘宝闪购轻食优选 (StyleLab Mock)',
+      category: '餐饮服务; 轻食; 外卖',
+      address: '深圳北站西广场模拟商圈',
+      distance: '860米',
+      location: '114.028928,22.608836',
+      sourceTags: ['淘宝闪购']
+    },
+    {
+      name: '未知坐标小吃档',
+      category: '餐饮服务; 小吃快餐',
+      address: '站内商户，工具未返回真实坐标',
+      distance: '未知',
+      location: '',
+      sourceTags: []
     }
   ])
 );
@@ -334,7 +367,7 @@ export const A2UI_STYLE_LAB_CASES: A2uiStyleLabCase[] = [
   {
     id: 'food_choices',
     title: 'FoodChoices',
-    description: '两张餐厅卡片，检查父框、亮痕和列表衬底',
+    description: '多来源餐厅卡片，检查父框、亮痕和列表衬底',
     surface: foodChoicesSurface
   }
 ];

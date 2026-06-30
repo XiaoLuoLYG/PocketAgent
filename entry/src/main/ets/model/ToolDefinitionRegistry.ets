@@ -68,6 +68,42 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     actions: []
   },
   {
+    toolId: 'mail.search',
+    domain: 'mail',
+    intent: 'mail.search',
+    riskLevel: 'read',
+    backendPriority: ['oauth_api', 'imap', 'workspace_mcp'],
+    authModes: ['oauth', 'imap_auth', 'mcp_auth'],
+    inputSchema: 'mailSearchQuery',
+    outputSchema: 'mailThreads',
+    a2uiComponent: 'GenericToolResults',
+    actions: ['mail.thread.read', 'mail.draft.create']
+  },
+  {
+    toolId: 'mail.thread.read',
+    domain: 'mail',
+    intent: 'mail.thread.read',
+    riskLevel: 'read',
+    backendPriority: ['oauth_api', 'imap'],
+    authModes: ['oauth', 'imap_auth'],
+    inputSchema: 'mailThreadReadQuery',
+    outputSchema: 'mailThread',
+    a2uiComponent: 'GenericToolResults',
+    actions: ['mail.draft.create']
+  },
+  {
+    toolId: 'mail.draft.create',
+    domain: 'mail',
+    intent: 'mail.draft.create',
+    riskLevel: 'draft',
+    backendPriority: ['oauth_api', 'imap'],
+    authModes: ['oauth', 'imap_auth'],
+    inputSchema: 'mailDraftCreateRequest',
+    outputSchema: 'mailDraftResult',
+    a2uiComponent: 'GenericToolResults',
+    actions: []
+  },
+  {
     toolId: 'gmail.mail.search',
     domain: 'gmail',
     intent: 'gmail.mail.search',
@@ -150,6 +186,18 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     outputSchema: 'youtubeVideos',
     a2uiComponent: 'GenericToolResults',
     actions: ['youtube.open.web']
+  },
+  {
+    toolId: 'media.video.search',
+    domain: 'media',
+    intent: 'media.video.search',
+    riskLevel: 'read',
+    backendPriority: ['local_adapter'],
+    authModes: ['provider_key'],
+    inputSchema: 'mediaVideoSearchQuery',
+    outputSchema: 'mediaVideos',
+    a2uiComponent: 'GenericToolResults',
+    actions: ['media.open.web']
   },
   {
     toolId: 'youtube.mine.playlists',
@@ -277,9 +325,19 @@ export function isGmailToolId(toolId: string): boolean {
   return definition !== null && definition.domain === 'gmail';
 }
 
+export function isMailToolId(toolId: string): boolean {
+  const definition = toolDefinitionForToolId(toolId);
+  return definition !== null && definition.domain === 'mail';
+}
+
 export function isYouTubeToolId(toolId: string): boolean {
   const definition = toolDefinitionForToolId(toolId);
   return definition !== null && definition.domain === 'youtube';
+}
+
+export function isMediaToolId(toolId: string): boolean {
+  const definition = toolDefinitionForToolId(toolId);
+  return definition !== null && definition.domain === 'media';
 }
 
 export function isCalendarToolId(toolId: string): boolean {
@@ -303,6 +361,9 @@ export function backendLabel(backend: ToolBackendType): string {
   }
   if (backend === 'oauth_api') {
     return 'OAuth API';
+  }
+  if (backend === 'imap') {
+    return 'IMAP';
   }
   if (backend === 'workspace_mcp') {
     return 'Workspace MCP';

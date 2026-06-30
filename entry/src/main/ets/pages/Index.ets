@@ -1163,6 +1163,57 @@ struct Index {
     };
   }
 
+  private trustedExternalUrl(url: string): string {
+    const trimmed = url.trim();
+    if (trimmed.startsWith('https://mail.google.com/') ||
+      trimmed.startsWith('https://accounts.google.com/') ||
+      trimmed.startsWith('https://calendar.google.com/') ||
+      trimmed.startsWith('https://www.youtube.com/watch?') ||
+      trimmed.startsWith('https://youtube.com/watch?') ||
+      trimmed.startsWith('https://youtu.be/') ||
+      trimmed.startsWith('https://player.bilibili.com/player.html?') ||
+      trimmed.startsWith('https://www.bilibili.com/video/') ||
+      trimmed.startsWith('https://m.bilibili.com/video/')) {
+      return trimmed;
+    }
+    return '';
+  }
+
+  private externalUrlWant(url: string): Want {
+    return {
+      action: 'ohos.want.action.viewData',
+      entities: ['entity.system.browsable'],
+      uri: url
+    };
+  }
+
+  private async openExternalUrl(url: string): Promise<void> {
+    const trustedUrl = this.trustedExternalUrl(url);
+    if (trustedUrl.length === 0) {
+      const message = '链接不在允许打开的来源范围内';
+      this.lastError = message;
+      this.statusText = '链接不可打开';
+      aiLogError('[AIPhone][MainOpenUrl] blocked urlChars=' + url.length.toString());
+      return;
+    }
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    try {
+      try {
+        await context.openLink(trustedUrl);
+      } catch (_linkError) {
+        await context.startAbility(this.externalUrlWant(trustedUrl));
+      }
+      this.statusText = '已打开网页';
+      aiLogInfo('[AIPhone][MainOpenUrl] ok=true url=' + trustedUrl);
+    } catch (error) {
+      const businessError = error as BusinessError;
+      const message = businessError.message === undefined || businessError.message.length === 0 ? '系统没有可用浏览器处理该链接' : businessError.message;
+      this.lastError = '网页打开失败：' + message;
+      this.statusText = '网页打开失败';
+      aiLogError('[AIPhone][MainOpenUrl] ok=false url=' + trustedUrl + ' message=' + message);
+    }
+  }
+
   private foodNavigationTargets(item: A2uiFoodOption): FoodNavigationTarget[] {
     const targets: FoodNavigationTarget[] = [];
     const debug = describeSystemFoodNavigationUri(this.foodLocationText(item), '', item.name);
@@ -2028,8 +2079,12 @@ struct Index {
     return item.noSeat;
   }
 
-  private handleClientAction(action: A2uiAction): void {
+  private async handleClientAction(action: A2uiAction): Promise<void> {
     aiLogInfo('[AIPhone][ClientAction] id=' + action.id);
+    if (action.id === 'media.open.web' || action.id === 'youtube.open.web' || action.id === 'gmail.open.web') {
+      await this.openExternalUrl(action.prompt);
+      return;
+    }
     if (action.id === 'client_show_more') {
       this.trainVisibleCount = this.trainVisibleCount + TRAIN_INITIAL_VISIBLE;
       this.renderRevision = this.renderRevision + 1;
@@ -2105,7 +2160,7 @@ struct Index {
   private async sendAction(action: A2uiAction): Promise<void> {
     const kind = action.kind.length > 0 ? action.kind : 'prompt';
     if (kind === 'client') {
-      this.handleClientAction(action);
+      await this.handleClientAction(action);
       return;
     }
     if (kind === 'input') {

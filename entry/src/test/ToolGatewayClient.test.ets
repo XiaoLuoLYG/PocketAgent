@@ -7,6 +7,7 @@ import { MemoryCredentialStore } from '../main/ets/model/DynamicCredentialStore'
 import { saveGmailOAuthTokenSet } from '../main/ets/model/GmailOAuthClient';
 import { DynamicGenericToolResult, DynamicToolRegistration } from '../main/ets/model/DynamicToolTypes';
 import { GenericMcpClient } from '../main/ets/model/GenericMcpClient';
+import { MailDraftArgs, MailSearchArgs } from '../main/ets/model/MailToolTypes';
 import {
   aggregateFoodProviderResults,
   buildToolGatewayUrl,
@@ -29,6 +30,7 @@ import {
   isLocalToolGatewayUrl,
   isRegisteredToolId,
   localProviderConfigDebugSummary,
+  mailSearchArgs,
   providerIssueRows,
   sortTravelOptionsByDeparture,
   streamFoodProviderResultsWithPartials,
@@ -85,6 +87,11 @@ interface GmailToolArgsFixture {
 
 interface YouTubeSearchArgsFixture {
   query: string;
+}
+
+interface MediaVideoSearchArgsFixture {
+  query: string;
+  sources: string[];
 }
 
 interface McDonaldsStoreFixture {
@@ -211,10 +218,107 @@ export default function toolGatewayClientTest() {
       expect(isRegisteredToolId('gmail.unknown')).assertFalse();
     });
 
+    it('loads QQ Mail config from local provider raw JSON without exposing the auth code', 0, () => {
+      try {
+        configureLocalProviderConfigFromRawJson(JSON.stringify({
+          QQ_MAIL_ADDRESS: 'me@qq.com',
+          QQ_MAIL_AUTH_CODE: 'sixteencharscode',
+          QQ_MAIL_IMAP_HOST: 'imap.qq.com',
+          QQ_MAIL_IMAP_PORT: '993',
+          QQ_MAIL_DRAFTS_MAILBOX: 'Drafts'
+        }));
+
+        const summary = localProviderConfigDebugSummary();
+        expect(summary.indexOf('qqMailAddress=present')).assertLarger(-1);
+        expect(summary.indexOf('qqMailAuthCode=present(16)')).assertLarger(-1);
+        expect(summary.indexOf('sixteencharscode')).assertEqual(-1);
+      } finally {
+        configureLocalProviderConfigFromRawJson('{}');
+      }
+    });
+
+    it('renders aggregate mail missing QQ config as real provider status', 0, async () => {
+      try {
+        configureLocalProviderConfigFromRawJson('{}');
+        const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
+        const args: MailSearchArgs = {
+          query: 'newer_than:30d',
+          pageSize: 10,
+          providers: ['qq'],
+          intentSummary: ''
+        };
+        const result = await callToolGateway(
+          defaultToolGatewayUrl(),
+          'mail.search',
+          '帮我看邮箱里最新的重要邮件',
+          'surface_mail_missing_qq',
+          'model_tool_request',
+          noop,
+          null,
+          args
+        );
+
+        const rendered = genericToolResults(result.surface);
+        expect(rendered.length).assertLarger(0);
+        expect(rendered[0].sourceTag).assertEqual('QQ Mail');
+        expect(rendered[0].status).assertEqual('error');
+        expect(rendered[0].summary.indexOf('QQ_MAIL_ADDRESS')).assertLarger(-1);
+        expect(result.raw.indexOf('auth code')).assertEqual(-1);
+      } finally {
+        configureLocalProviderConfigFromRawJson('{}');
+      }
+    });
+
+    it('extracts aggregate mail keyword when model timeout falls back without args', 0, () => {
+      const parsed = mailSearchArgs('聚合搜索 Gmail 和 QQ 邮箱里关键词 loopy 的邮件', null);
+
+      expect(parsed.query).assertEqual('newer_than:30d loopy');
+      expect(parsed.providers.length).assertEqual(2);
+      expect(parsed.providers[0]).assertEqual('gmail');
+      expect(parsed.providers[1]).assertEqual('qq');
+    });
+
+    it('does not claim QQ draft success when config is missing', 0, async () => {
+      try {
+        configureLocalProviderConfigFromRawJson('{}');
+        const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
+        const args: MailDraftArgs = {
+          provider: 'qq',
+          accountLabel: '',
+          threadId: '',
+          messageId: 'qq-1',
+          to: ['sender@qq.com'],
+          subject: 'Re: QQ latest',
+          body: 'Thanks.',
+          replyMode: 'reply',
+          contextSummary: ''
+        };
+        const result = await callToolGateway(
+          defaultToolGatewayUrl(),
+          'mail.draft.create',
+          'Create QQ reply draft',
+          'surface_mail_draft_missing_qq',
+          'model_tool_request',
+          noop,
+          null,
+          args
+        );
+
+        const rendered = genericToolResults(result.surface);
+        expect(rendered[0].sourceTag).assertEqual('QQ Mail');
+        expect(rendered[0].status).assertEqual('error');
+        expect(rendered[0].summary.indexOf('missing')).assertLarger(-1);
+        expect(rendered[0].summary.indexOf('已保存')).assertEqual(-1);
+      } finally {
+        configureLocalProviderConfigFromRawJson('{}');
+      }
+    });
+
     it('registers YouTube tools on the same local tool framework', 0, () => {
       expect(isRegisteredToolId('youtube.video.search')).assertTrue();
       expect(isRegisteredToolId('youtube.mine.playlists')).assertTrue();
       expect(isRegisteredToolId('youtube.mine.subscriptions')).assertTrue();
+      expect(isRegisteredToolId('media.video.search')).assertTrue();
       expect(isRegisteredToolId('youtube.unknown')).assertFalse();
     });
 
@@ -244,6 +348,7 @@ export default function toolGatewayClientTest() {
         expect(summary.indexOf('youtubeApiKey=present(11)')).assertLarger(-1);
         expect(summary.indexOf('googleOauthClientId=present(37)')).assertLarger(-1);
         expect(summary.indexOf('gmailMcpUserProject=present')).assertLarger(-1);
+        expect(summary.indexOf('youtube-key')).assertEqual(-1);
       } finally {
         configureLocalProviderConfigFromRawJson('{}');
       }
@@ -392,6 +497,38 @@ export default function toolGatewayClientTest() {
         expect(genericToolResults(result.surface)[0].status).assertEqual('error');
         expect(result.raw.indexOf('YOUTUBE_API_KEY')).assertLarger(-1);
         expect(result.raw.indexOf('fake')).assertEqual(-1);
+      } finally {
+        configureLocalProviderConfigFromRawJson('{}');
+      }
+    });
+
+    it('dispatches media video search locally without network when YouTube key is missing', 0, async () => {
+      try {
+        configureLocalProviderConfigFromRawJson('{}');
+        const noop = (_surface: A2uiSurfaceState, _raw: string): void => {};
+        const args: MediaVideoSearchArgsFixture = {
+          query: 'qwen max',
+          sources: ['youtube']
+        };
+        const result: A2uiCallResult = await callToolGateway(
+          defaultToolGatewayUrl(),
+          'media.video.search',
+          '帮我搜 qwen max 视频',
+          'surface_media_youtube_missing_key',
+          'model_tool_request',
+          noop,
+          null,
+          args
+        );
+
+        const rendered = genericToolResults(result.surface);
+        expect(result.ok).assertTrue();
+        expect(rendered.length).assertLarger(0);
+        expect(rendered[0].toolName).assertEqual('media.video.search');
+        expect(rendered[0].status).assertEqual('error');
+        expect(rendered[0].sourceTag).assertEqual('YouTube Data API');
+        expect(rendered[0].rows.length).assertLarger(0);
+        expect(rendered[0].summary.indexOf('YOUTUBE_API_KEY')).assertLarger(-1);
       } finally {
         configureLocalProviderConfigFromRawJson('{}');
       }
@@ -961,20 +1098,30 @@ export default function toolGatewayClientTest() {
         distance: '0.1千米',
         sourceTags: ['美团']
       };
+      const google: A2uiFoodData = {
+        name: '喜茶 深圳科技园店',
+        category: 'Google Places',
+        address: '南山科技园',
+        distance: '',
+        location: '113.943,22.541',
+        sourceTags: ['Google Maps']
+      };
 
       const merged = aggregateFoodProviderResults([
         { provider: '高德', foods: [amap], error: '' },
         { provider: '美团', foods: [meituan], error: '' },
         { provider: '腾讯地图', foods: [{ name: '喜茶-深圳科技园店', category: '美食', address: '科技园', distance: '100米', sourceTags: ['腾讯地图'] }], error: '' },
+        { provider: 'Google Maps', foods: [google], error: '' },
         { provider: '淘宝闪购', foods: [], error: '未配置 TAOBAO_APP_KEY' }
       ]);
 
       expect(merged.foods.length).assertEqual(1);
       const tags = merged.foods[0].sourceTags === undefined ? [] : merged.foods[0].sourceTags;
-      expect(tags.length).assertEqual(3);
+      expect(tags.length).assertEqual(4);
       expect(tags[0]).assertEqual('高德');
       expect(tags[1]).assertEqual('美团');
       expect(tags[2]).assertEqual('腾讯地图');
+      expect(tags[3]).assertEqual('Google Maps');
       expect(providerIssueRows(merged.issues)[0].label).assertEqual('淘宝闪购');
     });
 
@@ -1207,6 +1354,33 @@ export default function toolGatewayClientTest() {
       expect(firstTags.indexOf('高德')).assertLarger(-1);
       expect(firstTags.indexOf('腾讯地图')).assertLarger(-1);
       expect(firstTags.indexOf('百度地图')).assertLarger(-1);
+    });
+
+    it('keeps one Google Maps row visible when earlier providers fill the food limit', 0, () => {
+      const amapFoods: A2uiFoodData[] = [];
+      for (let index = 0; index < 30; index++) {
+        amapFoods.push({
+          name: '高德餐饮 ' + index.toString(),
+          category: '餐饮服务',
+          address: '高德地址 ' + index.toString(),
+          distance: (100 + index).toString() + '米',
+          sourceTags: ['高德']
+        });
+      }
+      const merged = aggregateFoodProviderResults([
+        { provider: '高德', foods: amapFoods, error: '' },
+        { provider: 'Google Maps', foods: [{ name: 'NCafe', category: 'Google Places', address: '坂田', distance: '', location: '114.1,22.6', sourceTags: ['Google Maps'] }], error: '' }
+      ]);
+      let hasGoogle = false;
+      for (let index = 0; index < merged.foods.length; index++) {
+        const tags = merged.foods[index].sourceTags;
+        if (tags !== undefined) {
+          hasGoogle = hasGoogle || tags.indexOf('Google Maps') >= 0;
+        }
+      }
+
+      expect(merged.foods.length).assertEqual(24);
+      expect(hasGoogle).assertTrue();
     });
 
     it('keeps more than the default visible food rows for client show more', 0, () => {

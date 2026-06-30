@@ -8,6 +8,8 @@ import {
 } from '../../../model/A2uiTypes';
 import { actionsOf, genericToolResults } from '../../../model/A2uiData';
 import { gmailOpenDraftAction, gmailReplyDraftAction } from '../../../model/GmailToolA2ui';
+import { mailReplyDraftAction } from '../../../model/MailToolA2ui';
+import { mediaVideoPlaybackAction } from '../../../model/MediaVideoToolA2ui';
 import {
   COLOR_ACCENT,
   COLOR_ACCENT_DARK,
@@ -59,6 +61,9 @@ export struct GenericToolResultsView {
 
   private isGmailResult(item: A2uiGenericToolResultData): boolean {
     return item.sourceTag === 'Gmail API' ||
+      item.sourceTag === 'Gmail' ||
+      item.sourceTag === 'QQ Mail' ||
+      item.toolName === 'mail.thread' ||
       item.toolName.indexOf('users.threads') === 0 ||
       item.toolName.indexOf('users.drafts') === 0;
   }
@@ -88,6 +93,9 @@ export struct GenericToolResultsView {
   }
 
   private isGmailDraft(item: A2uiGenericToolResultData): boolean {
+    if (item.status === 'error') {
+      return false;
+    }
     return item.toolName.indexOf('users.drafts') === 0 || item.title.indexOf('草稿') >= 0;
   }
 
@@ -149,7 +157,7 @@ export struct GenericToolResultsView {
   }
 
   private gmailDate(item: A2uiGenericToolResultData): string {
-    const date = this.rowValue(item, 'Date');
+    const date = this.firstRowValue(item, ['Date', 'Received']);
     if (date.length === 0) {
       return this.isGmailDraft(item) ? 'Draft' : '';
     }
@@ -189,6 +197,17 @@ export struct GenericToolResultsView {
       labels.push('Draft');
       return labels;
     }
+    if (item.sourceTag === 'QQ Mail') {
+      labels.push('QQ Mail');
+    } else if (item.sourceTag === 'Gmail') {
+      labels.push('Gmail');
+    }
+    if (this.rowValue(item, 'Important') === 'Yes') {
+      labels.push('Important');
+    }
+    if (this.rowValue(item, 'Unread') === 'Yes') {
+      labels.push('Unread');
+    }
     const raw = this.rowValue(item, 'Labels');
     if (raw.length === 0) {
       return labels;
@@ -216,6 +235,10 @@ export struct GenericToolResultsView {
 
   private gmailActions(item: A2uiGenericToolResultData): A2uiAction[] {
     const actions: A2uiAction[] = [];
+    const mailAction = mailReplyDraftAction(item);
+    if (mailAction !== null) {
+      actions.push(mailAction);
+    }
     const replyAction = gmailReplyDraftAction(item);
     if (replyAction !== null) {
       actions.push(replyAction);
@@ -227,11 +250,19 @@ export struct GenericToolResultsView {
     return actions;
   }
 
+  private mediaVideoActions(item: A2uiGenericToolResultData): A2uiAction[] {
+    const action = mediaVideoPlaybackAction(item);
+    return action === null ? [] : [action];
+  }
+
   private gmailHeaderTitle(): string {
     const rows = this.results();
     for (let index = 0; index < rows.length; index++) {
       if (this.isGmailDraft(rows[index])) {
         return 'Draft saved';
+      }
+      if (rows[index].toolName === 'mail.thread') {
+        return 'Mailbox';
       }
     }
     return 'Inbox';
@@ -240,7 +271,7 @@ export struct GenericToolResultsView {
   private gmailHeaderMeta(): string {
     const count = this.results().length;
     if (this.gmailHeaderTitle() === 'Draft saved') {
-      return 'Saved in Gmail. Not sent.';
+      return 'Saved as draft. Not sent.';
     }
     return count.toString() + (count === 1 ? ' message' : ' messages');
   }
@@ -709,6 +740,15 @@ export struct GenericToolResultsView {
                   .lineHeight(16)
                   .maxLines(5)
                   .margin({ top: 10 })
+              }
+
+              if (this.mediaVideoActions(item).length > 0) {
+                ActionBarView({
+                  actions: this.mediaVideoActions(item),
+                  isBusy: this.isBusy,
+                  onAction: this.onAction
+                })
+                  .margin({ top: 12 })
               }
             }
             .width('100%')

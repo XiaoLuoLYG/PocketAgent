@@ -1,6 +1,7 @@
 import { asset } from '@kit.AssetStoreKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import util from '@ohos.util';
+import { utf8Bytes } from './Utf8Bytes';
 
 export interface CredentialStore {
   put(ref: string, value: string): Promise<void>;
@@ -41,7 +42,7 @@ export interface AssetCredentialBackend {
 }
 
 function bytesOf(value: string): Uint8Array {
-  return new util.TextEncoder().encodeInto(value);
+  return utf8Bytes(value);
 }
 
 function textFromBytes(value: Uint8Array): string {

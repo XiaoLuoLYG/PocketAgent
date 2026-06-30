@@ -34,6 +34,36 @@ interface GmailReplyModelArgsFixture {
   body: string;
 }
 
+interface MediaOverrideArgsFixture {
+  query: string;
+  sources: string[];
+}
+
+type ToolRequestArgValue = Object | string | number | boolean | null | undefined;
+type ToolRequestArgRecord = Record<string, ToolRequestArgValue>;
+
+function argText(args: Object | null, key: string): string {
+  if (args === null) {
+    return '';
+  }
+  const value = (args as ToolRequestArgRecord)[key];
+  if (typeof value === 'string') {
+    return value;
+  }
+  return '';
+}
+
+function argSources(args: Object | null): string[] {
+  if (args === null) {
+    return [];
+  }
+  const value = (args as ToolRequestArgRecord)['sources'];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value as string[];
+}
+
 function surfaceWithToolRequest(
   toolId: string,
   prompt: string,
@@ -180,6 +210,122 @@ export default function a2uiHomeToolRequestTest() {
       expect(resolved.actionId).assertEqual('client_intent_fallback');
     });
 
+    it('reroutes model-selected maps to food search when Google Maps is not explicit', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('maps.place.search', '帮我查深圳坂田华为基地附近的咖啡店', 'model_tool_request'),
+        '帮我查深圳坂田华为基地附近的咖啡店',
+        ''
+      );
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('food.search');
+      expect(resolved.actionId).assertEqual('client_maps_safety_reroute');
+    });
+
+    it('keeps explicit gmap requests on Google Maps search', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '帮我用 gmap 搜索深圳坂田华为基地附近的咖啡店',
+        ''
+      );
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('maps.place.search');
+      expect(resolved.actionId).assertEqual('client_intent_fallback');
+    });
+
+    it('reroutes explicit googlemap food prompts back to Google Maps search', 0, () => {
+      const prompt = '帮我用googlemap查询伦敦国王十字车站附近的中餐厅';
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('food.search', prompt, 'model_tool_request'),
+        prompt,
+        ''
+      );
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('maps.place.search');
+      expect(resolved.actionId).assertEqual('client_maps_explicit_reroute');
+    });
+
+    it('falls back Bilibili video prompts to media search with Bilibili source', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', '', null),
+        '帮我在 B 站搜索 qwen max 官方介绍视频',
+        ''
+      );
+      const sources = argSources(resolved.args);
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('media.video.search');
+      expect(sources.length).assertEqual(1);
+      expect(sources[0]).assertEqual('bilibili');
+      expect(argText(resolved.args, 'query')).assertEqual('');
+    });
+
+    it('falls back generic video aggregation prompts to YouTube and Bilibili media search', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', '', null),
+        '帮我聚合 qwen max 官方介绍视频',
+        ''
+      );
+      const sources = argSources(resolved.args);
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('media.video.search');
+      expect(sources.length).assertEqual(2);
+      expect(sources[0]).assertEqual('youtube');
+      expect(sources[1]).assertEqual('bilibili');
+      expect(argText(resolved.args, 'query')).assertEqual('');
+    });
+
+    it('reroutes mistaken dynamic media prompts to aggregate video search', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('dynamic.search', '帮我在b站和youtube里搜索qwen max 的官方视频', 'model_tool_request', null),
+        '帮我在b站和youtube里搜索qwen max 的官方视频',
+        ''
+      );
+      const sources = argSources(resolved.args);
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('media.video.search');
+      expect(resolved.actionId).assertEqual('client_media_explicit_reroute');
+      expect(sources.length).assertEqual(2);
+      expect(sources[0]).assertEqual('youtube');
+      expect(sources[1]).assertEqual('bilibili');
+    });
+
+    it('keeps explicit media source args over fallback media sources', 0, () => {
+      const overrideArgs: MediaOverrideArgsFixture = {
+        query: 'qwen max',
+        sources: ['bilibili']
+      };
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('media.video.search', '帮我聚合 qwen max 官方介绍视频', 'model_tool_request', overrideArgs),
+        '帮我聚合 qwen max 官方介绍视频',
+        ''
+      );
+      const sources = argSources(resolved.args);
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('media.video.search');
+      expect(sources.length).assertEqual(1);
+      expect(sources[0]).assertEqual('bilibili');
+      expect(argText(resolved.args, 'query')).assertEqual('qwen max');
+    });
+
+    it('falls back explicit YouTube video search to YouTube only', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', '', null),
+        '帮我在 YouTube 搜索 qwen max 官方介绍视频',
+        ''
+      );
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('youtube.video.search');
+      expect(argText(resolved.args, 'query')).assertEqual('帮我在 YouTube 搜索 qwen max 官方介绍视频');
+      expect(argSources(resolved.args).length).assertEqual(0);
+    });
+
     it('infers explicit Google Calendar tools without inventing args', 0, () => {
       const search = resolveA2uiHomeToolRequest(
         surfaceWithToolRequest('', '', ''),
@@ -265,6 +411,42 @@ export default function a2uiHomeToolRequestTest() {
 
       expect(resolved.hasTool).assertTrue();
       expect(resolved.toolId).assertEqual('travel.search');
+    });
+
+    it('falls back generic mail prompts to aggregate mail search', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '帮我看邮箱里最新的重要邮件',
+        ''
+      );
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('mail.search');
+      expect(resolved.actionId).assertEqual('client_intent_fallback');
+    });
+
+    it('falls back QQ mail prompts to aggregate mail search', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '帮我看 QQ 邮箱里最近的邮件',
+        ''
+      );
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('mail.search');
+      expect(resolved.actionId).assertEqual('client_intent_fallback');
+    });
+
+    it('falls back explicit Gmail and QQ mail aggregation to aggregate mail search', 0, () => {
+      const resolved = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '聚合展示 Gmail 和 QQ 邮箱里的最新邮件',
+        ''
+      );
+
+      expect(resolved.hasTool).assertTrue();
+      expect(resolved.toolId).assertEqual('mail.search');
+      expect(resolved.actionId).assertEqual('client_intent_fallback');
     });
 
     it('infers Gmail tools when the model omits a tool request', 0, () => {

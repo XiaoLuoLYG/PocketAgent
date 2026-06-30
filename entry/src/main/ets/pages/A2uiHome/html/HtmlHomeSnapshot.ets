@@ -50,12 +50,15 @@ import {
   findA2uiComponent
 } from '../render/A2uiRenderData';
 import { gmailOpenDraftAction, gmailReplyDraftAction } from '../../../model/GmailToolA2ui';
+import { mailReplyDraftAction } from '../../../model/MailToolA2ui';
+import { mediaVideoPlaybackAction } from '../../../model/MediaVideoToolA2ui';
 import {
   HtmlHomeAction,
   HtmlHomeBlock,
   HtmlHomeDocument,
   HtmlHomeHistoryItem,
   HtmlHomeKind,
+  HtmlHomeMediaEmbed,
   HtmlHomeMetric,
   HtmlHomeSource,
   HtmlHomeTimelineItem
@@ -360,7 +363,15 @@ function appendGenericToolResultBlocks(document: HtmlHomeDocument, surface: A2ui
     if (item.rawPreview.length > 0) {
       block.rawPreview = item.rawPreview;
     }
+    const mediaEmbed = mediaEmbedForResult(item);
+    if (mediaEmbed !== null) {
+      block.mediaEmbed = mediaEmbed;
+    }
     block.actions = htmlActions(actionsOf(component), component.id);
+    const mailAction = mailReplyDraftAction(item);
+    if (mailAction !== null) {
+      block.actions = block.actions.concat(htmlActions([mailAction], component.id));
+    }
     const gmailAction = gmailReplyDraftAction(item);
     if (gmailAction !== null) {
       block.actions = block.actions.concat(htmlActions([gmailAction], component.id));
@@ -369,8 +380,130 @@ function appendGenericToolResultBlocks(document: HtmlHomeDocument, surface: A2ui
     if (gmailOpenDraft !== null) {
       block.actions = block.actions.concat(htmlActions([gmailOpenDraft], component.id));
     }
+    const mapsOpenWeb = mapsOpenWebAction(item);
+    if (mapsOpenWeb !== null) {
+      block.actions = block.actions.concat(htmlActions([mapsOpenWeb], component.id));
+    }
+    const mediaPlayback = mediaVideoPlaybackAction(item);
+    if (mediaPlayback !== null) {
+      block.actions = block.actions.concat(htmlActions([mediaPlayback], component.id));
+    }
     document.blocks.push(block);
   });
+}
+
+function mediaEmbedForResult(result: A2uiGenericToolResultData): HtmlHomeMediaEmbed | null {
+  if (result.status !== 'success') {
+    return null;
+  }
+  const pageUrl = firstText(firstText(
+    genericResultRowValue(result, 'Watch URL'),
+    genericResultRowValue(result, 'Playback URL'),
+    genericResultRowValue(result, 'Share URL')),
+    genericResultRowValue(result, 'Video URL')
+  );
+  const embedUrl = mediaEmbedUrl(pageUrl, result);
+  if (embedUrl.length === 0) {
+    return null;
+  }
+  return {
+    provider: firstText(result.sourceTag, result.toolName),
+    title: result.title,
+    embedUrl: embedUrl,
+    pageUrl: pageUrl,
+    thumbnail: genericResultRowValue(result, 'Thumbnail')
+  };
+}
+
+function mediaEmbedUrl(pageUrl: string, result: A2uiGenericToolResultData): string {
+  const youtubeId = youtubeVideoId(pageUrl, genericResultRowValue(result, 'Video ID'));
+  if (youtubeId.length > 0) {
+    return 'https://www.youtube.com/embed/' + encodeURIComponent(youtubeId) +
+      '?playsinline=1&rel=0&enablejsapi=1&origin=https%3A%2F%2Faiphone.local';
+  }
+  const bvid = bilibiliBvid(pageUrl, genericResultRowValue(result, 'BVID'));
+  if (bvid.length > 0) {
+    const cid = genericResultRowValue(result, 'CID');
+    return 'https://player.bilibili.com/player.html?bvid=' + encodeURIComponent(bvid) +
+      (cid.length > 0 ? '&cid=' + encodeURIComponent(cid) : '') +
+      '&p=1&autoplay=0&poster=true&danmaku=0&isOutside=true';
+  }
+  return '';
+}
+
+function youtubeVideoId(pageUrl: string, rowValue: string): string {
+  const direct = rowValue.trim();
+  if (direct.length > 0) {
+    return direct;
+  }
+  const watchMarker = 'youtube.com/watch?v=';
+  const watchIndex = pageUrl.indexOf(watchMarker);
+  if (watchIndex >= 0) {
+    return tokenUntil(pageUrl.substring(watchIndex + watchMarker.length), ['&', '#', '?', '/']);
+  }
+  const shortMarker = 'youtu.be/';
+  const shortIndex = pageUrl.indexOf(shortMarker);
+  if (shortIndex >= 0) {
+    return tokenUntil(pageUrl.substring(shortIndex + shortMarker.length), ['&', '#', '?', '/']);
+  }
+  return '';
+}
+
+function bilibiliBvid(pageUrl: string, rowValue: string): string {
+  const direct = rowValue.trim();
+  if (direct.startsWith('BV')) {
+    return direct;
+  }
+  const marker = '/video/';
+  const index = pageUrl.indexOf(marker);
+  if (index >= 0) {
+    const token = tokenUntil(pageUrl.substring(index + marker.length), ['?', '#', '/', '&']);
+    return token.startsWith('BV') ? token : '';
+  }
+  const queryMarker = 'bvid=';
+  const queryIndex = pageUrl.indexOf(queryMarker);
+  if (queryIndex >= 0) {
+    const token = tokenUntil(pageUrl.substring(queryIndex + queryMarker.length), ['&', '#', '?', '/']);
+    return token.startsWith('BV') ? token : '';
+  }
+  return '';
+}
+
+function tokenUntil(value: string, stops: string[]): string {
+  let end = value.length;
+  for (let index = 0; index < stops.length; index++) {
+    const hit = value.indexOf(stops[index]);
+    if (hit >= 0 && hit < end) {
+      end = hit;
+    }
+  }
+  return value.substring(0, end).trim();
+}
+
+function mapsOpenWebAction(result: A2uiGenericToolResultData): A2uiAction | null {
+  if (result.sourceTag !== 'Google Places API' && result.toolName.indexOf('maps.place.') !== 0) {
+    return null;
+  }
+  const url = genericResultRowValue(result, 'Maps URL');
+  if (url.length === 0) {
+    return null;
+  }
+  return {
+    id: 'maps.open.web',
+    label: '打开 Google Maps',
+    prompt: url,
+    variant: 'secondary',
+    kind: 'client'
+  };
+}
+
+function genericResultRowValue(result: A2uiGenericToolResultData, label: string): string {
+  for (let index = 0; index < result.rows.length; index++) {
+    if (result.rows[index].label === label) {
+      return result.rows[index].value.trim();
+    }
+  }
+  return '';
 }
 
 function appendSocialBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState, component: A2uiComponent): void {

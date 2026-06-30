@@ -9,9 +9,12 @@ const outDir = join(rootDir, 'tool-gateway', '.smoke');
 mkdirSync(outDir, { recursive: true });
 
 const defaultCases = [
-  { query: '你好', expectsTool: false },
   { query: '我明天要从北京去上海，帮我搜索出行方案', expectsTool: true, expectedToolId: 'travel.search' },
-  { query: '帮我搜索深圳坂田华为基地附近的奶茶店', expectsTool: true, expectedToolId: 'food.search' }
+  { query: '帮我搜索深圳坂田华为基地附近的咖啡店', expectsTool: true, expectedToolId: 'food.search' },
+  { query: '帮我用 Google Maps 搜索伦敦国王十字车站附近的中餐', expectsTool: true, expectedToolId: 'maps.place.search' },
+  { query: '帮我查看邮箱里最新的重要邮件', expectsTool: true, expectedToolId: 'mail.search' },
+  { query: '帮我查看我Gmail里和我eccv论文相关的邮件', expectsTool: true, expectedToolId: 'gmail.mail.search' },
+  { query: '帮我在b站和youtube里搜索qwen max 的官方视频', expectsTool: true, expectedToolId: 'media.video.search' }
 ];
 
 const dynamicCases = [
@@ -35,6 +38,11 @@ const gmailCases = [
   { query: '帮我查看我Gmail里和我eccv论文相关的邮件', expectsTool: true, expectedToolId: 'gmail.mail.search' }
 ];
 
+const mailCases = [
+  { query: '帮我看邮箱里最新的重要邮件', expectsTool: true, expectedToolId: 'mail.search' },
+  { query: '帮我看 QQ 邮箱里最新邮件', expectsTool: true, expectedToolId: 'mail.search' }
+];
+
 const googleAppCases = [
   { query: '帮我在 YouTube 搜索 qwen max 官方介绍视频', expectsTool: true, expectedToolId: 'youtube.video.search' },
   { query: '帮我查看我的 YouTube 播放列表', expectsTool: true, expectedToolId: 'youtube.mine.playlists' },
@@ -44,13 +52,14 @@ const googleAppCases = [
 ];
 
 const fullRegressionCases = [
-  ...defaultCases.slice(0, 2),
+  { query: '你好', expectsTool: false },
+  ...defaultCases,
   { query: '帮我查明天北京到上海航班', expectsTool: true, expectedToolId: 'flight.search' },
   { query: '帮我查询深圳北出发到香港西九龙明天晚上六点之后的高铁', expectsTool: true, expectedToolId: 'train.search' },
-  ...defaultCases.slice(2),
   { query: '帮我查附近咖啡', expectsTool: true, expectedToolId: 'food.search' },
   { query: '帮我查深圳坂田附近麦当劳门店和菜单', expectsTool: true, expectedToolId: 'food.search' },
   ...dynamicCases,
+  ...mailCases,
   ...gmailCases,
   ...googleAppCases
 ];
@@ -88,6 +97,10 @@ const visibleDomainMarkers = [
   'statistics.search',
   'ppt.generate',
   'Gmail',
+  'mail.search',
+  'Mailbox',
+  'QQ Mail',
+  'AI 回复草稿',
   'YouTube',
   'youtube.video.search',
   'youtube.mine.playlists',
@@ -131,8 +144,14 @@ const finalLayoutBlockingMarkers = [
   '需要供应商配置',
   '需要配置：',
   '查询失败',
+  'Google Places API 调用失败',
+  'Gmail 调用失败',
   'Gmail API 调用失败',
   'Gmail MCP 调用失败',
+  'QQ 邮箱调用失败',
+  'QQ IMAP timeout',
+  'Operation timeout',
+  '2300028',
   'MCP 工具调用失败',
   'Internal error',
   '2300999',
@@ -160,6 +179,16 @@ const forbiddenGmailSendSuccessPatterns = [
   { name: 'gmail-send-success-zh', pattern: /发送成功|已发送成功|邮件已发送/ }
 ];
 
+const retryableProviderLayoutMarkers = [
+  'Google Places API 调用失败',
+  'Gmail 调用失败',
+  'Gmail API 调用失败',
+  'QQ 邮箱调用失败',
+  'QQ IMAP timeout',
+  'Operation timeout',
+  '2300028'
+];
+
 const argv = process.argv.slice(2);
 const cleanData = process.env.AIPHONE_SMOKE_CLEAN_DATA === '1' || argv.includes('--clean-data');
 const runDynamicCases = argv.includes('--dynamic-tools');
@@ -171,7 +200,7 @@ const useDefaultCases = queryArgs.length === 0;
 const queries = useDefaultCases ? selectedDefaultCases.map((testCase) => testCase.query) : queryArgs;
 const target = process.env.AIPHONE_HDC_TARGET || firstTarget();
 const timeoutMs = Number.parseInt(process.env.AIPHONE_QUERY_TIMEOUT_MS || '90000', 10);
-const queryRetryLimit = Number.parseInt(process.env.AIPHONE_QUERY_RETRY_LIMIT || (runFullRegression ? '1' : '0'), 10);
+const queryRetryLimit = Number.parseInt(process.env.AIPHONE_QUERY_RETRY_LIMIT || '2', 10);
 
 function expectedCaseForQuery(query) {
   if (/^你好$|问候|打招呼/.test(query)) {
@@ -206,6 +235,18 @@ function expectedCaseForQuery(query) {
       expectsTool: true,
       expectedToolId: 'dynamic.search',
       expectedDiscoveredToolId: 'ppt.generate'
+    };
+  }
+  if (/邮箱|邮件|收件箱/.test(query) && isMailAggregationQuery(query)) {
+    return {
+      expectsTool: true,
+      expectedToolId: 'mail.search'
+    };
+  }
+  if (/邮箱|邮件|收件箱/.test(query) && !/Gmail|谷歌邮箱|谷歌邮件/.test(query)) {
+    return {
+      expectsTool: true,
+      expectedToolId: /写一封|写邮件|起草|草稿|回复|撰写/.test(query) ? 'mail.draft.create' : 'mail.search'
     };
   }
   if (/Gmail|谷歌邮箱|谷歌邮件/.test(query) && /打开|网页版|网页/.test(query)) {
@@ -244,10 +285,22 @@ function expectedCaseForQuery(query) {
       expectedToolId: 'youtube.mine.subscriptions'
     };
   }
+  if (isYouTubeBilibiliQuery(query)) {
+    return {
+      expectsTool: true,
+      expectedToolId: 'media.video.search'
+    };
+  }
   if (/YouTube|油管/i.test(query)) {
     return {
       expectsTool: true,
       expectedToolId: 'youtube.video.search'
+    };
+  }
+  if (/B站|B 站|Bilibili|哔哩哔哩/i.test(query)) {
+    return {
+      expectsTool: true,
+      expectedToolId: 'media.video.search'
     };
   }
   if (/Google\s*Calendar|谷歌日历/i.test(query) || /日程|会议|约会/.test(query)) {
@@ -268,7 +321,7 @@ function expectedCaseForQuery(query) {
       expectedToolId: 'calendar.events.search'
     };
   }
-  if (/Google\s*Maps|Google\s*Places|谷歌地图/i.test(query)) {
+  if (/Google\s*Maps?|Google\s*Places|GMap|谷歌地图/i.test(query)) {
     return {
       expectsTool: true,
       expectedToolId: /详情|placeId|地点 ID|地点ID/i.test(query) ? 'maps.place.details' : 'maps.place.search'
@@ -533,6 +586,44 @@ function collectLayoutText(layout) {
   return [...new Set(values)];
 }
 
+function findTextCenter(layout, marker) {
+  const matches = findTextMatches(layout, marker);
+  if (matches.length === 0) {
+    return null;
+  }
+  return {
+    x: matches[0].bounds.x,
+    y: matches[0].bounds.y
+  };
+}
+
+function findTextCenters(layout, marker) {
+  return findTextMatches(layout, marker).map((match) => ({ x: match.bounds.x, y: match.bounds.y }));
+}
+
+function findTextMatches(layout, marker) {
+  const matches = [];
+  walk(layout, (node) => {
+    const attrs = node.attributes || {};
+    const bounds = parseBounds(attrs.bounds);
+    if (bounds === null) {
+      return;
+    }
+    const text = ['text', 'content', 'description', 'hint']
+      .map((key) => attrs[key])
+      .filter((value) => typeof value === 'string' && value.includes(marker))
+      .join('|');
+    if (text.length > 0) {
+      matches.push({
+        text,
+        bounds
+      });
+    }
+  });
+  matches.sort((a, b) => a.bounds.top - b.bounds.top || a.bounds.left - b.bounds.left);
+  return matches;
+}
+
 function collectInputText(layout) {
   const values = [];
   walk(layout, (node) => {
@@ -587,9 +678,9 @@ function findControls(layout) {
         item.bounds.left <= inputBounds.right + 120 &&
         verticallyOverlaps(item.bounds, inputBounds) &&
         item.bounds.width >= 24 &&
-        item.bounds.width <= 100 &&
+        item.bounds.width <= 180 &&
         item.bounds.height >= 24 &&
-        item.bounds.height <= 100)
+        item.bounds.height <= 180)
       .sort((a, b) => Math.abs(a.bounds.x - inputBounds.right) - Math.abs(b.bounds.x - inputBounds.right))[0];
     if (sendCandidate) {
       generate = {
@@ -825,6 +916,18 @@ function isGmailEccvQuery(query) {
   return /Gmail|谷歌邮箱|谷歌邮件/.test(query) && /eccv/i.test(query);
 }
 
+function isQqMailQuery(query) {
+  return /QQ\s*邮箱|QQ邮箱/i.test(query);
+}
+
+function isMailAggregationQuery(query) {
+  return /Gmail|谷歌邮箱|谷歌邮件/.test(query) && isQqMailQuery(query);
+}
+
+function isYouTubeBilibiliQuery(query) {
+  return /YouTube|油管/i.test(query) && /B站|B 站|Bilibili|哔哩哔哩/i.test(query);
+}
+
 function layoutExpectationsForQuery(query) {
   if (/^你好$|问候|打招呼/.test(query)) {
     return ['你好'];
@@ -840,6 +943,15 @@ function layoutExpectationsForQuery(query) {
   }
   if (/PPT|ppt|幻灯片|演示文稿/.test(query)) {
     return ['接入工具', 'ppt.generate', 'API_KEY', 'unsupported_transport', '歌者PPT'];
+  }
+  if (isMailAggregationQuery(query)) {
+    return ['mail.search', 'Gmail', 'QQ Mail', '不会模拟'];
+  }
+  if (isQqMailQuery(query)) {
+    return ['mail.search', 'QQ Mail', '不会模拟'];
+  }
+  if (/邮箱|邮件|收件箱/.test(query) && !/Gmail|谷歌邮箱|谷歌邮件/.test(query)) {
+    return ['mail.search', 'Gmail', 'QQ Mail', '不会模拟'];
   }
   if (isGmailWebQuery(query)) {
     return ['Gmail Web', 'gmail.open.web', 'https://mail.google.com'];
@@ -862,13 +974,19 @@ function layoutExpectationsForQuery(query) {
   if (/YouTube|油管/i.test(query) && /订阅|subscriptions?/i.test(query)) {
     return ['YouTube', 'youtube.mine.subscriptions', 'OAuth', '不会模拟播放列表'];
   }
+  if (isYouTubeBilibiliQuery(query)) {
+    return ['YouTube', 'YouTube Data API', '哔哩哔哩', 'Bilibili'];
+  }
   if (/YouTube|油管/i.test(query)) {
     return ['YouTube', 'youtube.video.search', 'YouTube Data API', 'YOUTUBE_API_KEY'];
+  }
+  if (/B站|B 站|Bilibili|哔哩哔哩/i.test(query)) {
+    return ['哔哩哔哩', 'media.video.search', '跳转'];
   }
   if (/Google\s*Calendar|谷歌日历/i.test(query) || /日程|会议|约会/.test(query)) {
     return ['Google Calendar', 'OAuth', '不会模拟日程'];
   }
-  if (/Google\s*Maps|Google\s*Places|谷歌地图/i.test(query)) {
+  if (/Google\s*Maps?|Google\s*Places|GMap|谷歌地图/i.test(query)) {
     return ['Google Places', 'Google Maps', 'GOOGLE_MAPS_API_KEY', 'maps.place.search'];
   }
   if (/出行方案|搜索出行|怎么去|比较出行|出行选项|整理可查|可查的出行/.test(query)) {
@@ -884,6 +1002,233 @@ function layoutExpectationsForQuery(query) {
     return ['奶茶', '餐饮', '高德', '腾讯地图', '百度地图', '美团', '淘宝闪购'];
   }
   return [];
+}
+
+function swipeResultsUp() {
+  hdc(['shell', 'uitest', 'uiInput', 'swipe', '650', '2200', '650', '950', '600']);
+}
+
+function requiredScrolledMarkersForQuery(query, expectedToolId) {
+  if (expectedToolId === 'mail.search') {
+    if (isQqMailQuery(query)) {
+      return ['QQ Mail'];
+    }
+    return ['Gmail', 'QQ Mail'];
+  }
+  if (expectedToolId === 'gmail.mail.search' && isGmailEccvQuery(query)) {
+    return ['ECCV'];
+  }
+  return [];
+}
+
+async function collectScrolledLayoutEvidence(initialLayout, initialText, index, requiredMarkers) {
+  const texts = [initialText];
+  const layoutPaths = [join(outDir, `query-${index + 1}-final-layout.json`)];
+  const textPaths = [join(outDir, `query-${index + 1}-final-layout-text.txt`)];
+  const screenPaths = [];
+  let currentLayout = initialLayout;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const combinedText = texts.join('\n');
+    if (requiredMarkers.every((marker) => combinedText.includes(marker))) {
+      break;
+    }
+    swipeResultsUp();
+    await sleep(900);
+    currentLayout = dumpLayout(`query-${index + 1}-scroll-${attempt + 1}-layout.json`);
+    const scrolledText = collectLayoutText(currentLayout).join('\n');
+    const scrolledTextPath = join(outDir, `query-${index + 1}-scroll-${attempt + 1}-layout-text.txt`);
+    writeFileSync(scrolledTextPath, scrolledText + '\n');
+    const scrolledScreenPath = captureScreen(`query-${index + 1}-scroll-${attempt + 1}-screen.png`);
+    texts.push(scrolledText);
+    layoutPaths.push(join(outDir, `query-${index + 1}-scroll-${attempt + 1}-layout.json`));
+    textPaths.push(scrolledTextPath);
+    screenPaths.push(scrolledScreenPath);
+  }
+  const uniqueText = [...new Set(texts.join('\n').split('\n').filter((line) => line.trim().length > 0))].join('\n');
+  const combinedTextPath = join(outDir, `query-${index + 1}-scrolled-layout-text.txt`);
+  writeFileSync(combinedTextPath, uniqueText + '\n');
+  return {
+    text: uniqueText,
+    currentLayout,
+    combinedTextPath,
+    layoutPaths,
+    textPaths,
+    screenPaths,
+    requiredMarkers,
+    foundMarkers: requiredMarkers.filter((marker) => uniqueText.includes(marker))
+  };
+}
+
+function expandMatchesForTarget(layout, targetMarker) {
+  const expands = findTextMatches(layout, '展开')
+    .filter((item) => item.bounds.y > 400 && item.bounds.y < 2450);
+  if (targetMarker.length === 0) {
+    return expands;
+  }
+  const targets = findTextMatches(layout, targetMarker);
+  if (targets.length === 0) {
+    return [];
+  }
+  return expands
+    .filter((expand) => targets.some((target) =>
+      Math.abs(expand.bounds.y - target.bounds.y) < 360 ||
+      verticallyOverlaps(expand.bounds, target.bounds)))
+    .sort((left, right) => {
+      const leftDistance = Math.min(...targets.map((target) => Math.abs(left.bounds.y - target.bounds.y)));
+      const rightDistance = Math.min(...targets.map((target) => Math.abs(right.bounds.y - target.bounds.y)));
+      return leftDistance - rightDistance;
+    });
+}
+
+async function findVisibleReplyDraftAction(layout, index) {
+  let currentLayout = layout;
+  let actionText = collectLayoutText(currentLayout).join('\n');
+  let actionLayoutPath = '';
+  let actionTextPath = '';
+  let actionScreenPath = '';
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    actionLayoutPath = join(outDir, `query-${index + 1}-mail-action-${attempt + 1}-layout.json`);
+    actionTextPath = join(outDir, `query-${index + 1}-mail-action-${attempt + 1}-layout-text.txt`);
+    writeFileSync(actionLayoutPath, JSON.stringify(currentLayout, null, 2));
+    writeFileSync(actionTextPath, actionText + '\n');
+    actionScreenPath = captureScreen(`query-${index + 1}-mail-action-${attempt + 1}-screen.png`);
+    if (actionText.includes('AI 回复草稿')) {
+      return {
+        layout: currentLayout,
+        text: actionText,
+        layoutPath: actionLayoutPath,
+        textPath: actionTextPath,
+        screenPath: actionScreenPath
+      };
+    }
+    swipeResultsUp();
+    await sleep(800);
+    currentLayout = dumpLayout(`query-${index + 1}-mail-action-${attempt + 2}-layout.json`);
+    actionLayoutPath = join(outDir, `query-${index + 1}-mail-action-${attempt + 2}-layout.json`);
+    actionText = collectLayoutText(currentLayout).join('\n');
+  }
+  return {
+    layout: currentLayout,
+    text: actionText,
+    layoutPath: actionLayoutPath,
+    textPath: actionTextPath,
+    screenPath: actionScreenPath
+  };
+}
+
+async function verifyMailExpandedActions(layout, index, appPid, targetMarker = '') {
+  let currentLayout = layout;
+  let lastExpandedText = '';
+  let lastExpandedTextPath = '';
+  let lastExpandedLayoutPath = '';
+  let lastExpandedScreenPath = '';
+  for (let page = 0; page < 6; page += 1) {
+    const matches = expandMatchesForTarget(currentLayout, targetMarker);
+    for (let matchIndex = 0; matchIndex < matches.length; matchIndex += 1) {
+      const clickTarget = matches[matchIndex].bounds;
+      hdc(['shell', 'uitest', 'uiInput', 'click', String(clickTarget.x), String(clickTarget.y)]);
+      await sleep(900);
+      currentLayout = dumpLayout(`query-${index + 1}-mail-expanded-layout.json`);
+      lastExpandedLayoutPath = join(outDir, `query-${index + 1}-mail-expanded-layout.json`);
+      lastExpandedText = collectLayoutText(currentLayout).join('\n');
+      lastExpandedTextPath = join(outDir, `query-${index + 1}-mail-expanded-layout-text.txt`);
+      writeFileSync(lastExpandedTextPath, lastExpandedText + '\n');
+      lastExpandedScreenPath = captureScreen(`query-${index + 1}-mail-expanded-screen.png`);
+      const actionEvidence = await findVisibleReplyDraftAction(currentLayout, index);
+      lastExpandedText = actionEvidence.text;
+      lastExpandedTextPath = actionEvidence.textPath;
+      lastExpandedLayoutPath = actionEvidence.layoutPath;
+      lastExpandedScreenPath = actionEvidence.screenPath;
+      currentLayout = actionEvidence.layout;
+      if (!actionEvidence.text.includes('AI 回复草稿')) {
+        continue;
+      }
+      const draftCenter = findTextCenter(actionEvidence.layout, 'AI 回复草稿');
+      if (draftCenter === null) {
+        return {
+          clicked: true,
+          actionVisible: true,
+          draftClicked: false,
+          draftToolRequested: false,
+          draftToolOk: false,
+          draftVisible: false,
+          targetMarker,
+          reason: 'AI 回复草稿 was visible but no clickable center was found.',
+          layoutPath: lastExpandedLayoutPath,
+          layoutTextPath: lastExpandedTextPath,
+          screenPath: lastExpandedScreenPath
+        };
+      }
+      clearHilog();
+      await sleep(300);
+      const draftLogs = await captureWhile(appPid, async () => {
+        hdc(['shell', 'uitest', 'uiInput', 'click', String(draftCenter.x), String(draftCenter.y)]);
+      });
+      const draftLogPath = join(outDir, `query-${index + 1}-mail-draft.log`);
+      writeFileSync(draftLogPath, draftLogs.join('\n') + '\n');
+      const draftLogText = draftLogs.join('\n');
+      const draftLayout = dumpLayout(`query-${index + 1}-mail-draft-layout.json`);
+      const draftLayoutPath = join(outDir, `query-${index + 1}-mail-draft-layout.json`);
+      const draftText = collectLayoutText(draftLayout).join('\n');
+      const draftTextPath = join(outDir, `query-${index + 1}-mail-draft-layout-text.txt`);
+      writeFileSync(draftTextPath, draftText + '\n');
+      const draftScreenPath = captureScreen(`query-${index + 1}-mail-draft-screen.png`);
+      const draftToolRequested = /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest|A2uiHomeToolRequestFromModel)\][^\n]*toolId=(gmail|mail)\.draft\.create/.test(draftLogText) ||
+        /\[AIPhone\]\[LocalToolRequest\][^\n]*toolId=(gmail|mail)\.draft\.create/.test(draftLogText) ||
+        /\b(gmail|mail)\.draft\.create\b/.test(draftText);
+      const draftToolOk = draftToolRequested &&
+        /\[AIPhone\]\[(ToolResult|A2uiHomeToolResult)\][^\n]*ok=true/.test(draftLogText) &&
+        !/failed to connect|Could not connect|Couldn.t connect|ECONNREFUSED|CURLcode result 7|curl_code":7|os_errno":111/i.test(draftLogText);
+      const draftVisible = /\b(gmail|mail)\.draft\.create\b|Draft saved|Saved in Gmail|Mail Draft Preview|草稿|跳转到Gmail/.test(draftText);
+      const draftModelFailed = /\[AIPhone\]\[ModelException\]|\[AIPhone\]\[(ModelResult|A2uiHomeModelResult)\][^\n]*ok=false/.test(draftLogText);
+      const draftProviderFailed = /Operation timeout|2300028|2300056|Failed to receive data from the peer|QQ IMAP timeout|Gmail 调用失败|QQ 邮箱调用失败/i.test(draftLogText);
+      return {
+        clicked: true,
+        actionVisible: true,
+        draftClicked: true,
+        draftToolRequested,
+        draftToolOk,
+        draftVisible,
+        draftModelFailed,
+        draftProviderFailed,
+        targetMarker,
+        layoutPath: lastExpandedLayoutPath,
+        layoutTextPath: lastExpandedTextPath,
+        screenPath: lastExpandedScreenPath,
+        draftLogPath,
+        draftLayoutPath,
+        draftTextPath,
+        draftScreenPath
+      };
+    }
+    swipeResultsUp();
+    await sleep(800);
+    currentLayout = dumpLayout(`query-${index + 1}-mail-search-scroll-${page + 1}-layout.json`);
+  }
+  if (lastExpandedText.length === 0) {
+    return {
+      clicked: false,
+      actionVisible: false,
+      draftClicked: false,
+      draftToolRequested: false,
+      draftToolOk: false,
+      draftVisible: false,
+      targetMarker,
+      reason: 'Could not locate a visible mail result expand button.'
+    };
+  }
+  return {
+    clicked: true,
+    actionVisible: false,
+    draftClicked: false,
+    draftToolRequested: false,
+    draftToolOk: false,
+    draftVisible: false,
+    targetMarker,
+    layoutPath: lastExpandedLayoutPath,
+    layoutTextPath: lastExpandedTextPath,
+    screenPath: lastExpandedScreenPath
+  };
 }
 
 async function runQuery(query, index, expectedTool) {
@@ -914,7 +1259,8 @@ async function runQuery(query, index, expectedTool) {
     if (!typed) {
       throw new Error(`Could not type full query into AIPhone input: ${query}`);
     }
-    hdc(['shell', 'uitest', 'uiInput', 'click', String(controls.generate.x), String(controls.generate.y)]);
+    const submitControls = await waitForControls(`query-${index + 1}-submit-layout.json`, 2);
+    hdc(['shell', 'uitest', 'uiInput', 'click', String(submitControls.generate.x), String(submitControls.generate.y)]);
   });
   const logPath = join(outDir, `query-${index + 1}.log`);
   writeFileSync(logPath, logs.join('\n') + '\n');
@@ -929,34 +1275,74 @@ async function runQuery(query, index, expectedTool) {
   const layoutTextPath = join(outDir, `query-${index + 1}-final-layout-text.txt`);
   writeFileSync(layoutTextPath, layoutText + '\n');
   const expectedMarkers = layoutExpectationsForQuery(query);
-  const expectedHits = expectedMarkers.filter((marker) => layoutText.includes(marker));
+  const scrollEvidence = await collectScrolledLayoutEvidence(
+    layout,
+    layoutText,
+    index,
+    requiredScrolledMarkersForQuery(query, expectedToolId)
+  );
+  const evidenceText = scrollEvidence.text;
+  const evidenceLayout = scrollEvidence.currentLayout;
+  const expectedHits = expectedMarkers.filter((marker) => evidenceText.includes(marker));
   const allowsExternalGmailWeb = isGmailWebQuery(query) && summary.gmailWebOpened === true;
   const allowsPartialTravelSourceFailure = expectedToolId === 'travel.search' &&
     summary.toolOk === true &&
-    (layoutText.includes('来源状态') || layoutText.includes('飞常准')) &&
-    (layoutText.includes('耗时') || /\bG\d+\b/.test(layoutText) || layoutText.includes('高铁 · 12306'));
+    (evidenceText.includes('来源状态') || evidenceText.includes('飞常准')) &&
+    (evidenceText.includes('耗时') || /\bG\d+\b/.test(evidenceText) || evidenceText.includes('高铁 · 12306'));
   const layoutBlockingHits = finalLayoutBlockingMarkers.filter((marker) => {
     if (allowsPartialTravelSourceFailure && marker === '查询失败') {
       return false;
     }
-    return layoutText.includes(marker);
+    return evidenceText.includes(marker);
   });
   if (expectedToolId === 'gmail.message.send') {
     for (const blockingPattern of forbiddenGmailSendSuccessPatterns) {
-      if (blockingPattern.pattern.test(layoutText)) {
+      if (blockingPattern.pattern.test(evidenceText)) {
         layoutBlockingHits.push(blockingPattern.name);
       }
     }
   }
+  const providerLayoutFailed = retryableProviderLayoutMarkers.some((marker) => evidenceText.includes(marker));
+  summary.providerFailed = summary.providerFailed || providerLayoutFailed;
   summary.layoutPath = join(outDir, `query-${index + 1}-final-layout.json`);
   summary.layoutTextPath = layoutTextPath;
+  summary.layoutScrolledTextPath = scrollEvidence.combinedTextPath;
+  summary.layoutScrolledRequiredMarkers = scrollEvidence.requiredMarkers;
+  summary.layoutScrolledFoundMarkers = scrollEvidence.foundMarkers;
+  summary.layoutScrollTextPaths = scrollEvidence.textPaths;
+  summary.layoutScrollScreenPaths = scrollEvidence.screenPaths;
   summary.screenPath = captureScreen(`query-${index + 1}-final-screen.png`);
   summary.layoutExpectedHits = expectedHits;
   summary.layoutBlockingHits = layoutBlockingHits;
-  summary.gmailEccvKeywordVisible = !isGmailEccvQuery(query) || /eccv/i.test(layoutText);
+  summary.gmailEccvKeywordVisible = !isGmailEccvQuery(query) || /eccv/i.test(evidenceText);
   summary.layoutTextExposed = (expectedMarkers.length === 0 || expectedHits.length > 0) && summary.gmailEccvKeywordVisible;
+  summary.mailAggregateVisible = expectedToolId !== 'mail.search' ||
+    (isMailAggregationQuery(query) ? (/Gmail/.test(evidenceText) && /QQ Mail/.test(evidenceText)) :
+      (isQqMailQuery(query) ? /QQ Mail/.test(evidenceText) : (/Gmail/.test(evidenceText) && /QQ Mail/.test(evidenceText))));
+  const expectsMailDraftAction = (expectedToolId === 'mail.search' && summary.mailAggregateVisible) ||
+    (expectedToolId === 'gmail.mail.search' && isGmailEccvQuery(query));
+  summary.mailExpandedActions = expectsMailDraftAction
+    ? await verifyMailExpandedActions(evidenceLayout, index, appPid, isGmailEccvQuery(query) ? 'ECCV' : '')
+    : {
+      clicked: false,
+      actionVisible: true,
+      draftClicked: false,
+      draftToolRequested: true,
+      draftToolOk: true,
+      draftVisible: true
+    };
+  summary.modelFailed = summary.modelFailed || summary.mailExpandedActions.draftModelFailed === true;
+  summary.providerFailed = summary.providerFailed || summary.mailExpandedActions.draftProviderFailed === true;
+  summary.layoutTextExposed = summary.layoutTextExposed &&
+    summary.mailAggregateVisible &&
+    summary.mailExpandedActions.actionVisible &&
+    summary.mailExpandedActions.draftClicked &&
+    summary.mailExpandedActions.draftToolRequested &&
+    summary.mailExpandedActions.draftToolOk &&
+    summary.mailExpandedActions.draftVisible;
+  const allowsHtmlDocumentOnly = !expectsMailDraftAction && expectedToolId !== 'mail.search' && summary.htmlHomeDocument.ok;
   summary.layoutOk = layoutBlockingHits.length === 0 &&
-    (allowsExternalGmailWeb || summary.layoutTextExposed || summary.htmlHomeDocument.ok);
+    (allowsExternalGmailWeb || summary.layoutTextExposed || allowsHtmlDocumentOnly);
   summary.ok = summary.ok && summary.layoutOk;
   return summary;
 }
@@ -976,10 +1362,14 @@ for (let index = 0; index < queries.length; index += 1) {
     summary = await runQuery(query, index, expectedTool);
     summary.attempt = attempt + 1;
     summary.retryLimit = queryRetryLimit;
-    if (summary.ok || !summary.providerFailed || attempt === queryRetryLimit) {
+    const missingScrolledMarkers = Array.isArray(summary.layoutScrolledRequiredMarkers) &&
+      Array.isArray(summary.layoutScrolledFoundMarkers) &&
+      summary.layoutScrolledRequiredMarkers.some((marker) => !summary.layoutScrolledFoundMarkers.includes(marker));
+    const retryableFailure = summary.providerFailed || summary.modelFailed || missingScrolledMarkers;
+    if (summary.ok || !retryableFailure || attempt === queryRetryLimit) {
       break;
     }
-    console.warn(`provider failed for query ${index + 1}, retrying attempt ${attempt + 2}/${queryRetryLimit + 1}`);
+    console.warn(`retryable failure for query ${index + 1}, retrying attempt ${attempt + 2}/${queryRetryLimit + 1}`);
   }
   if (summary === null) {
     throw new Error(`No summary produced for query: ${query}`);

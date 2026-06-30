@@ -34,6 +34,8 @@ import {
   gmailOpenWebA2ui,
   gmailThreadResultsA2ui
 } from './GmailToolA2ui';
+import { mailDraftPreviewA2ui, mailResultsA2ui, mailResultsFromDynamicA2ui } from './MailToolA2ui';
+import { MailDraftArgs, MailProviderStatus, MailSearchArgs, MailThreadResult } from './MailToolTypes';
 import {
   GMAIL_ACCESS_TOKEN_REF,
   GMAIL_DEFAULT_REDIRECT_URI,
@@ -54,12 +56,14 @@ import {
 import { GenericMcpClient } from './GenericMcpClient';
 import { callGmailApiTool } from './GmailApiClient';
 import { callYouTubeVideoSearch } from './YouTubeApiClient';
+import { callMediaVideoSearch, mediaVideoQueryFromArgs } from './MediaVideoClient';
 import { callCalendarTool } from './CalendarApiClient';
-import { callMapsPlaceDetails, callMapsPlaceSearch } from './MapsApiClient';
+import { callMapsPlaceDetails, callMapsPlaceSearch, mapsFoodRecordFromResult } from './MapsApiClient';
+import { QqMailConfig, QqMailImapClient } from './QqMailImapClient';
 import { discoverDynamicToolForPrompt, DynamicToolDiscoveryResult } from './DynamicToolDiscovery';
 import { DynamicToolRegistry, isBuiltInToolId, isUnsafeMcpTool, selectBestRemoteTransport } from './DynamicToolRegistry';
 import { sampleManifestForToolId } from './DynamicToolSamples';
-import { isCalendarToolId, isGmailToolId, isKnownDomainToolId, isMapsToolId, isYouTubeToolId } from './ToolDefinitionRegistry';
+import { isCalendarToolId, isGmailToolId, isKnownDomainToolId, isMailToolId, isMapsToolId, isMediaToolId, isYouTubeToolId } from './ToolDefinitionRegistry';
 import {
   DynamicCredentialSpec,
   DynamicGenericToolResult,
@@ -174,6 +178,11 @@ interface LocalProviderConfig {
   gmailOauthRedirectUri: string;
   gmailMcpUserProject: string;
   youtubeApiKey: string;
+  qqMailAddress: string;
+  qqMailAuthCode: string;
+  qqMailImapHost: string;
+  qqMailImapPort: string;
+  qqMailDraftsMailbox: string;
 }
 
 interface LocalProviderRawConfig {
@@ -213,6 +222,11 @@ interface LocalProviderRawConfig {
   GMAIL_MCP_USER_PROJECT?: string;
   GOOGLE_CLOUD_PROJECT?: string;
   YOUTUBE_API_KEY?: string;
+  QQ_MAIL_ADDRESS?: string;
+  QQ_MAIL_AUTH_CODE?: string;
+  QQ_MAIL_IMAP_HOST?: string;
+  QQ_MAIL_IMAP_PORT?: string;
+  QQ_MAIL_DRAFTS_MAILBOX?: string;
   flightMcpKey?: string;
   variflightApiUrl?: string;
   amapKey?: string;
@@ -243,6 +257,11 @@ interface LocalProviderRawConfig {
   gmailOauthRedirectUri?: string;
   gmailMcpUserProject?: string;
   youtubeApiKey?: string;
+  qqMailAddress?: string;
+  qqMailAuthCode?: string;
+  qqMailImapHost?: string;
+  qqMailImapPort?: string;
+  qqMailDraftsMailbox?: string;
 }
 
 interface VariFlightRequestParams {
@@ -976,7 +995,12 @@ let localProviderConfig: LocalProviderConfig = {
   gmailOauthClientSecret: '',
   gmailOauthRedirectUri: '',
   gmailMcpUserProject: '',
-  youtubeApiKey: ''
+  youtubeApiKey: '',
+  qqMailAddress: '',
+  qqMailAuthCode: '',
+  qqMailImapHost: 'imap.qq.com',
+  qqMailImapPort: '993',
+  qqMailDraftsMailbox: ''
 };
 
 export interface LocalToolDebugConfig {
@@ -1122,7 +1146,12 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     gmailOauthClientSecret: config.gmailOauthClientSecret.trim(),
     gmailOauthRedirectUri: config.gmailOauthRedirectUri.trim().length > 0 ? config.gmailOauthRedirectUri.trim() : GMAIL_DEFAULT_REDIRECT_URI,
     gmailMcpUserProject: config.gmailMcpUserProject.trim(),
-    youtubeApiKey: config.youtubeApiKey.trim()
+    youtubeApiKey: config.youtubeApiKey.trim(),
+    qqMailAddress: config.qqMailAddress.trim(),
+    qqMailAuthCode: config.qqMailAuthCode.trim(),
+    qqMailImapHost: config.qqMailImapHost.trim().length > 0 ? config.qqMailImapHost.trim() : 'imap.qq.com',
+    qqMailImapPort: config.qqMailImapPort.trim().length > 0 ? config.qqMailImapPort.trim() : '993',
+    qqMailDraftsMailbox: config.qqMailDraftsMailbox.trim()
   };
   aiLogInfo('[AIPhone][LocalProviderConfig] rawfile=' + LOCAL_PROVIDER_CONFIG_RAWFILE +
     ' flightKeyChars=' + localProviderConfig.flightMcpKey.length.toString() +
@@ -1140,6 +1169,8 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     ' gmailOauthClientSecretChars=' + localProviderConfig.gmailOauthClientSecret.length.toString() +
     ' youtubeApiKeyChars=' + localProviderConfig.youtubeApiKey.length.toString() +
     ' gmailMcpUserProjectPresent=' + (localProviderConfig.gmailMcpUserProject.length > 0 ? 'true' : 'false') +
+    ' qqMailAddressPresent=' + (localProviderConfig.qqMailAddress.length > 0 ? 'true' : 'false') +
+    ' qqMailAuthCodeChars=' + localProviderConfig.qqMailAuthCode.length.toString() +
     ' defaultLocationPresent=' + (localProviderConfig.amapDefaultLocation.length > 0 ? 'true' : 'false'));
 }
 
@@ -1175,7 +1206,12 @@ export function configureLocalProviderConfigFromRawJson(rawJson: string): void {
     gmailOauthClientSecret: firstText([parsed.GMAIL_OAUTH_CLIENT_SECRET, parsed.GOOGLE_OAUTH_CLIENT_SECRET, parsed.gmailOauthClientSecret]),
     gmailOauthRedirectUri: firstText([parsed.GMAIL_OAUTH_REDIRECT_URI, parsed.GOOGLE_OAUTH_REDIRECT_URI, parsed.gmailOauthRedirectUri]),
     gmailMcpUserProject: firstText([parsed.GMAIL_MCP_USER_PROJECT, parsed.GOOGLE_CLOUD_PROJECT, parsed.gmailMcpUserProject]),
-    youtubeApiKey: firstText([parsed.YOUTUBE_API_KEY, parsed.youtubeApiKey])
+    youtubeApiKey: firstText([parsed.YOUTUBE_API_KEY, parsed.youtubeApiKey]),
+    qqMailAddress: firstText([parsed.QQ_MAIL_ADDRESS, parsed.qqMailAddress]),
+    qqMailAuthCode: firstText([parsed.QQ_MAIL_AUTH_CODE, parsed.qqMailAuthCode]),
+    qqMailImapHost: firstText([parsed.QQ_MAIL_IMAP_HOST, parsed.qqMailImapHost]),
+    qqMailImapPort: firstText([parsed.QQ_MAIL_IMAP_PORT, parsed.qqMailImapPort]),
+    qqMailDraftsMailbox: firstText([parsed.QQ_MAIL_DRAFTS_MAILBOX, parsed.qqMailDraftsMailbox])
   });
 }
 
@@ -1196,6 +1232,10 @@ export function localProviderConfigDebugSummary(): string {
     ', gmailOauthClientSecret=' + (localProviderConfig.gmailOauthClientSecret.length > 0 ? 'present(' + localProviderConfig.gmailOauthClientSecret.length.toString() + ')' : 'missing') +
     ', youtubeApiKey=' + (localProviderConfig.youtubeApiKey.length > 0 ? 'present(' + localProviderConfig.youtubeApiKey.length.toString() + ')' : 'missing') +
     ', gmailMcpUserProject=' + (localProviderConfig.gmailMcpUserProject.length > 0 ? 'present' : 'missing') +
+    ', qqMailAddress=' + (localProviderConfig.qqMailAddress.length > 0 ? 'present' : 'missing') +
+    ', qqMailAuthCode=' + (localProviderConfig.qqMailAuthCode.length > 0 ? 'present(' + localProviderConfig.qqMailAuthCode.length.toString() + ')' : 'missing') +
+    ', qqMailImapHost=' + (localProviderConfig.qqMailImapHost.length > 0 ? 'present' : 'missing') +
+    ', qqMailDraftsMailbox=' + (localProviderConfig.qqMailDraftsMailbox.length > 0 ? 'present' : 'missing') +
     ', defaultLocation=' + (localProviderConfig.amapDefaultLocation.length > 0 ? 'present' : 'missing');
 }
 
@@ -4336,7 +4376,27 @@ function compareVisibleFood(left: A2uiFoodData, right: A2uiFoodData): number {
 function selectVisibleFoodResults(foods: A2uiFoodData[]): A2uiFoodData[] {
   const sorted = foods.slice();
   sorted.sort((left: A2uiFoodData, right: A2uiFoodData): number => compareVisibleFood(left, right));
-  return sorted.slice(0, FOOD_AGGREGATED_RESULT_LIMIT);
+  const sourceOrder: string[] = [];
+  for (let index = 0; index < sorted.length; index++) {
+    addCoveredFoodSources(sourceOrder, sorted[index]);
+  }
+  const selected: A2uiFoodData[] = [];
+  const orderedSources = visibleFoodSourceOrder(sourceOrder);
+  for (let sourceIndex = 0; sourceIndex < orderedSources.length && selected.length < FOOD_AGGREGATED_RESULT_LIMIT; sourceIndex++) {
+    for (let foodIndex = 0; foodIndex < sorted.length; foodIndex++) {
+      if (selected.indexOf(sorted[foodIndex]) < 0 && foodHasSourceTag(sorted[foodIndex], orderedSources[sourceIndex])) {
+        selected.push(sorted[foodIndex]);
+        break;
+      }
+    }
+  }
+  for (let index = 0; index < sorted.length && selected.length < FOOD_AGGREGATED_RESULT_LIMIT; index++) {
+    if (selected.indexOf(sorted[index]) < 0) {
+      selected.push(sorted[index]);
+    }
+  }
+  selected.sort((left: A2uiFoodData, right: A2uiFoodData): number => compareVisibleFood(left, right));
+  return selected;
 }
 
 function findExistingFoodIndex(foods: A2uiFoodData[], item: A2uiFoodData): number {
@@ -4722,6 +4782,36 @@ class BaiduMapFoodProvider implements FoodProviderAdapter {
   }
 }
 
+class GoogleMapsFoodProvider implements FoodProviderAdapter {
+  name: string = 'Google Maps';
+
+  async search(prompt: string, query: FoodQuery, keyword: string, _location: string, _locationSource: string): Promise<FoodProviderResult> {
+    const searchQuery = query.place.length > 0 ? query.place + '附近的' + keyword : prompt;
+    const results = await callMapsPlaceSearch(searchQuery, localProviderConfig.googleMapsApiKey);
+    const foods: A2uiFoodData[] = [];
+    let providerError = '';
+    for (let index = 0; index < results.length && foods.length < FOOD_PROVIDER_RESULT_LIMIT; index++) {
+      const result = results[index];
+      if (result.status !== 'success') {
+        if (providerError.length === 0) {
+          providerError = result.summary;
+        }
+        continue;
+      }
+      const food = mapsFoodRecordFromResult(result);
+      if (food.name.length > 0 && food.location !== undefined && food.location.length > 0) {
+        foods.push(food);
+      }
+    }
+    aiLogInfo('[AIPhone][LocalToolGoogleMapsResult] rows=' + results.length.toString() + ' returned=' + foods.length.toString());
+    return {
+      provider: this.name,
+      foods: foods,
+      error: foods.length > 0 ? '' : (providerError.length > 0 ? providerError : 'Google Maps 没有返回可展示餐饮 POI。')
+    };
+  }
+}
+
 class MeituanUnionFoodProvider implements FoodProviderAdapter {
   name: string = '美团';
 
@@ -4859,7 +4949,7 @@ function foodPartialA2ui(surfaceId: string, prompt: string, providerNames: strin
   return planA2uiPartialUpdate(previous, foodA2uiRenderState(
     surfaceId,
     '外卖聚合搜索',
-    '以下结果来自高德、腾讯地图、百度地图、美团联盟、淘宝闪购联盟，以及已配置的麦当劳/瑞幸官方 MCP；仅展示真实返回字段，不下单、不支付、不创建购物车。',
+    '以下结果来自高德、腾讯地图、百度地图、Google Maps、美团联盟、淘宝闪购联盟，以及已配置的麦当劳/瑞幸官方 MCP；仅展示真实返回字段，不下单、不支付、不创建购物车。',
     '已返回 ' + snapshot.completed.toString() + '/' + snapshot.total.toString() +
       ' 个餐饮来源；当前可展示 ' + snapshot.foods.length.toString() + ' 个结果。用户请求：' + prompt,
     snapshot.foods,
@@ -5014,6 +5104,9 @@ async function callLocalFoodSearch(prompt: string, surfaceId: string, emitJsonl:
     new MeituanUnionFoodProvider(),
     new TaobaoFlashFoodProvider()
   ];
+  if (localProviderConfig.googleMapsApiKey.length > 0) {
+    adapters.push(new GoogleMapsFoodProvider());
+  }
   if (shouldQueryMcDonalds(prompt, keyword)) {
     adapters.push(new McDonaldsMcpFoodProvider());
   }
@@ -5069,7 +5162,7 @@ async function callLocalFoodSearch(prompt: string, surfaceId: string, emitJsonl:
   const finalState = foodA2uiRenderState(
     surfaceId,
     '外卖聚合搜索',
-    '以下结果来自高德、腾讯地图、百度地图、美团联盟、淘宝闪购联盟，以及已配置的麦当劳/瑞幸官方 MCP；仅展示真实返回字段，不下单、不支付、不创建购物车。',
+    '以下结果来自高德、腾讯地图、百度地图、Google Maps、美团联盟、淘宝闪购联盟，以及已配置的麦当劳/瑞幸官方 MCP；仅展示真实返回字段，不下单、不支付、不创建购物车。',
     aggregated.foods.length > 0 ?
       '已聚合 ' + aggregated.foods.length.toString() + ' 个可展示结果；' + rows.length.toString() + ' 个来源状态见下方。' :
       '所有来源都没有可展示外卖结果；下面只列出真实 provider 状态。',
@@ -5898,6 +5991,165 @@ function gmailErrorResult(toolName: string, message: string): DynamicGenericTool
   return dynamicErrorResult('Gmail', toolName, 'Gmail MCP 调用失败', message);
 }
 
+function dynamicRowValue(result: DynamicGenericToolResult, label: string): string {
+  for (let index = 0; index < result.rows.length; index++) {
+    if (result.rows[index].label === label) {
+      return result.rows[index].value;
+    }
+  }
+  return '';
+}
+
+function mailArgs(args: Object | null): Record<string, Object | string | number | boolean | null | undefined> {
+  if (args === null) {
+    return JSON.parse('{}') as Record<string, Object | string | number | boolean | null | undefined>;
+  }
+  return args as Record<string, Object | string | number | boolean | null | undefined>;
+}
+
+function stringListArg(value: Object | string | number | boolean | null | undefined): string[] {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? [trimmed] : [];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const result: string[] = [];
+  const values = value as string[];
+  for (let index = 0; index < values.length; index++) {
+    const text = textOf(values[index]).trim();
+    if (text.length > 0) {
+      result.push(text);
+    }
+  }
+  return result;
+}
+
+function hasMailTimeOperator(query: string): boolean {
+  return query.indexOf('newer_than:') >= 0 || query.indexOf('older_than:') >= 0 ||
+    query.indexOf('after:') >= 0 || query.indexOf('before:') >= 0;
+}
+
+function trimMailKeywordTail(value: string): string {
+  let text = value.trim();
+  const leading = ['"', "'", '“', '”', '‘', '’', ':', '：', ',', '，'];
+  while (text.length > 0 && leading.indexOf(text.charAt(0)) >= 0) {
+    text = text.substring(1).trim();
+  }
+  const stops = [' 的邮件', '的邮件', ' 邮件', '邮件', ' 相关邮件', '相关邮件', ' 相关', '相关'];
+  let end = text.length;
+  for (let index = 0; index < stops.length; index++) {
+    const hit = text.indexOf(stops[index]);
+    if (hit > 0 && hit < end) {
+      end = hit;
+    }
+  }
+  return text.substring(0, end).trim();
+}
+
+function isMailAsciiKeywordChar(char: string): boolean {
+  if (char.length === 0) {
+    return false;
+  }
+  const code = char.charCodeAt(0);
+  return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+    char === '_' || char === '-' || char === '.';
+}
+
+function fallbackMailSearchQuery(prompt: string): string {
+  const text = prompt.trim();
+  const markers = ['关键词', '关键字', 'keyword', '包含', '含有'];
+  for (let index = 0; index < markers.length; index++) {
+    const marker = markers[index];
+    const hit = text.toLowerCase().indexOf(marker.toLowerCase());
+    if (hit >= 0) {
+      const candidate = trimMailKeywordTail(text.substring(hit + marker.length));
+      if (candidate.length > 0) {
+        return candidate;
+      }
+    }
+  }
+
+  let current = '';
+  let last = '';
+  for (let index = 0; index < text.length; index++) {
+    const char = text.charAt(index);
+    if (isMailAsciiKeywordChar(char)) {
+      current += char;
+    } else if (current.length > 0) {
+      const lower = current.toLowerCase();
+      if (lower !== 'gmail' && lower !== 'qq' && lower !== 'mail' && lower !== 'email') {
+        last = current;
+      }
+      current = '';
+    }
+  }
+  if (current.length > 0) {
+    const lower = current.toLowerCase();
+    if (lower !== 'gmail' && lower !== 'qq' && lower !== 'mail' && lower !== 'email') {
+      last = current;
+    }
+  }
+  return last.length > 0 ? last : text;
+}
+
+function defaultMailSearchWindow(query: string): string {
+  const trimmed = query.trim();
+  if (trimmed.length === 0 || hasMailTimeOperator(trimmed)) {
+    return trimmed;
+  }
+  return 'newer_than:30d ' + trimmed;
+}
+
+export function mailSearchArgs(prompt: string, args: Object | null): MailSearchArgs {
+  const record = mailArgs(args);
+  const providers = stringListArg(record.providers);
+  const explicitQuery = textOf(record.query).trim();
+  const query = explicitQuery.length > 0 ? explicitQuery : fallbackMailSearchQuery(prompt);
+  const normalizedQuery = defaultMailSearchWindow(query);
+  return {
+    query: normalizedQuery.length > 0 ? normalizedQuery : defaultMailSearchWindow(prompt.trim()),
+    pageSize: typeof record.pageSize === 'number' && record.pageSize > 0 ? Math.min(record.pageSize, 10) : 10,
+    providers: providers.length > 0 ? providers : ['gmail', 'qq'],
+    intentSummary: textOf(record.intentSummary)
+  };
+}
+
+function mailDraftArgs(args: Object | null): MailDraftArgs {
+  const record = mailArgs(args);
+  return {
+    provider: textOf(record.provider),
+    accountLabel: textOf(record.accountLabel),
+    threadId: textOf(record.threadId),
+    messageId: textOf(record.messageId),
+    to: stringListArg(record.to),
+    subject: textOf(record.subject),
+    body: textOf(record.body),
+    replyMode: textOf(record.replyMode),
+    contextSummary: textOf(record.contextSummary)
+  };
+}
+
+function qqMailConfig(): QqMailConfig {
+  return {
+    address: localProviderConfig.qqMailAddress,
+    authCode: localProviderConfig.qqMailAuthCode,
+    imapHost: localProviderConfig.qqMailImapHost,
+    imapPort: Number.parseInt(localProviderConfig.qqMailImapPort, 10) || 993,
+    draftsMailbox: localProviderConfig.qqMailDraftsMailbox
+  };
+}
+
+function mailProviderError(provider: string, message: string): MailProviderStatus {
+  return {
+    provider: provider,
+    status: 'error',
+    title: provider === 'qq' ? 'QQ 邮箱调用失败' : 'Gmail 调用失败',
+    message: message
+  };
+}
+
 function gmailResultsHaveError(results: DynamicGenericToolResult[]): boolean {
   return results.length > 0 && results[0].status === 'error';
 }
@@ -5910,14 +6162,7 @@ function gmailResultErrorSummary(results: DynamicGenericToolResult[]): string {
 }
 
 function youtubeQueryFromArgs(prompt: string, args: Object | null): string {
-  if (args !== null) {
-    const record = args as Record<string, Object | string | number | boolean | null | undefined>;
-    const query = textOf(record.query).trim();
-    if (query.length > 0) {
-      return query;
-    }
-  }
-  return prompt.trim();
+  return mediaVideoQueryFromArgs(prompt, args);
 }
 
 async function callLocalYouTubeTool(toolId: string, prompt: string, surfaceId: string, args: Object | null = null): Promise<string> {
@@ -5939,6 +6184,29 @@ async function callLocalYouTubeTool(toolId: string, prompt: string, surfaceId: s
       { label: 'Client', value: localProviderConfig.googleOauthClientId.length > 0 ? 'configured' : 'missing GOOGLE_OAUTH_CLIENT_ID' }
     ],
     rawPreview: 'youtube oauth required'
+  }]);
+}
+
+async function callLocalMediaTool(toolId: string, prompt: string, surfaceId: string, args: Object | null = null): Promise<string> {
+  if (toolId === 'media.video.search') {
+    return genericToolResultsA2ui(
+      surfaceId,
+      toolId,
+      await callMediaVideoSearch(
+        prompt,
+        args,
+        localProviderConfig.youtubeApiKey
+      )
+    );
+  }
+  return genericToolResultsA2ui(surfaceId, toolId, [{
+    sourceTag: '媒体聚合',
+    toolName: toolId,
+    title: '未知媒体工具',
+    status: 'error',
+    summary: '当前媒体聚合只支持 media.video.search。',
+    rows: [{ label: 'Tool ID', value: toolId }],
+    rawPreview: 'unknown media tool'
   }]);
 }
 
@@ -5992,6 +6260,119 @@ async function callLocalGmailTool(toolId: string, prompt: string, surfaceId: str
   } catch (error) {
     return gmailThreadResultsA2ui(surfaceId, toolId, [gmailErrorResult(mcpToolName, describeThrown(error))]);
   }
+}
+
+async function callLocalMailTool(toolId: string, prompt: string, surfaceId: string, args: Object | null = null): Promise<string> {
+  if (toolId === 'mail.search') {
+    const parsed = mailSearchArgs(prompt, args);
+    const threads: MailThreadResult[] = [];
+    const statuses: MailProviderStatus[] = [];
+
+    if (parsed.providers.indexOf('gmail') >= 0) {
+      try {
+        const accessToken = await gmailAccessTokenForMcp();
+        if (accessToken.length === 0) {
+          statuses.push(mailProviderError('gmail', gmailAuthUnavailableMessage('gmail.mail.search', prompt)));
+        } else {
+          const gmailRows = await callGmailApiTool('gmail.mail.search', prompt, accessToken, parsed as Object);
+          gmailRows.forEach((row: DynamicGenericToolResult) => {
+            if (row.status === 'success' && row.toolName.indexOf('users.threads') === 0) {
+              const threadId = dynamicRowValue(row, 'Thread ID');
+              const labels = dynamicRowValue(row, 'Labels');
+              threads.push({
+                provider: 'gmail',
+                accountLabel: 'Gmail',
+                threadId: threadId,
+                messageId: threadId,
+                subject: row.title,
+                from: dynamicRowValue(row, 'From'),
+                to: [],
+                participants: [],
+                snippet: row.summary,
+                receivedAt: dynamicRowValue(row, 'Date'),
+                unread: labels.indexOf('UNREAD') >= 0,
+                important: labels.indexOf('IMPORTANT') >= 0,
+                sourceUrl: '',
+                rawProviderRef: threadId
+              });
+            } else if (row.title !== 'Gmail 搜索条件') {
+              statuses.push({
+                provider: 'gmail',
+                status: row.status,
+                title: row.title,
+                message: row.summary
+              });
+            }
+          });
+        }
+      } catch (error) {
+        statuses.push(mailProviderError('gmail', describeThrown(error)));
+      }
+    }
+
+    if (parsed.providers.indexOf('qq') >= 0) {
+      try {
+        const qq = new QqMailImapClient(qqMailConfig());
+        const qqRows = await qq.search(parsed);
+        qqRows.forEach((row: MailThreadResult) => threads.push(row));
+      } catch (error) {
+        statuses.push(mailProviderError('qq', describeThrown(error)));
+      }
+    }
+
+    return mailResultsA2ui(surfaceId, toolId, threads, statuses);
+  }
+
+  if (toolId === 'mail.draft.create') {
+    const parsed = mailDraftArgs(args);
+    if (parsed.provider === 'gmail') {
+      return callLocalGmailTool('gmail.draft.create', prompt, surfaceId, args);
+    }
+    if (parsed.provider === 'qq') {
+      try {
+        const qq = new QqMailImapClient(qqMailConfig());
+        return mailDraftPreviewA2ui(surfaceId, await qq.createDraft(parsed));
+      } catch (error) {
+        const rows: A2uiLabelValueData[] = [
+          { label: 'Source', value: 'QQ Mail' },
+          { label: 'Status', value: 'Draft not saved' }
+        ];
+        const result: DynamicGenericToolResult = {
+          sourceTag: 'QQ Mail',
+          toolName: 'mail.draft.create',
+          title: 'QQ 邮箱草稿保存失败',
+          status: 'error',
+          summary: describeThrown(error),
+          rows: rows,
+          rawPreview: 'qq draft failed'
+        };
+        return mailResultsFromDynamicA2ui(surfaceId, toolId, [result], 'Mail Draft Preview');
+      }
+    }
+    const rows: A2uiLabelValueData[] = [{ label: 'Missing', value: 'provider' }];
+    const result: DynamicGenericToolResult = {
+      sourceTag: 'Mail',
+      toolName: 'mail.draft.create',
+      title: '邮箱草稿缺少 provider',
+      status: 'error',
+      summary: 'mail.draft.create requires args.provider to be gmail or qq.',
+      rows: rows,
+      rawPreview: 'missing provider'
+    };
+    return mailResultsFromDynamicA2ui(surfaceId, toolId, [result]);
+  }
+
+  const rows: A2uiLabelValueData[] = [{ label: 'Tool', value: toolId }];
+  const result: DynamicGenericToolResult = {
+    sourceTag: 'Mail',
+    toolName: toolId,
+    title: '未知邮箱工具',
+    status: 'error',
+    summary: 'Unsupported mail tool: ' + toolId,
+    rows: rows,
+    rawPreview: 'unsupported mail tool'
+  };
+  return mailResultsFromDynamicA2ui(surfaceId, toolId, [result]);
 }
 
 function hasCalendarScope(scope: string): boolean {
@@ -6075,8 +6456,14 @@ async function buildLocalToolJsonl(toolId: string, prompt: string, surfaceId: st
   if (isMapsToolId(toolId)) {
     return callLocalMapsTool(toolId, prompt, surfaceId, args);
   }
+  if (isMailToolId(toolId)) {
+    return callLocalMailTool(toolId, prompt, surfaceId, args);
+  }
   if (isGmailToolId(toolId)) {
     return callLocalGmailTool(toolId, prompt, surfaceId, args);
+  }
+  if (isMediaToolId(toolId)) {
+    return callLocalMediaTool(toolId, prompt, surfaceId, args);
   }
   if (isYouTubeToolId(toolId)) {
     return callLocalYouTubeTool(toolId, prompt, surfaceId, args);

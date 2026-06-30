@@ -9,6 +9,7 @@ import {
   gmailMcpArgsForPrompt
 } from './GmailOAuthClient';
 import { aiLogError, aiLogInfo } from './AiphoneLogger';
+import { utf8Bytes } from './Utf8Bytes';
 
 const GMAIL_API_BASE_URL: string = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -211,9 +212,10 @@ async function requestJson(
   }
 }
 
-function isOperationTimeout(error: Error | Object | string | number | boolean | null | undefined): boolean {
+function isTransientRequestError(error: Error | Object | string | number | boolean | null | undefined): boolean {
   const message = describeRequestError(error);
-  return message.indexOf('Operation timeout') >= 0 || message.indexOf('2300028') >= 0;
+  return message.indexOf('Operation timeout') >= 0 || message.indexOf('2300028') >= 0 ||
+    message.indexOf('Internal error') >= 0 || message.indexOf('2300999') >= 0;
 }
 
 async function requestJsonWithTimeoutRetry(
@@ -222,17 +224,24 @@ async function requestJsonWithTimeoutRetry(
   accessToken: string,
   body: Object | null
 ): Promise<Object> {
-  try {
-    return await requestJson(method, url, accessToken, body);
-  } catch (error) {
-    if (!isOperationTimeout(error)) {
-      throw new Error(describeRequestError(error));
+  const connectTimeouts: number[] = [10000, 20000, 20000];
+  const readTimeouts: number[] = [20000, 30000, 45000];
+  let lastError = '';
+  for (let attempt = 0; attempt < connectTimeouts.length; attempt++) {
+    try {
+      return await requestJson(method, url, accessToken, body, connectTimeouts[attempt], readTimeouts[attempt]);
+    } catch (error) {
+      lastError = describeRequestError(error);
+      if (!isTransientRequestError(error) || attempt >= connectTimeouts.length - 1) {
+        throw new Error(lastError);
+      }
+      aiLogInfo('[AIPhone][GmailApiHttpRetry] method=' + requestMethodName(method) +
+        ' path=' + gmailApiPath(url) +
+        ' attempt=' + (attempt + 2).toString() +
+        ' reason=' + lastError.substring(0, 160));
     }
-    aiLogInfo('[AIPhone][GmailApiHttpRetry] method=' + requestMethodName(method) +
-      ' path=' + gmailApiPath(url) +
-      ' reason=' + describeRequestError(error).substring(0, 160));
-    return await requestJson(method, url, accessToken, body, 20000, 30000);
   }
+  throw new Error(lastError);
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -249,10 +258,6 @@ function bytesToBase64Url(bytes: Uint8Array): string {
     result += index + 2 < bytes.length ? alphabet.charAt(triple & 0x3f) : '=';
   }
   return result.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
-
-function utf8Bytes(value: string): Uint8Array {
-  return new util.TextEncoder().encodeInto(value);
 }
 
 function firstHeader(message: GmailMessage, headerName: string): string {
@@ -498,6 +503,14 @@ async function createDraft(accessToken: string, prompt: string, args: Object | n
     rows: rows,
     rawPreview: 'draftId=' + draftId + ' messageId=' + messageId + (resultThreadId.length > 0 ? ' threadId=' + resultThreadId : '')
   }];
+}
+
+export async function searchGmailThreadsForMail(accessToken: string, prompt: string, args: Object | null = null): Promise<DynamicGenericToolResult[]> {
+  return await searchThreads(accessToken, prompt, args);
+}
+
+export async function createGmailDraftForMail(accessToken: string, prompt: string, args: Object | null = null): Promise<DynamicGenericToolResult[]> {
+  return await createDraft(accessToken, prompt, args);
 }
 
 export async function callGmailApiTool(toolId: string, prompt: string, accessToken: string, args: Object | null = null): Promise<DynamicGenericToolResult[]> {

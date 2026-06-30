@@ -1,4 +1,6 @@
 import { HtmlHomeDocument } from './HtmlHomeTypes';
+import { renderFoodHomeDocument, shouldRenderFoodHomeDocument } from './HtmlFoodHomeRenderer';
+import { renderTravelHomeDocument, shouldRenderTravelHomeDocument } from './HtmlTravelHomeRenderer';
 
 type HtmlHomeTextValue = Object | string | number | boolean | null | undefined;
 
@@ -41,6 +43,14 @@ const HTML_HOME_CSS: string = `
   --mcd-soft: rgba(181, 121, 21, 0.14);
   --luckin: #466eb8;
   --luckin-soft: rgba(70, 110, 184, 0.12);
+  --gmail: #c24636;
+  --gmail-soft: rgba(194, 70, 54, 0.12);
+  --qqmail: #2d78c4;
+  --qqmail-soft: rgba(45, 120, 196, 0.12);
+  --youtube: #c4302b;
+  --youtube-soft: rgba(196, 48, 43, 0.12);
+  --bilibili: #2d8fbd;
+  --bilibili-soft: rgba(45, 143, 189, 0.12);
 }
 * { box-sizing: border-box; }
 body {
@@ -226,6 +236,26 @@ h3 {
   --kind-accent: var(--amber);
   --kind-soft: rgba(154, 100, 24, 0.12);
 }
+.block[data-source-key="mail-gmail"] {
+  --kind-accent: var(--gmail);
+  --kind-soft: var(--gmail-soft);
+  border-color: rgba(194, 70, 54, 0.45);
+}
+.block[data-source-key="mail-qq"] {
+  --kind-accent: var(--qqmail);
+  --kind-soft: var(--qqmail-soft);
+  border-color: rgba(45, 120, 196, 0.45);
+}
+.block[data-source-key="media-youtube"] {
+  --kind-accent: var(--youtube);
+  --kind-soft: var(--youtube-soft);
+  border-color: rgba(196, 48, 43, 0.45);
+}
+.block[data-source-key="media-bilibili"] {
+  --kind-accent: var(--bilibili);
+  --kind-soft: var(--bilibili-soft);
+  border-color: rgba(45, 143, 189, 0.45);
+}
 .block[data-kind="social-message"] {
   --kind-accent: #2f6f5e;
   --kind-soft: rgba(47, 111, 94, 0.12);
@@ -281,6 +311,8 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
 }
 .kind-tag {
   display: inline-flex;
+  align-items: center;
+  gap: 5px;
   width: fit-content;
   margin-bottom: 7px;
   border-radius: 11px;
@@ -290,6 +322,14 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 10px;
   line-height: 1;
+}
+.kind-tag .mail-source-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: white;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(33, 27, 23, 0.1);
 }
 .status {
   align-self: flex-start;
@@ -381,6 +421,36 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   line-height: 1.45;
   white-space: pre-wrap;
 }
+.google-map-preview {
+  overflow: hidden;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-strong);
+  aspect-ratio: 16 / 9;
+}
+.google-map-preview iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.media-player {
+  overflow: hidden;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #0f0d0b;
+  aspect-ratio: 16 / 9;
+  box-shadow: 0 12px 28px rgba(20, 14, 10, 0.16);
+}
+.media-player iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0f0d0b;
+}
 .empty {
   padding: 18px;
   color: var(--muted);
@@ -422,6 +492,10 @@ const HTML_HOME_JS: string = `
     return Array.isArray(value) ? value : [];
   }
   var isBusy = text(data.isBusy).toLowerCase() === 'true';
+  var MAIL_ICON_GMAIL = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTUiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNMTIgMjB2MjhoNDBWMjBMMzIgMzUgMTIgMjBaIiBmaWxsPSIjZmZmIiBzdHJva2U9IiNkOWRkZTMiIHN0cm9rZS13aWR0aD0iMyIvPjxwYXRoIGQ9Ik0xMiAyMGwyMCAxNSAyMC0xNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZWE0MzM1IiBzdHJva2Utd2lkdGg9IjciIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48cGF0aCBkPSJNMTIgMjB2MjgiIHN0cm9rZT0iIzQyODVmNCIgc3Ryb2tlLXdpZHRoPSI3Ii8+PHBhdGggZD0iTTUyIDIwdjI4IiBzdHJva2U9IiMzNGE4NTMiIHN0cm9rZS13aWR0aD0iNyIvPjxwYXRoIGQ9Ik0xMiA0OGg0MCIgc3Ryb2tlPSIjZmJiYzA1IiBzdHJva2Utd2lkdGg9IjciLz48L3N2Zz4=';
+  var MAIL_ICON_QQ = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTUiIGZpbGw9IiMyZDc4YzQiLz48cGF0aCBkPSJNMTQgMjFoMzZhNCA0IDAgMCAxIDQgNHYyNGE0IDQgMCAwIDEtNCA0SDE0YTQgNCAwIDAgMS00LTRWMjVhNCA0IDAgMCAxIDQtNFoiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNMTQgMjRsMTggMTUgMTgtMTUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzJkNzhjNCIgc3Ryb2tlLXdpZHRoPSI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PHRleHQgeD0iMzIiIHk9IjQ4IiBmaWxsPSIjMmQ3OGM0IiBmb250LWZhbWlseT0iQXJpYWwsc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZm9udC13ZWlnaHQ9IjcwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+UVE8L3RleHQ+PC9zdmc+';
+  var MEDIA_ICON_YOUTUBE = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2215%22 fill=%22%23c4302b%22/%3E%3Cpath d=%22M26 21v22l20-11z%22 fill=%22%23fff%22/%3E%3C/svg%3E';
+  var MEDIA_ICON_BILIBILI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2215%22 fill=%22%232d8fbd%22/%3E%3Crect x=%2211%22 y=%2220%22 width=%2242%22 height=%2230%22 rx=%227%22 fill=%22%23fff%22/%3E%3Cpath d=%22M23 13l7 7M41 13l-7 7%22 stroke=%22%23fff%22 stroke-width=%224%22 stroke-linecap=%22round%22/%3E%3Ccircle cx=%2225%22 cy=%2235%22 r=%223%22 fill=%22%232d8fbd%22/%3E%3Ccircle cx=%2239%22 cy=%2235%22 r=%223%22 fill=%22%232d8fbd%22/%3E%3C/svg%3E';
   function kindLabel(value) {
     var kind = text(value);
     if (kind === 'welcome') { return '欢迎'; }
@@ -449,7 +523,30 @@ const HTML_HOME_JS: string = `
     if (text(block && block.kind) === 'food-result' && text(block && block.source).length > 0) {
       return text(block && block.source);
     }
+    if (text(block && block.kind) === 'generic-tool-result' && text(block && block.source).length > 0) {
+      return text(block && block.source);
+    }
     return blockKindLabel(block && block.kind);
+  }
+  function mailIconData(key) {
+    if (key === 'mail-gmail') { return MAIL_ICON_GMAIL; }
+    if (key === 'mail-qq') { return MAIL_ICON_QQ; }
+    if (key === 'media-youtube') { return MEDIA_ICON_YOUTUBE; }
+    if (key === 'media-bilibili') { return MEDIA_ICON_BILIBILI; }
+    return '';
+  }
+  function addBlockTag(parent, block, key) {
+    var tag = add(parent, 'div', 'kind-tag');
+    var icon = mailIconData(key);
+    if (icon.length > 0) {
+      var img = document.createElement('img');
+      img.className = 'mail-source-icon';
+      img.src = icon;
+      img.alt = '';
+      img.setAttribute('aria-hidden', 'true');
+      tag.appendChild(img);
+    }
+    add(tag, 'span', '', blockTagLabel(block));
   }
   function sourceKey(block) {
     var kind = text(block && block.kind).toLowerCase();
@@ -462,6 +559,18 @@ const HTML_HOME_JS: string = `
       text(block && block.title),
       text(block && block.subtitle)
     ].join(' ').toLowerCase();
+    if (raw.indexOf('gmail') >= 0) {
+      return 'mail-gmail';
+    }
+    if (raw.indexOf('qq mail') >= 0 || raw.indexOf('qq邮箱') >= 0 || raw.indexOf('provider qq') >= 0) {
+      return 'mail-qq';
+    }
+    if (raw.indexOf('youtube') >= 0 || raw.indexOf('youtu.be') >= 0) {
+      return 'media-youtube';
+    }
+    if (raw.indexOf('bilibili') >= 0 || raw.indexOf('哔哩哔哩') >= 0 || raw.indexOf('b 站') >= 0 || raw.indexOf('b站') >= 0) {
+      return 'media-bilibili';
+    }
     if (kind === 'train-option' || raw.indexOf('12306') >= 0 || raw.indexOf('train') >= 0 || raw.indexOf('高铁') >= 0) {
       return 'travel-train';
     }
@@ -511,14 +620,21 @@ const HTML_HOME_JS: string = `
     button.textContent = expanded ? '收起' : '展开';
     card.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   }
-  function setExpandedCard(card) {
-    var key = card.getAttribute('data-card-key') || '';
-    localState.expandedKey = localState.expandedKey === key ? '' : key;
+  function applyExpandedState() {
     Array.prototype.slice.call(document.querySelectorAll('[data-expandable="true"]')).forEach(function (item) {
       var expanded = (item.getAttribute('data-card-key') || '') === localState.expandedKey;
       item.classList.toggle('expanded', expanded);
       updateExpandLabel(item);
     });
+  }
+  function setExpandedCard(card) {
+    var key = card.getAttribute('data-card-key') || '';
+    localState.expandedKey = localState.expandedKey === key ? '' : key;
+    applyExpandedState();
+  }
+  function expandCard(card) {
+    localState.expandedKey = card.getAttribute('data-card-key') || '';
+    applyExpandedState();
   }
   function statusLabel(value) {
     var raw = text(value);
@@ -590,6 +706,66 @@ const HTML_HOME_JS: string = `
       }
     }
     return '';
+  }
+  function isGoogleMapsBlock(block) {
+    var raw = [
+      text(block && block.source),
+      metricValue(block, ['source', 'toolName']),
+      text(block && block.title)
+    ].join(' ').toLowerCase();
+    return raw.indexOf('google places') >= 0 ||
+      raw.indexOf('google maps') >= 0 ||
+      raw.indexOf('maps.place.') >= 0;
+  }
+  function validMapLocation(value) {
+    return /^-?[0-9]+(?:\\.[0-9]+)?\\s*,\\s*-?[0-9]+(?:\\.[0-9]+)?$/.test(text(value));
+  }
+  function googleMapLocation(block) {
+    var location = metricValue(block, ['Map Location', 'Google Maps Location']);
+    return validMapLocation(location) ? location.replace(/\\s+/g, '') : '';
+  }
+  function googleMapEmbedUrl(block) {
+    var url = metricValue(block, ['Maps URL', 'Google Maps URL']);
+    if (url.length > 0) {
+      return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'output=embed';
+    }
+    var location = googleMapLocation(block);
+    return location.length > 0 ? 'https://www.google.com/maps?q=' + encodeURIComponent(location) + '&output=embed' : '';
+  }
+  function addGoogleMapPreview(parent, block) {
+    if (!isGoogleMapsBlock(block)) { return; }
+    var embedUrl = googleMapEmbedUrl(block);
+    if (embedUrl.length === 0) { return; }
+    var preview = add(parent, 'div', 'google-map-preview');
+    var iframe = document.createElement('iframe');
+    iframe.title = 'Google Maps preview';
+    iframe.setAttribute('loading', 'lazy');
+    iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+    iframe.src = embedUrl;
+    preview.appendChild(iframe);
+  }
+  function isAllowedMediaEmbedUrl(url) {
+    var raw = text(url);
+    return raw.indexOf('https://www.youtube.com/embed/') === 0 ||
+      raw.indexOf('https://player.bilibili.com/player.html?') === 0;
+  }
+  function addMediaEmbed(parent, block) {
+    var media = block && block.mediaEmbed ? block.mediaEmbed : null;
+    if (!media) { return; }
+    var embedUrl = text(media.embedUrl);
+    if (!isAllowedMediaEmbedUrl(embedUrl)) { return; }
+    var preview = add(parent, 'div', 'media-player');
+    preview.addEventListener('click', function (event) {
+      event.stopPropagation();
+    });
+    var iframe = document.createElement('iframe');
+    iframe.title = text(media.title) || 'media player';
+    iframe.setAttribute('loading', 'lazy');
+    iframe.setAttribute('allowfullscreen', 'true');
+    iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+    iframe.setAttribute('referrerpolicy', 'origin-when-cross-origin');
+    iframe.src = embedUrl;
+    preview.appendChild(iframe);
   }
   function numberIn(value) {
     var match = text(value).replace(/,/g, '').match(/[0-9]+(?:\\.[0-9]+)?/);
@@ -778,8 +954,9 @@ const HTML_HOME_JS: string = `
     blocks.forEach(function (block) {
       var card = add(blocksSection, 'article', 'block');
       var expandable = isExpandable(block);
+      var blockSourceKey = sourceKey(block);
       card.setAttribute('data-kind', text(block.kind));
-      card.setAttribute('data-source-key', sourceKey(block));
+      card.setAttribute('data-source-key', blockSourceKey);
       if (expandable) {
         card.setAttribute('data-card-key', text(block.id) || text(block.title) || String(blocks.indexOf(block)));
         card.setAttribute('data-expandable', 'true');
@@ -793,6 +970,9 @@ const HTML_HOME_JS: string = `
         trainIndex += 1;
       }
       card.setAttribute('data-source', [text(block.source), metricValue(block, ['source'])].join(' '));
+      if (block && block.mediaEmbed && text(block.mediaEmbed.embedUrl).length > 0) {
+        card.setAttribute('data-has-media', 'true');
+      }
       card.setAttribute('data-distance', metricValue(block, ['distance']));
       card.setAttribute('data-duration', metricValue(block, ['duration']));
       card.setAttribute('data-availability', [
@@ -801,7 +981,7 @@ const HTML_HOME_JS: string = `
       ].join(' '));
       var top = add(card, 'div', 'block-top');
       var titleWrap = add(top, 'div', 'block-title');
-      add(titleWrap, 'div', 'kind-tag', blockTagLabel(block));
+      addBlockTag(titleWrap, block, blockSourceKey);
       add(titleWrap, 'h3', '', text(block.title) || text(block.kind) || text(block.id));
       add(titleWrap, 'p', 'subtitle', text(block.subtitle));
       if (expandable) {
@@ -812,7 +992,9 @@ const HTML_HOME_JS: string = `
           setExpandedCard(card);
         });
       }
+      addGoogleMapPreview(card, block);
       var detailHost = expandable ? add(card, 'div', 'details') : card;
+      addMediaEmbed(detailHost, block);
       addActions(detailHost, block.actions);
       addPairs(detailHost, block.metrics, 'metrics');
       addPairs(detailHost, block.rows, 'rows');
@@ -821,6 +1003,10 @@ const HTML_HOME_JS: string = `
       }
       addCredentialForm(detailHost, block);
     });
+    var firstMediaCard = blocksSection.querySelector('[data-has-media="true"]');
+    if (firstMediaCard && !localState.expandedKey) {
+      expandCard(firstMediaCard);
+    }
     applyLocalView();
   } else {
     add(shell, 'section', 'empty', emptyCopy());
@@ -853,6 +1039,12 @@ const HTML_HOME_JS: string = `
 `;
 
 export function renderHtmlHomeDocument(document: HtmlHomeDocument, isBusy: boolean = false): string {
+  if (shouldRenderTravelHomeDocument(document)) {
+    return renderTravelHomeDocument(document, isBusy);
+  }
+  if (shouldRenderFoodHomeDocument(document)) {
+    return renderFoodHomeDocument(document, isBusy);
+  }
   const renderDocument: HtmlHomeDocumentWithBusy = {
     version: document.version,
     source: document.source,

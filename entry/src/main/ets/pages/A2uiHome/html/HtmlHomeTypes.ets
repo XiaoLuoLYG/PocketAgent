@@ -29,6 +29,14 @@ export interface HtmlHomeAction {
   args?: Object;
 }
 
+export interface HtmlHomeMediaEmbed {
+  provider: string;
+  title: string;
+  embedUrl: string;
+  pageUrl: string;
+  thumbnail?: string;
+}
+
 export interface HtmlHomeBlock {
   id: string;
   kind: string;
@@ -44,6 +52,7 @@ export interface HtmlHomeBlock {
   rows: HtmlHomeMetric[];
   actions: HtmlHomeAction[];
   rawPreview?: string;
+  mediaEmbed?: HtmlHomeMediaEmbed;
 }
 
 export interface HtmlHomeHistoryItem {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { createHtmlHomeDocument } from '../main/ets/pages/A2uiHome/html/HtmlHomeSnapshot';
+import { isHtmlHomeActionAllowed } from '../main/ets/pages/A2uiHome/html/HtmlHomeActionPolicy';
 import { A2uiAction, A2uiComponent, A2uiMessage, A2uiSurfaceState } from '../main/ets/model/A2uiTypes';
 
 function surface(intent: string, status: string, components: A2uiComponent[], dataModelJson: string): A2uiSurfaceState {
@@ -312,6 +313,32 @@ export default function htmlHomeSnapshotTest() {
       expect(actions.indexOf('committee@example.edu')).assertLarger(-1);
     });
 
+    it('adds generic mail AI reply draft action to QQ thread result blocks', 0, () => {
+      const results: A2uiComponent = {
+        id: 'mail_results',
+        component: 'GenericToolResults',
+        title: 'Mail',
+        dataPath: '/genericToolResults'
+      };
+      const doc = createHtmlHomeDocument({
+        surface: surface('mail', 'ready', [root('mail_results'), results],
+          '{"genericToolResults":[{"sourceTag":"QQ Mail","toolName":"mail.thread","title":"QQ message","status":"success","summary":"QQ Mail thread retrieved.","rows":[{"label":"Provider","value":"qq"},{"label":"Account","value":"qq-account"},{"label":"Message ID","value":"qq-1"},{"label":"Thread ID","value":"thread-qq-1"},{"label":"From","value":"Sender <sender@example.com>"}],"rawPreview":""}]}'),
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+      const actions = JSON.stringify(doc.blocks[0].actions);
+
+      expect(doc.kind).assertEqual('dynamic-tools');
+      expect(doc.blocks[0].kind).assertEqual('generic-tool-result');
+      expect(actions.indexOf('mail.ai.reply.draft')).assertLarger(-1);
+      expect(actions.indexOf('AI 回复草稿')).assertLarger(-1);
+      expect(actions.indexOf('mail.draft.create')).assertLarger(-1);
+      expect(actions.indexOf('"provider":"qq"')).assertLarger(-1);
+      expect(actions.indexOf('qq-1')).assertLarger(-1);
+      expect(actions.indexOf('sender@example.com')).assertLarger(-1);
+    });
+
     it('adds Gmail draft open action to draft result blocks', 0, () => {
       const results: A2uiComponent = {
         id: 'gmail_results',
@@ -332,6 +359,77 @@ export default function htmlHomeSnapshotTest() {
       expect(actions.indexOf('gmail.open.web')).assertLarger(-1);
       expect(actions.indexOf('跳转到Gmail')).assertLarger(-1);
       expect(actions.indexOf('https://mail.google.com/mail/u/0/#drafts')).assertLarger(-1);
+    });
+
+    it('adds Google Maps open action to real Places result blocks', 0, () => {
+      const results: A2uiComponent = {
+        id: 'maps_results',
+        component: 'GenericToolResults',
+        title: 'Google Maps',
+        dataPath: '/genericToolResults'
+      };
+      const doc = createHtmlHomeDocument({
+        surface: surface('dynamic_tool', 'ready', [root('maps_results'), results],
+          '{"genericToolResults":[{"sourceTag":"Google Places API","toolName":"maps.place.search","title":"Coffee Lab","status":"success","summary":"Google Places result for: 深圳咖啡","rows":[{"label":"Place ID","value":"place-123"},{"label":"Map Location","value":"22.609878,114.029506"},{"label":"Maps URL","value":"https://maps.google.com/?cid=123"}],"rawPreview":"placeId=place-123"}]}'),
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+      const actions = JSON.stringify(doc.blocks[0].actions);
+
+      expect(doc.blocks[0].kind).assertEqual('generic-tool-result');
+      expect(actions.indexOf('maps.open.web')).assertLarger(-1);
+      expect(actions.indexOf('打开 Google Maps')).assertLarger(-1);
+      expect(actions.indexOf('https://maps.google.com/?cid=123')).assertLarger(-1);
+    });
+
+    it('adds allowed media playback actions to video result blocks', 0, () => {
+      const results: A2uiComponent = {
+        id: 'media_results',
+        component: 'GenericToolResults',
+        title: '媒体视频',
+        dataPath: '/genericToolResults'
+      };
+      const pageUrl = 'https://www.bilibili.com/video/BV1h57y6pE5o';
+      const doc = createHtmlHomeDocument({
+        surface: surface('media', 'ready', [root('media_results'), results],
+          '{"genericToolResults":[{"sourceTag":"哔哩哔哩","toolName":"media.video.search","title":"Qwen Max B 站介绍","status":"success","summary":"video result","rows":[{"label":"BVID","value":"BV1h57y6pE5o"},{"label":"Playback URL","value":"https://www.bilibili.com/video/BV1h57y6pE5o"}],"rawPreview":"bvid=BV1h57y6pE5o"}]}'),
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+      const actions = JSON.stringify(doc.blocks[0].actions);
+      const allowed: A2uiAction = {
+        id: 'media.open.web',
+        label: '跳转',
+        prompt: pageUrl,
+        variant: 'primary',
+        kind: 'client'
+      };
+      const blocked: A2uiAction = {
+        id: 'media.open.web',
+        label: '播放',
+        prompt: 'https://evil.example/video/7123',
+        variant: 'primary',
+        kind: 'client'
+      };
+
+      expect(doc.blocks[0].kind).assertEqual('generic-tool-result');
+      expect(doc.blocks[0].mediaEmbed?.embedUrl).assertEqual('https://player.bilibili.com/player.html?bvid=BV1h57y6pE5o&p=1&autoplay=0&poster=true&danmaku=0&isOutside=true');
+      expect(doc.blocks[0].mediaEmbed?.pageUrl).assertEqual(pageUrl);
+      expect(actions.indexOf('media.open.web')).assertLarger(-1);
+      expect(actions.indexOf(pageUrl)).assertLarger(-1);
+      expect(isHtmlHomeActionAllowed(doc, allowed)).assertTrue();
+      expect(isHtmlHomeActionAllowed(doc, blocked)).assertFalse();
+
+      const youtubeDoc = createHtmlHomeDocument({
+        surface: surface('media', 'ready', [root('media_results'), results],
+          '{"genericToolResults":[{"sourceTag":"YouTube Data API","toolName":"media.video.search","title":"Qwen Max YouTube","status":"success","summary":"video result","rows":[{"label":"Video ID","value":"abc123"},{"label":"Watch URL","value":"https://www.youtube.com/watch?v=abc123"}],"rawPreview":"videoId=abc123"}]}'),
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+      expect(youtubeDoc.blocks[0].mediaEmbed?.embedUrl).assertEqual('https://www.youtube.com/embed/abc123?playsinline=1&rel=0&enablejsapi=1&origin=https%3A%2F%2Faiphone.local');
     });
 
     it('maps dynamic tool provider status and source without crashing', 0, () => {

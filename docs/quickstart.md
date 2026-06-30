@@ -67,6 +67,11 @@ TAOBAO_APP_SECRET=
 TAOBAO_FLASH_PID=
 MCD_MCP_TOKEN=
 LUCKIN_MCP_TOKEN=
+QQ_MAIL_ADDRESS=
+QQ_MAIL_AUTH_CODE=
+QQ_MAIL_IMAP_HOST=imap.qq.com
+QQ_MAIL_IMAP_PORT=993
+QQ_MAIL_DRAFTS_MAILBOX=
 ```
 
 构建或安装 HAP 前，把本地值同步到被忽略的 rawfile：
@@ -101,6 +106,13 @@ Gmail：
 ```text
 帮我查看 Gmail 最近邮件
 帮我给 Gmail 里最近一封邮件起草回复
+```
+
+邮箱聚合：
+
+```text
+帮我看邮箱里最新的重要邮件
+帮我给 QQ 邮箱里最近一封邮件起草回复
 ```
 
 动态工具：

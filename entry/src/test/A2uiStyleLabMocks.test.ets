@@ -39,6 +39,26 @@ export default function a2uiStyleLabMocksTest() {
       }
     });
 
+    it('keeps the food style lab case rich enough for html scene visual QA', 0, () => {
+      const food = findA2uiStyleLabCase('food_choices').surface;
+      const serialized = food.dataModelJson;
+
+      expect(serialized.indexOf('三津汤包')).assertLarger(-1);
+      expect(serialized.indexOf('N多寿司')).assertLarger(-1);
+      expect(serialized.indexOf('高德')).assertLarger(-1);
+      expect(serialized.indexOf('腾讯地图')).assertLarger(-1);
+      expect(serialized.indexOf('百度地图')).assertLarger(-1);
+      expect(serialized.indexOf('1500米')).assertLarger(-1);
+      expect(serialized.indexOf('"location":""')).assertLarger(-1);
+      expect(serialized.indexOf('淘宝闪购')).assertLarger(-1);
+      expect(serialized.indexOf('瑞幸')).assertLarger(-1);
+
+      const actions = JSON.stringify(food.components);
+      expect(actions.indexOf('food_show_all')).assertLarger(-1);
+      expect(actions.indexOf('food_filter_1km')).assertLarger(-1);
+      expect(actions.indexOf('food_show_more')).assertLarger(-1);
+    });
+
     it('clones mock surfaces before page state mutates them', 0, () => {
       const original = defaultA2uiStyleLabCase().surface;
       const cloned = cloneA2uiStyleLabSurface(original);

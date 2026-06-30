@@ -1,13 +1,13 @@
 import { http } from '@kit.NetworkKit';
 import util from '@ohos.util';
-import { A2uiLabelValueData } from './A2uiTypes';
+import { A2uiFoodData, A2uiLabelValueData } from './A2uiTypes';
 import { DynamicGenericToolResult } from './DynamicToolTypes';
 import { aiLogError, aiLogInfo } from './AiphoneLogger';
 
 const PLACES_SEARCH_URL: string = 'https://places.googleapis.com/v1/places:searchText';
 const PLACES_BASE_URL: string = 'https://places.googleapis.com/v1/places/';
-const PLACES_FIELD_MASK: string = 'places.id,places.displayName,places.formattedAddress,places.rating,places.googleMapsUri,places.currentOpeningHours.openNow';
-const PLACE_DETAIL_FIELD_MASK: string = 'id,displayName,formattedAddress,rating,googleMapsUri,currentOpeningHours.openNow';
+const PLACES_FIELD_MASK: string = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.googleMapsUri,places.currentOpeningHours.openNow';
+const PLACE_DETAIL_FIELD_MASK: string = 'id,displayName,formattedAddress,location,rating,googleMapsUri,currentOpeningHours.openNow';
 
 interface MapsTextSearchPayload {
   places?: MapsPlacePayload[];
@@ -16,6 +16,7 @@ interface MapsTextSearchPayload {
 interface MapsTextSearchRequest {
   textQuery: string;
   languageCode: string;
+  maxResultCount: number;
 }
 
 interface MapsPlacePayload {
@@ -25,10 +26,16 @@ interface MapsPlacePayload {
   googleMapsUri?: string;
   currentOpeningHours?: MapsOpeningHours;
   displayName?: MapsDisplayName;
+  location?: MapsLocation;
 }
 
 interface MapsDisplayName {
   text?: string;
+}
+
+interface MapsLocation {
+  latitude?: number;
+  longitude?: number;
 }
 
 interface MapsOpeningHours {
@@ -74,7 +81,8 @@ function encodeParam(value: string): string {
 export function mapsTextSearchBody(query: string): MapsTextSearchRequest {
   return {
     textQuery: query,
-    languageCode: 'zh-CN'
+    languageCode: 'zh-CN',
+    maxResultCount: 10
   };
 }
 
@@ -89,6 +97,10 @@ function placeRows(place: MapsPlacePayload): A2uiLabelValueData[] {
     { label: 'Address', value: textOf(place.formattedAddress) },
     { label: 'Rating', value: textOf(place.rating) }
   ];
+  const mapLocation = placeMapLocation(place);
+  if (mapLocation.length > 0) {
+    rows.push({ label: 'Map Location', value: mapLocation });
+  }
   if (place.currentOpeningHours !== undefined) {
     rows.push({ label: 'Open now', value: textOf(place.currentOpeningHours.openNow) });
   }
@@ -96,6 +108,52 @@ function placeRows(place: MapsPlacePayload): A2uiLabelValueData[] {
     rows.push({ label: 'Maps URL', value: textOf(place.googleMapsUri) });
   }
   return rows;
+}
+
+function placeMapLocation(place: MapsPlacePayload): string {
+  if (place.location === undefined) {
+    return '';
+  }
+  const latitude = place.location.latitude;
+  const longitude = place.location.longitude;
+  if (latitude === undefined || longitude === undefined || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return '';
+  }
+  return latitude.toString() + ',' + longitude.toString();
+}
+
+function resultRowValue(result: DynamicGenericToolResult, label: string): string {
+  for (let index = 0; index < result.rows.length; index++) {
+    if (result.rows[index].label === label) {
+      return result.rows[index].value;
+    }
+  }
+  return '';
+}
+
+function foodLocationFromMapLocation(location: string): string {
+  const parts = location.split(',');
+  if (parts.length !== 2) {
+    return '';
+  }
+  const latitude = Number(parts[0].trim());
+  const longitude = Number(parts[1].trim());
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return '';
+  }
+  return longitude.toString() + ',' + latitude.toString();
+}
+
+export function mapsFoodRecordFromResult(result: DynamicGenericToolResult): A2uiFoodData {
+  const rating = resultRowValue(result, 'Rating');
+  return {
+    name: result.title,
+    category: rating.length > 0 ? 'Google Places · 评分 ' + rating : 'Google Places',
+    address: resultRowValue(result, 'Address'),
+    distance: '',
+    location: foodLocationFromMapLocation(resultRowValue(result, 'Map Location')),
+    sourceTags: ['Google Maps']
+  };
 }
 
 function placeResult(toolId: string, place: MapsPlacePayload, summary: string): DynamicGenericToolResult {

@@ -47,7 +47,7 @@ export struct HtmlHomeSurfaceView {
       return;
     }
     try {
-      this.controller.loadData(this.html, 'text/html', 'UTF-8', 'data:text/html;charset=utf-8,');
+      this.controller.loadData(this.html, 'text/html', 'UTF-8', 'https://aiphone.local/');
       this.loadedKey = this.html;
       if (this.isBusy) {
         this.busyFrameLoaded = true;
@@ -67,22 +67,37 @@ export struct HtmlHomeSurfaceView {
   }
 
   build() {
-    Web({ src: 'data:text/html;charset=utf-8,<body style="margin:0;background:%23F5F2EE"></body>', controller: this.controller })
-      .javaScriptAccess(true)
-      .domStorageAccess(true)
-      .javaScriptProxy({
-        object: this.bridge,
-        name: 'AIPhoneHome',
-        methodList: ['postAction'],
-        controller: this.controller
-      })
+    Stack({ alignContent: Alignment.Top }) {
+      Web({ src: 'data:text/html;charset=utf-8,<body style="margin:0;background:%23F5F2EE"></body>', controller: this.controller })
+        .javaScriptAccess(true)
+        .domStorageAccess(true)
+        .javaScriptProxy({
+          object: this.bridge,
+          name: 'AIPhoneHome',
+          methodList: ['postAction'],
+          controller: this.controller
+        })
+        .width('100%')
+        .height('100%')
+        .backgroundColor(COLOR_PAGE)
+        .opacity(1)
+        .onPageEnd(() => {
+          this.webReady = true;
+          this.loadHtmlIfNeeded();
+        })
+
+      Row()
+        .width('100%')
+        .height(8)
+        .linearGradient({
+          angle: 180,
+          colors: [[COLOR_PAGE, 0], ['#00F5F2EE', 1]]
+        })
+        .hitTestBehavior(HitTestMode.Transparent)
+    }
       .width('100%')
       .height('100%')
       .backgroundColor(COLOR_PAGE)
-      .onPageEnd(() => {
-        this.webReady = true;
-        this.loadHtmlIfNeeded();
-      })
   }
 }
 

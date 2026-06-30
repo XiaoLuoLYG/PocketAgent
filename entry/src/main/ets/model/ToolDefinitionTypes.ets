@@ -1,6 +1,6 @@
 export type ToolRiskLevel = 'read' | 'draft' | 'confirm_required' | 'blocked';
-export type ToolBackendType = 'local_adapter' | 'oauth_api' | 'workspace_mcp' | 'web_session' | 'system_intent' | 'mcp_remote';
-export type ToolAuthMode = 'none' | 'provider_key' | 'oauth' | 'web_session' | 'mcp_auth' | 'system';
+export type ToolBackendType = 'local_adapter' | 'oauth_api' | 'imap' | 'workspace_mcp' | 'web_session' | 'system_intent' | 'mcp_remote';
+export type ToolAuthMode = 'none' | 'provider_key' | 'oauth' | 'imap_auth' | 'web_session' | 'mcp_auth' | 'system';
 
 export interface ToolDefinition {
   toolId: string;

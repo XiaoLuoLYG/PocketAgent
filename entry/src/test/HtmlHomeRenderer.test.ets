@@ -91,6 +91,214 @@ function travelFoodCardsDocumentFixture(): HtmlHomeDocument {
   return doc;
 }
 
+function foodDocumentFixture(): HtmlHomeDocument {
+  const doc = documentFixture();
+  doc.kind = 'food';
+  doc.title = '外卖聚合搜索';
+  doc.subtitle = '以下结果来自高德、腾讯地图、百度地图；仅展示真实返回字段。';
+  doc.chips = [];
+  doc.metrics = [];
+  doc.timeline = [];
+  doc.actions = [
+    { id: 'food_show_all', label: '全部', prompt: 'food_show_all', variant: 'activated', kind: 'client' },
+    { id: 'food_filter_1km', label: '1公里内', prompt: 'food_filter_1km', variant: 'secondary', kind: 'client' },
+    { id: 'food_show_more', label: '展示更多', prompt: 'food_show_more', variant: 'secondary', kind: 'client' }
+  ];
+  doc.blocks = [{
+    id: 'food-0',
+    kind: 'food-result',
+    title: '三津汤包 (深圳北站店)',
+    subtitle: '餐饮服务; 餐饮相关场所; 餐饮相关',
+    status: 'ready',
+    source: '高德 / 腾讯地图',
+    metrics: [
+      { label: 'category', value: '餐饮服务; 餐饮相关场所; 餐饮相关' },
+      { label: 'address', value: '民治街道深圳北站（深圳北站地铁D口旁）' },
+      { label: 'distance', value: '21米' },
+      { label: 'location', value: '114.029506,22.609878' },
+      { label: 'source', value: '高德 / 腾讯地图' }
+    ],
+    rows: [],
+    actions: [
+      { id: 'html_pin_food', label: '固定到桌面', prompt: '{"index":0,"name":"三津汤包 (深圳北站店)","address":"民治街道深圳北站（深圳北站地铁D口旁）","location":"114.029506,22.609878","distance":"21米"}', variant: 'secondary', kind: 'client' },
+      { id: 'html_open_food_map', label: '导航去', prompt: '{"index":0,"name":"三津汤包 (深圳北站店)","address":"民治街道深圳北站（深圳北站地铁D口旁）","location":"114.029506,22.609878","distance":"21米"}', variant: 'secondary', kind: 'client' }
+    ]
+  }, {
+    id: 'food-1',
+    kind: 'food-result',
+    title: 'N多寿司 (深圳北站店)',
+    subtitle: '餐饮服务; 快餐厅; 快餐厅',
+    status: 'ready',
+    source: '高德',
+    metrics: [
+      { label: 'category', value: '餐饮服务; 快餐厅; 快餐厅' },
+      { label: 'address', value: '民治街道北站社区深圳北站综合交通枢纽东广场C1栋102号' },
+      { label: 'distance', value: '0米' },
+      { label: 'location', value: '114.029506,22.609878' },
+      { label: 'source', value: '高德' }
+    ],
+    rows: [],
+    actions: [
+      { id: 'html_pin_food', label: '固定到桌面', prompt: '{"index":1,"name":"N多寿司 (深圳北站店)","address":"民治街道北站社区深圳北站综合交通枢纽东广场C1栋102号","location":"114.029506,22.609878","distance":"0米"}', variant: 'secondary', kind: 'client' },
+      { id: 'html_open_food_map', label: '导航去', prompt: '{"index":1,"name":"N多寿司 (深圳北站店)","address":"民治街道北站社区深圳北站综合交通枢纽东广场C1栋102号","location":"114.029506,22.609878","distance":"0米"}', variant: 'secondary', kind: 'client' }
+    ]
+  }, {
+    id: 'food-2',
+    kind: 'food-result',
+    title: '麦当劳 (深圳北站店)',
+    subtitle: '麦当劳门店',
+    status: 'ready',
+    source: '麦当劳',
+    metrics: [
+      { label: 'category', value: '麦当劳门店' },
+      { label: 'address', value: '深圳北站商业区' },
+      { label: 'distance', value: '180米' },
+      { label: 'location', value: '114.030000,22.610000' },
+      { label: 'source', value: '麦当劳' }
+    ],
+    rows: [],
+    actions: [
+      { id: 'html_pin_food', label: '固定到桌面', prompt: '{"index":2,"name":"麦当劳 (深圳北站店)","address":"深圳北站商业区","location":"114.030000,22.610000","distance":"180米"}', variant: 'secondary', kind: 'client' },
+      { id: 'html_open_food_map', label: '导航去', prompt: '{"index":2,"name":"麦当劳 (深圳北站店)","address":"深圳北站商业区","location":"114.030000,22.610000","distance":"180米"}', variant: 'secondary', kind: 'client' }
+    ]
+  }, {
+    id: 'food-3',
+    kind: 'food-result',
+    title: '未知坐标小吃档',
+    subtitle: 'provider 未返回坐标',
+    status: 'ready',
+    source: '美团',
+    metrics: [
+      { label: 'category', value: '小吃' },
+      { label: 'address', value: '坂田街道附近' },
+      { label: 'distance', value: '900米' },
+      { label: 'location', value: '' },
+      { label: 'source', value: '美团' }
+    ],
+    rows: [],
+    actions: [
+      { id: 'html_pin_food', label: '固定到桌面', prompt: '{"index":3,"name":"未知坐标小吃档","address":"坂田街道附近","location":"","distance":"900米"}', variant: 'secondary', kind: 'client' },
+      { id: 'html_open_food_map', label: '导航去', prompt: '{"index":3,"name":"未知坐标小吃档","address":"坂田街道附近","location":"","distance":"900米"}', variant: 'secondary', kind: 'client' }
+    ]
+  }];
+  doc.history = [];
+  return doc;
+}
+
+function googleMapsDocumentFixture(): HtmlHomeDocument {
+  const doc = documentFixture();
+  doc.kind = 'generic';
+  doc.title = 'Google Maps 搜索结果';
+  doc.subtitle = 'Google Places API 返回的真实地点';
+  doc.blocks = [{
+    id: 'maps-0',
+    kind: 'generic-tool-result',
+    title: 'Coffee Lab',
+    subtitle: 'Google Places result for: 深圳咖啡',
+    status: 'success',
+    source: 'Google Places API',
+    metrics: [
+      { label: 'source', value: 'Google Places API' },
+      { label: 'toolName', value: 'maps.place.search' }
+    ],
+    rows: [
+      { label: 'Place ID', value: 'place-123' },
+      { label: 'Address', value: '深圳市龙岗区坂田' },
+      { label: 'Map Location', value: '22.609878,114.029506' },
+      { label: 'Maps URL', value: 'https://maps.google.com/?cid=123' }
+    ],
+    actions: [
+      { id: 'maps.open.web', label: '打开 Google Maps', prompt: 'https://maps.google.com/?cid=123', variant: 'secondary', kind: 'client' }
+    ]
+  }];
+  doc.actions = [];
+  return doc;
+}
+
+function mailAggregateDocumentFixture(): HtmlHomeDocument {
+  const doc = documentFixture();
+  doc.kind = 'dynamic-tools';
+  doc.title = '邮箱';
+  doc.subtitle = '聚合展示 Gmail 和 QQ 邮箱';
+  doc.blocks = [{
+    id: 'gmail-1',
+    kind: 'generic-tool-result',
+    title: 'Gmail message',
+    subtitle: 'Gmail thread retrieved.',
+    status: 'success',
+    source: 'Gmail',
+    metrics: [
+      { label: 'source', value: 'Gmail' },
+      { label: 'toolName', value: 'mail.thread' }
+    ],
+    rows: [
+      { label: 'Provider', value: 'gmail' },
+      { label: 'Thread ID', value: 'gmail-thread' }
+    ],
+    actions: []
+  }, {
+    id: 'qq-1',
+    kind: 'generic-tool-result',
+    title: 'QQ message',
+    subtitle: 'QQ Mail thread retrieved.',
+    status: 'success',
+    source: 'QQ Mail',
+    metrics: [
+      { label: 'source', value: 'QQ Mail' },
+      { label: 'toolName', value: 'mail.thread' }
+    ],
+    rows: [
+      { label: 'Provider', value: 'qq' },
+      { label: 'Thread ID', value: 'qq-thread' }
+    ],
+    actions: []
+  }];
+  doc.actions = [];
+  return doc;
+}
+
+function mediaAggregateDocumentFixture(): HtmlHomeDocument {
+  const doc = documentFixture();
+  doc.kind = 'dynamic-tools';
+  doc.title = '媒体视频';
+  doc.subtitle = '聚合展示 YouTube 和 Bilibili';
+  doc.blocks = [{
+    id: 'youtube-1',
+    kind: 'generic-tool-result',
+    title: 'YouTube video',
+    subtitle: 'YouTube result.',
+    status: 'success',
+    source: 'YouTube Data API',
+    metrics: [
+      { label: 'source', value: 'YouTube Data API' },
+      { label: 'toolName', value: 'media.video.search' }
+    ],
+    rows: [
+      { label: 'Video ID', value: 'abc123' },
+      { label: 'Watch URL', value: 'https://www.youtube.com/watch?v=abc123' }
+    ],
+    actions: []
+  }, {
+    id: 'bilibili-1',
+    kind: 'generic-tool-result',
+    title: 'Bilibili video',
+    subtitle: 'Bilibili result.',
+    status: 'success',
+    source: '哔哩哔哩',
+    metrics: [
+      { label: 'source', value: '哔哩哔哩' },
+      { label: 'toolName', value: 'media.video.search' }
+    ],
+    rows: [
+      { label: 'BVID', value: 'BV1h57y6pE5o' },
+      { label: 'Playback URL', value: 'https://www.bilibili.com/video/BV1h57y6pE5o' }
+    ],
+    actions: []
+  }];
+  doc.actions = [];
+  return doc;
+}
+
 export default function htmlHomeRendererTest() {
   describe('htmlHomeRenderer', () => {
     it('returns a full HTML document with document content', 0, () => {
@@ -162,27 +370,167 @@ export default function htmlHomeRendererTest() {
 
     it('keeps travel and food card details collapsed behind source aware expansion hooks', 0, () => {
       const html = renderHtmlHomeDocument(travelFoodCardsDocumentFixture());
-      const resultSectionIndex = html.indexOf('任务结果');
-      const timelineSectionIndex = html.indexOf('执行轨迹');
 
+      expect(html.indexOf('itinerary-shell')).assertLarger(-1);
+      expect(html.indexOf('route-hero')).assertLarger(-1);
+      expect(html.indexOf('route-map')).assertLarger(-1);
+      expect(html.indexOf('font-family: Georgia')).assertLarger(-1);
+      expect(html.indexOf('route-kicker::before')).assertLarger(-1);
+      expect(html.indexOf('journey-tag.train::before')).assertLarger(-1);
+      expect(html.indexOf("journey-tag ' + source")).assertLarger(-1);
+      expect(html.indexOf('travel-controls')).assertLarger(-1);
+      expect(html.indexOf('journey-board')).assertLarger(-1);
+      expect(html.indexOf('journey-card')).assertLarger(-1);
+      expect(html.indexOf('出行方案 · 实时候选')).assertLarger(-1);
       expect(html.indexOf('G123')).assertLarger(-1);
       expect(html.indexOf('麦当劳 科技园店')).assertLarger(-1);
-      expect(resultSectionIndex).assertLarger(-1);
-      expect(timelineSectionIndex).assertEqual(-1);
-      expect(html.indexOf('data-expandable')).assertLarger(-1);
-      expect(html.indexOf('data-source-key')).assertLarger(-1);
+      expect(html.indexOf('html_pin_travel')).assertLarger(-1);
+      expect(html.indexOf('html_open_food_map')).assertLarger(-1);
+      expect(html.indexOf('AIPhoneHome.postAction')).assertLarger(-1);
+      expect(html.indexOf('travel_filter_train')).assertLarger(-1);
+      expect(html.indexOf('travel_filter_flight')).assertLarger(-1);
+      expect(html.indexOf('client_sort_fastest')).assertLarger(-1);
+      expect(html.indexOf('client_filter_available')).assertLarger(-1);
+      expect(html.indexOf('client_show_more')).assertLarger(-1);
+      expect(html.indexOf("state.trainShowMore = !state.trainShowMore")).assertLarger(-1);
+      expect(html.indexOf('data-source="train"')).assertLarger(-1);
+      expect(html.indexOf('data-source="food"')).assertLarger(-1);
+      expect(html.indexOf('data-duration')).assertLarger(-1);
+      expect(html.indexOf('data-availability')).assertLarger(-1);
       expect(html.indexOf('classList.toggle')).assertLarger(-1);
       expect(html.indexOf('expandedKey')).assertLarger(-1);
       expect(html.indexOf('querySelectorAll')).assertLarger(-1);
-      expect(html.indexOf('data-expandable="true"')).assertLarger(-1);
-      expect(html.indexOf('.block:not(.expanded) .details')).assertLarger(-1);
+      expect(html.indexOf('.journey-card:not(.expanded) .journey-detail')).assertLarger(-1);
       expect(html.indexOf("button.textContent = expanded ? '收起' : '展开'")).assertLarger(-1);
-      expect(html.indexOf("add(top, 'button', 'expand-button', '展开')")).assertLarger(-1);
+      expect(html.indexOf("add(top, 'button', 'journey-expand', '展开')")).assertLarger(-1);
       expect(html.indexOf("add(statusWrap, 'button', 'expand-button', '详情')")).assertEqual(-1);
-      expect(html.indexOf("kind === 'generic-tool-result'")).assertLarger(-1);
-      expect(html.indexOf('addPairs(detailHost, block.metrics')).assertLarger(-1);
+      expect(html.indexOf('detailRow(grid')).assertLarger(-1);
+      expect(html.indexOf('function labelText(label)')).assertLarger(-1);
+      expect(html.indexOf("if (raw === 'source') { return '来源'; }")).assertLarger(-1);
       expect(html.indexOf('event.stopPropagation()')).assertLarger(-1);
-      expect(html.indexOf('sourceKey')).assertLarger(-1);
+      expect(html.indexOf('sourceKind')).assertLarger(-1);
+      expect(html.indexOf('Food Field')).assertEqual(-1);
+      expect(html.indexOf('附近餐饮探索')).assertEqual(-1);
+      expect(html.indexOf('ReactDOM')).assertEqual(-1);
+    });
+
+    it('renders food documents with the food scene template and preserves actions', 0, () => {
+      const html = renderHtmlHomeDocument(foodDocumentFixture());
+
+      expect(html.indexOf('editorial-food-shell')).assertLarger(-1);
+      expect(html.indexOf('editorial-cover')).assertLarger(-1);
+      expect(html.indexOf('editorial-tabs')).assertLarger(-1);
+      expect(html.indexOf('editorial-feature')).assertLarger(-1);
+      expect(html.indexOf('photo-1552566626-52f8b828add9')).assertLarger(-1);
+      expect(html.indexOf('editorial-list')).assertLarger(-1);
+      expect(html.indexOf('merchant-avatar')).assertLarger(-1);
+      expect(html.indexOf('merchant-avatar-fallback')).assertLarger(-1);
+      expect(html.indexOf('AVATAR_MCDONALDS')).assertLarger(-1);
+      expect(html.indexOf('AVATAR_KFC')).assertLarger(-1);
+      expect(html.indexOf('AVATAR_TAOBAO')).assertLarger(-1);
+      expect(html.indexOf('AVATAR_AMAP')).assertLarger(-1);
+      expect(html.indexOf('AVATAR_TENCENT')).assertLarger(-1);
+      expect(html.indexOf('AVATAR_BAIDU')).assertLarger(-1);
+      expect(html.indexOf('AVATAR_MEITUAN')).assertLarger(-1);
+      expect(html.indexOf('AVATAR_LUCKIN')).assertLarger(-1);
+      expect(html.indexOf('AVATAR_GOOGLE_MAPS')).assertLarger(-1);
+      expect(html.indexOf('AVATAR_LOCAL')).assertLarger(-1);
+      expect(html.indexOf('function addAvatar(parent, block)')).assertLarger(-1);
+      expect(html.indexOf('addAvatar(head, block)')).assertLarger(-1);
+      expect(html.indexOf('border-radius: 999px')).assertLarger(-1);
+      expect(html.indexOf('今日附近值得吃')).assertLarger(-1);
+      expect(html.indexOf('附近餐饮 · 今日编辑')).assertLarger(-1);
+      expect(html.indexOf('今日编辑')).assertLarger(-1);
+      expect(html.indexOf('高德 / 腾讯地图')).assertLarger(-1);
+      expect(html.indexOf('三津汤包 (深圳北站店)')).assertLarger(-1);
+      expect(html.indexOf('N多寿司 (深圳北站店)')).assertLarger(-1);
+      expect(html.indexOf('麦当劳 (深圳北站店)')).assertLarger(-1);
+      expect(html.indexOf('未知坐标小吃档')).assertLarger(-1);
+      expect(html.indexOf('data-source-key="food-amap"')).assertLarger(-1);
+      expect(html.indexOf('data-source-key="food-local"')).assertLarger(-1);
+      expect(html.indexOf('data-source-key="food-meituan"')).assertLarger(-1);
+      expect(html.indexOf('data-source-key="food-taobao"')).assertLarger(-1);
+      expect(html.indexOf('data-source-key="food-mcd"')).assertLarger(-1);
+      expect(html.indexOf('data-source-key="food-luckin"')).assertLarger(-1);
+      expect(html.indexOf('food-google-maps')).assertLarger(-1);
+      expect(html.indexOf('html_open_food_map')).assertLarger(-1);
+      expect(html.indexOf('html_pin_food')).assertLarger(-1);
+      expect(html.indexOf('导航去')).assertLarger(-1);
+      expect(html.indexOf('固定到桌面')).assertLarger(-1);
+      expect(html.indexOf('AIPhoneHome.postAction')).assertLarger(-1);
+      expect(html.indexOf('food_filter_1km')).assertLarger(-1);
+      expect(html.indexOf("if (id === 'food_filter_1km')")).assertLarger(-1);
+      expect(html.indexOf("state.filter = 'within_1km'")).assertLarger(-1);
+      expect(html.indexOf("if (id === 'food_filter_1km') { state.filter = 'within_1km'; applyFilter(); return true; }")).assertLarger(-1);
+      expect(html.indexOf("if (feature) { feature.style.display = matchesFilter(feature) ? '' : 'none'; }")).assertLarger(-1);
+      expect(html.indexOf("feature.setAttribute('data-search'")).assertLarger(-1);
+      expect(html.indexOf('food_show_more')).assertLarger(-1);
+      expect(html.indexOf('function sourceParts(block)')).assertLarger(-1);
+      expect(html.indexOf("card.setAttribute('data-source-key', sourceKey(block))")).assertLarger(-1);
+      expect(html.indexOf("raw.indexOf('美团')")).assertLarger(-1);
+      expect(html.indexOf("raw.indexOf('麦当劳')")).assertLarger(-1);
+      expect(html.indexOf("id === 'html_open_food_map' ? '导航去' : '固定到桌面'")).assertLarger(-1);
+      expect(html.indexOf('var canNavigate = hasLocation(block)')).assertLarger(-1);
+      expect(html.indexOf('if (!canNavigate) { return false; }')).assertLarger(-1);
+      expect(html.indexOf('setExpanded(key)')).assertLarger(-1);
+      expect(html.indexOf('Food Field')).assertEqual(-1);
+      expect(html.indexOf('附近餐饮探索')).assertEqual(-1);
+      expect(html.indexOf('window.AMap')).assertEqual(-1);
+      expect(html.indexOf('webapi.amap.com')).assertEqual(-1);
+      expect(html.indexOf('ReactDOM')).assertEqual(-1);
+    });
+
+    it('keeps non-food documents on the generic renderer', 0, () => {
+      const html = renderHtmlHomeDocument(documentFixture());
+
+      expect(html.indexOf('food-scene-shell')).assertEqual(-1);
+      expect(html.indexOf('任务结果')).assertLarger(-1);
+      expect(html.indexOf('Project Brief')).assertLarger(-1);
+    });
+
+    it('renders Google Maps result blocks with an in-app map preview', 0, () => {
+      const html = renderHtmlHomeDocument(googleMapsDocumentFixture());
+
+      expect(html.indexOf('google-map-preview')).assertLarger(-1);
+      expect(html.indexOf("text(block && block.kind) === 'generic-tool-result' && text(block && block.source).length > 0")).assertLarger(-1);
+      expect(html.indexOf("url + (url.indexOf('?') >= 0 ? '&' : '?') + 'output=embed'")).assertLarger(-1);
+      expect(html.indexOf('22.609878,114.029506')).assertLarger(-1);
+      expect(html.indexOf('maps.open.web')).assertLarger(-1);
+      expect(html.indexOf('打开 Google Maps')).assertLarger(-1);
+    });
+
+    it('renders Gmail and QQ mail sources with app icons and separate card frames', 0, () => {
+      const html = renderHtmlHomeDocument(mailAggregateDocumentFixture());
+
+      expect(html.indexOf('Gmail message')).assertLarger(-1);
+      expect(html.indexOf('QQ message')).assertLarger(-1);
+      expect(html.indexOf('MAIL_ICON_GMAIL')).assertLarger(-1);
+      expect(html.indexOf('MAIL_ICON_QQ')).assertLarger(-1);
+      expect(html.indexOf('mail-source-icon')).assertLarger(-1);
+      expect(html.indexOf("if (key === 'mail-gmail')")).assertLarger(-1);
+      expect(html.indexOf("if (key === 'mail-qq')")).assertLarger(-1);
+      expect(html.indexOf(".block[data-source-key=\"mail-gmail\"]")).assertLarger(-1);
+      expect(html.indexOf(".block[data-source-key=\"mail-qq\"]")).assertLarger(-1);
+      expect(html.indexOf('border-color: rgba(194, 70, 54, 0.45)')).assertLarger(-1);
+      expect(html.indexOf('border-color: rgba(45, 120, 196, 0.45)')).assertLarger(-1);
+    });
+
+    it('renders media sources with app icons and separate card frames', 0, () => {
+      const html = renderHtmlHomeDocument(mediaAggregateDocumentFixture());
+
+      expect(html.indexOf('YouTube video')).assertLarger(-1);
+      expect(html.indexOf('Bilibili video')).assertLarger(-1);
+      expect(html.indexOf('MEDIA_ICON_YOUTUBE')).assertLarger(-1);
+      expect(html.indexOf('MEDIA_ICON_BILIBILI')).assertLarger(-1);
+      expect(html.indexOf("if (key === 'media-youtube')")).assertLarger(-1);
+      expect(html.indexOf("if (key === 'media-bilibili')")).assertLarger(-1);
+      expect(html.indexOf('data-source-key="media-youtube"')).assertLarger(-1);
+      expect(html.indexOf('data-source-key="media-bilibili"')).assertLarger(-1);
+      expect(html.indexOf("iframe.setAttribute('referrerpolicy', 'origin-when-cross-origin')")).assertLarger(-1);
+      expect(html.indexOf(".block[data-source-key=\"media-youtube\"]")).assertLarger(-1);
+      expect(html.indexOf(".block[data-source-key=\"media-bilibili\"]")).assertLarger(-1);
+      expect(html.indexOf('border-color: rgba(196, 48, 43, 0.45)')).assertLarger(-1);
+      expect(html.indexOf('border-color: rgba(45, 143, 189, 0.45)')).assertLarger(-1);
     });
 
     it('does not auto-render welcome scene and source chips', 0, () => {

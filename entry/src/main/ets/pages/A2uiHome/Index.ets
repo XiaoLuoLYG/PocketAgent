@@ -48,6 +48,7 @@ import { detectSocialAccessibilitySync, detectWechatBundleSync } from '../../mod
 import { readNotificationCaptureArchive, SocialNotificationArchiveRead } from '../../model/SocialNotificationArchive';
 import { AssetCredentialStore } from '../../model/DynamicCredentialStore';
 import { buildSystemFoodNavigationUri } from '../../model/FoodNavigation';
+import { officialMediaVideoPlaybackUrl } from '../../model/MediaVideoToolA2ui';
 import { HomePage } from './components/HomePage';
 import { ConfigPage } from './components/ConfigPage';
 import { createHtmlHomeDocument } from './html/HtmlHomeSnapshot';
@@ -1289,6 +1290,19 @@ struct Index {
     }
     if (action.id === 'gmail.open.web') {
       await this.openExternalUrl(action.prompt.length > 0 ? action.prompt : GMAIL_WEB_URL);
+      return;
+    }
+    if (action.id === 'maps.open.web') {
+      await this.openExternalUrl(action.prompt);
+      return;
+    }
+    if (action.id === 'media.open.web') {
+      const mediaUrl = officialMediaVideoPlaybackUrl(action.prompt);
+      if (mediaUrl.length === 0) {
+        this.logHtmlHomeActionError(action, 'invalid_media_url');
+        return;
+      }
+      await this.openExternalUrl(mediaUrl);
       return;
     }
     if (action.id === 'social_select_message') {

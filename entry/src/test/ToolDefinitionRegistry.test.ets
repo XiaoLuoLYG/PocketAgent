@@ -7,7 +7,9 @@ import {
   isGmailToolId,
   isKnownDomainToolId,
   isLocalAdapterToolId,
+  isMailToolId,
   isMapsToolId,
+  isMediaToolId,
   isYouTubeToolId,
   resolveBackendForTool,
   toolDefinitionForToolId
@@ -49,6 +51,7 @@ export default function toolDefinitionRegistryTest() {
       expect(isKnownDomainToolId('youtube.video.search')).assertTrue();
       expect(isKnownDomainToolId('youtube.mine.playlists')).assertTrue();
       expect(isKnownDomainToolId('youtube.mine.subscriptions')).assertTrue();
+      expect(isKnownDomainToolId('media.video.search')).assertTrue();
       expect(isKnownDomainToolId('youtube.unknown')).assertFalse();
 
       expect(isLocalAdapterToolId('travel.search')).assertTrue();
@@ -57,6 +60,9 @@ export default function toolDefinitionRegistryTest() {
       expect(isGmailToolId('food.search')).assertFalse();
       expect(isYouTubeToolId('youtube.video.search')).assertTrue();
       expect(isYouTubeToolId('gmail.mail.search')).assertFalse();
+      expect(isYouTubeToolId('media.video.search')).assertFalse();
+      expect(isMediaToolId('media.video.search')).assertTrue();
+      expect(isMediaToolId('youtube.video.search')).assertFalse();
     });
 
     it('registers Calendar writes and Maps POI search explicitly', 0, () => {
@@ -97,6 +103,25 @@ export default function toolDefinitionRegistryTest() {
       expect(GMAIL_TOOL_IDS.indexOf('gmail.message.send') >= 0).assertTrue();
     });
 
+    it('registers aggregate mail tools without enabling send', 0, () => {
+      expect(isKnownDomainToolId('mail.search')).assertTrue();
+      expect(isKnownDomainToolId('mail.thread.read')).assertTrue();
+      expect(isKnownDomainToolId('mail.draft.create')).assertTrue();
+      expect(isKnownDomainToolId('mail.message.send')).assertFalse();
+      expect(isMailToolId('mail.search')).assertTrue();
+      expect(isMailToolId('gmail.mail.search')).assertFalse();
+
+      const mailSearch = toolDefinitionForToolId('mail.search');
+      expect(mailSearch !== null).assertTrue();
+      if (mailSearch !== null) {
+        expect(mailSearch.domain).assertEqual('mail');
+        expect(mailSearch.riskLevel).assertEqual('read');
+        expect(mailSearch.backendPriority.indexOf('imap') >= 0).assertTrue();
+        expect(mailSearch.authModes.indexOf('imap_auth') >= 0).assertTrue();
+        expect(mailSearch.a2uiComponent).assertEqual('GenericToolResults');
+      }
+    });
+
     it('keeps YouTube public search separate from OAuth account tools', 0, () => {
       const search = toolDefinitionForToolId('youtube.video.search') as ToolDefinition;
       const playlists = toolDefinitionForToolId('youtube.mine.playlists') as ToolDefinition;
@@ -109,6 +134,19 @@ export default function toolDefinitionRegistryTest() {
       expect(search.a2uiComponent).assertEqual('GenericToolResults');
       expect(playlists.backendPriority.join(',')).assertEqual('oauth_api,web_session');
       expect(playlists.authModes.join(',')).assertEqual('oauth,web_session');
+    });
+
+    it('registers media video aggregation as a read-only local adapter', 0, () => {
+      const media = toolDefinitionForToolId('media.video.search') as ToolDefinition;
+
+      expect(media.domain).assertEqual('media');
+      expect(media.riskLevel).assertEqual('read');
+      expect(media.backendPriority.join(',')).assertEqual('local_adapter');
+      expect(media.authModes.join(',')).assertEqual('provider_key');
+      expect(media.inputSchema).assertEqual('mediaVideoSearchQuery');
+      expect(media.outputSchema).assertEqual('mediaVideos');
+      expect(media.a2uiComponent).assertEqual('GenericToolResults');
+      expect(media.actions[0]).assertEqual('media.open.web');
     });
 
     it('resolves available Gmail backends before returning an auth-needed reason', 0, () => {
@@ -143,6 +181,7 @@ export default function toolDefinitionRegistryTest() {
       expect(fresh[0].backendPriority.join(',')).assertEqual('local_adapter');
       expect(backendLabel('local_adapter')).assertEqual('Local adapter');
       expect(backendLabel('oauth_api')).assertEqual('OAuth API');
+      expect(backendLabel('imap')).assertEqual('IMAP');
       expect(backendLabel('workspace_mcp')).assertEqual('Workspace MCP');
       expect(backendLabel('web_session')).assertEqual('Web session');
       expect(backendLabel('system_intent')).assertEqual('System intent');
