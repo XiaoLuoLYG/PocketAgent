@@ -15,9 +15,6 @@ import {
   A2uiRowGroupsData,
   A2uiRuntimeDataModel,
   A2uiSummaryData,
-  A2uiSocialData,
-  A2uiSocialMessageData,
-  A2uiSocialReplyData,
   A2uiSurfaceState,
   A2uiToolRequestData,
   A2uiTravelOptionData,
@@ -25,6 +22,15 @@ import {
   A2uiTripData,
   emptyA2uiSurface
 } from './A2uiTypes';
+import {
+  emptySocialHub,
+  normalizeSocialHub,
+  normalizeSocialHubConnection,
+  normalizeSocialHubDraft,
+  normalizeSocialHubItem,
+  SocialHubConnectionData,
+  SocialHubItemData
+} from './SocialHubTypes';
 
 function cloneComponents(values: A2uiComponent[]): A2uiComponent[] {
   const next: A2uiComponent[] = [];
@@ -77,7 +83,6 @@ function emptyDataModel(): A2uiRuntimeDataModel {
     flights: [],
     travelOptions: [],
     foods: [],
-    social: emptySocial(),
     thoughts: [],
     summary: {
       text: '',
@@ -96,15 +101,8 @@ function emptyDataModel(): A2uiRuntimeDataModel {
       actionId: ''
     },
     dynamicToolConnect: emptyDynamicToolConnect(),
-    genericToolResults: []
-  };
-}
-
-function emptySocial(): A2uiSocialData {
-  return {
-    messages: [],
-    replies: [],
-    diagnostics: []
+    genericToolResults: [],
+    socialHub: emptySocialHub()
   };
 }
 
@@ -380,17 +378,6 @@ function normalizeRowGroups(parsed: A2uiRuntimeDataModel, fallback: A2uiRowGroup
   };
 }
 
-function normalizeSocial(parsed: A2uiRuntimeDataModel, fallback: A2uiSocialData): A2uiSocialData {
-  if (parsed.social === undefined || parsed.social === null) {
-    return fallback;
-  }
-  return {
-    messages: Array.isArray(parsed.social.messages) ? parsed.social.messages : fallback.messages,
-    replies: Array.isArray(parsed.social.replies) ? parsed.social.replies : fallback.replies,
-    diagnostics: Array.isArray(parsed.social.diagnostics) ? parsed.social.diagnostics : fallback.diagnostics
-  };
-}
-
 function parseDataModel(json: string): A2uiRuntimeDataModel {
   const fallback = emptyDataModel();
   try {
@@ -401,7 +388,6 @@ function parseDataModel(json: string): A2uiRuntimeDataModel {
       flights: Array.isArray(parsed.flights) ? parsed.flights : fallback.flights,
       travelOptions: Array.isArray(parsed.travelOptions) ? parsed.travelOptions : fallback.travelOptions,
       foods: Array.isArray(parsed.foods) ? parsed.foods : fallback.foods,
-      social: normalizeSocial(parsed, fallback.social),
       thoughts: Array.isArray(parsed.thoughts) ? parsed.thoughts : fallback.thoughts,
       summary: parsed.summary === undefined || parsed.summary === null ? fallback.summary : parsed.summary,
       trip: parsed.trip === undefined || parsed.trip === null ? fallback.trip : {
@@ -412,6 +398,7 @@ function parseDataModel(json: string): A2uiRuntimeDataModel {
       toolRequest: normalizeToolRequest(parsed, fallback.toolRequest),
       dynamicToolConnect: normalizeDynamicToolConnect(parsed, fallback.dynamicToolConnect),
       genericToolResults: normalizeGenericToolResults(parsed, fallback.genericToolResults),
+      socialHub: normalizeSocialHub(parsed.socialHub, fallback.socialHub),
       toolRequests: Array.isArray(parsed.toolRequests) ? parsed.toolRequests : []
     };
   } catch (_error) {
@@ -494,14 +481,6 @@ function setKnownDataPath(model: A2uiRuntimeDataModel, path: string, value: A2ui
     next.travelOptions = value as A2uiTravelOptionData[];
   } else if (path === '/foods') {
     next.foods = value as A2uiFoodData[];
-  } else if (path === '/social') {
-    next.social = value as A2uiSocialData;
-  } else if (path === '/social/messages') {
-    next.social.messages = value as A2uiSocialMessageData[];
-  } else if (path === '/social/replies') {
-    next.social.replies = value as A2uiSocialReplyData[];
-  } else if (path === '/social/diagnostics') {
-    next.social.diagnostics = labelRowsFromDataValue(value);
   } else if (path === '/thoughts') {
     const incoming = value as string[];
     const existingJoined = next.thoughts.join('');
@@ -542,6 +521,28 @@ function setKnownDataPath(model: A2uiRuntimeDataModel, path: string, value: A2ui
     next.dynamicToolConnect = value as A2uiDynamicToolConnectData;
   } else if (path === '/genericToolResults') {
     next.genericToolResults = value as A2uiGenericToolResultData[];
+  } else if (path === '/socialHub') {
+    next.socialHub = normalizeSocialHub(value as Object, next.socialHub);
+  } else if (path === '/socialHub/items') {
+    const items: SocialHubItemData[] = [];
+    if (Array.isArray(value)) {
+      (value as Object[]).forEach((item: Object) => {
+        items.push(normalizeSocialHubItem(item));
+      });
+    }
+    next.socialHub.items = items;
+  } else if (path === '/socialHub/selected') {
+    next.socialHub.selected = normalizeSocialHubItem(value as Object);
+  } else if (path === '/socialHub/draft') {
+    next.socialHub.draft = normalizeSocialHubDraft(value as Object);
+  } else if (path === '/socialHub/connections') {
+    const connections: SocialHubConnectionData[] = [];
+    if (Array.isArray(value)) {
+      (value as Object[]).forEach((connection: Object) => {
+        connections.push(normalizeSocialHubConnection(connection));
+      });
+    }
+    next.socialHub.connections = connections;
   } else if (path === '/toolRequests') {
     const requests = value as A2uiToolRequestData[];
     next.toolRequests = requests;

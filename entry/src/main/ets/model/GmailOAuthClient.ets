@@ -396,7 +396,31 @@ function tokenResponseSummary(response: GoogleOAuthTokenResponse): string {
     ' scopeChars=' + textOf(response.scope).length.toString();
 }
 
-async function postGoogleTokenForm(body: string): Promise<GoogleOAuthTokenResponse> {
+function describeTokenRequestError(error: Error | Object | string | number | boolean | null | undefined): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (typeof error === 'number' || typeof error === 'boolean') {
+    return error.toString();
+  }
+  const json = JSON.stringify(error);
+  return json.length > 0 && json !== '{}' ? json : String(error);
+}
+
+function isTransientTokenRequestError(error: Error | Object | string | number | boolean | null | undefined): boolean {
+  const message = describeTokenRequestError(error);
+  return message.indexOf('Operation timeout') >= 0 || message.indexOf('2300028') >= 0 ||
+    message.indexOf('Internal error') >= 0 || message.indexOf('2300999') >= 0;
+}
+
+async function postGoogleTokenFormOnce(
+  body: string,
+  connectTimeoutMs: number,
+  readTimeoutMs: number
+): Promise<GoogleOAuthTokenResponse> {
   const request = http.createHttp();
   try {
     const response = await request.request(GOOGLE_OAUTH_TOKEN_URL, {
@@ -406,8 +430,8 @@ async function postGoogleTokenForm(body: string): Promise<GoogleOAuthTokenRespon
         'Accept': 'application/json'
       },
       extraData: body,
-      connectTimeout: 10000,
-      readTimeout: 20000
+      connectTimeout: connectTimeoutMs,
+      readTimeout: readTimeoutMs
     });
     const text = responseText(response.result);
     const payload = JSON.parse(text) as GoogleOAuthTokenResponse;
@@ -426,6 +450,25 @@ async function postGoogleTokenForm(body: string): Promise<GoogleOAuthTokenRespon
   } finally {
     request.destroy();
   }
+}
+
+async function postGoogleTokenForm(body: string): Promise<GoogleOAuthTokenResponse> {
+  const connectTimeouts: number[] = [10000, 20000];
+  const readTimeouts: number[] = [20000, 30000];
+  let lastError = '';
+  for (let attempt = 0; attempt < connectTimeouts.length; attempt++) {
+    try {
+      return await postGoogleTokenFormOnce(body, connectTimeouts[attempt], readTimeouts[attempt]);
+    } catch (error) {
+      lastError = describeTokenRequestError(error);
+      if (!isTransientTokenRequestError(error) || attempt >= connectTimeouts.length - 1) {
+        throw new Error(lastError);
+      }
+      aiLogInfo('[AIPhone][GmailOAuthTokenRetry] attempt=' + (attempt + 2).toString() +
+        ' reason=' + lastError.substring(0, 160));
+    }
+  }
+  throw new Error(lastError);
 }
 
 export async function exchangeGmailOAuthCode(

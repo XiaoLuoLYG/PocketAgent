@@ -75,6 +75,18 @@ export function inputTextAfterPromptSubmit(current: string): string {
   return current;
 }
 
+export function voiceInputTextAfterRecognition(current: string, recognized: string): string {
+  const next = recognized.trim();
+  if (next.length === 0) {
+    return current;
+  }
+  const draft = current.trim();
+  if (draft.length === 0) {
+    return next;
+  }
+  return draft + ' ' + next;
+}
+
 export function connectionStatusLabel(status: string): string {
   if (status === 'checking') {
     return '检查中';

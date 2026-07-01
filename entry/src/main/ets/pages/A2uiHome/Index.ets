@@ -3,20 +3,18 @@ import router from '@ohos.router';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { formBindingData, formProvider } from '@kit.FormKit';
-import { notificationExtensionSubscription } from '@kit.NotificationKit';
 import {
-  A2UI_COMPONENT_SOCIAL_INBOX,
+  A2UI_COMPONENT_SOCIAL_HUB,
   A2UI_COMPONENT_SURFACE_ROOT,
   A2uiAction,
   A2uiCallResult,
   A2uiComponent,
+  A2uiDataValue,
   A2uiDynamicToolConnectData,
   A2uiFlightData,
   A2uiFoodData,
   A2uiMessage,
   A2uiRuntimeDataModel,
-  A2uiSocialMessageData,
-  A2uiSocialReplyData,
   A2uiSurfaceState,
   A2uiTrainData,
   A2uiTravelOptionData
@@ -24,6 +22,12 @@ import {
 import { A2uiStreamMeta, callLocalModel, modelThinkCloseSeen } from '../../model/LocalModelClient';
 import { GMAIL_MCP_AUTH_SETUP_URL, GMAIL_WEB_URL, GOOGLE_CALENDAR_WEB_URL, GOOGLE_OAUTH_SETUP_URL } from '../../model/GmailToolA2ui';
 import { A2uiSurfaceStore, createSeedA2uiSurface } from '../../model/A2uiSurfaceStore';
+import {
+  emptySocialHubDraft,
+  SocialHubConnectionData,
+  SocialHubDraftData,
+  SocialHubItemData
+} from '../../model/SocialHubTypes';
 import { aiLogError, aiLogInfo } from '../../model/AiphoneLogger';
 import { callToolGateway, configureLocalToolDebugConfig, defaultToolGatewayUrl, isRegisteredToolId, prepareGmailOAuthAuthorizationUrl, prepareGoogleOAuthAuthorizationUrl } from '../../model/ToolGatewayClient';
 import {
@@ -36,19 +40,10 @@ import {
   navigationCardSnapshotFromTrainOption,
   navigationCardSnapshotFromTravelOption
 } from '../../model/NavigationCardSnapshot';
-import {
-  AccessibilityIngestProvider,
-  NotificationIngestProvider,
-  SocialMessageStore,
-  WechatReplyAutomation,
-  buildSocialDiagnosticsRows,
-  probeSocialCapabilities
-} from '../../model/SocialBridge';
-import { detectSocialAccessibilitySync, detectWechatBundleSync } from '../../model/SocialCapabilityProbe';
-import { readNotificationCaptureArchive, SocialNotificationArchiveRead } from '../../model/SocialNotificationArchive';
 import { AssetCredentialStore } from '../../model/DynamicCredentialStore';
 import { buildSystemFoodNavigationUri } from '../../model/FoodNavigation';
 import { officialMediaVideoPlaybackUrl } from '../../model/MediaVideoToolA2ui';
+import { startVoiceInputSession, VoiceInputResult, VoiceInputSession } from '../../model/VoiceInputBridge';
 import { HomePage } from './components/HomePage';
 import { ConfigPage } from './components/ConfigPage';
 import { createHtmlHomeDocument } from './html/HtmlHomeSnapshot';
@@ -67,7 +62,8 @@ import {
   shouldApplySurfaceUpdate,
   shouldShowQueryPendingSurface,
   shouldShowWelcome,
-  updateConnectionPanelState
+  updateConnectionPanelState,
+  voiceInputTextAfterRecognition
 } from './state/A2uiHomeState';
 import { A2uiHomeResolvedToolRequest, resolveA2uiHomeToolRequest } from './render/A2uiHomeToolRequest';
 
@@ -78,9 +74,6 @@ const initialSurface: A2uiSurfaceState = createSeedA2uiSurface();
 const LOG_SNIPPET_LIMIT: number = 1200;
 const DEFAULT_INPUT_PLACEHOLDER: string = '告诉 Appless Phone 你想完成什么';
 const TRAIN_EDIT_QUERY_PLACEHOLDER: string = '请输入具体车站和时间，如：深圳北 18:00 后 到香港西九龙';
-const SOCIAL_REPLY_UNAVAILABLE: string = '真实微信发送器未接入或当前设备未开放自动发送能力';
-const SOCIAL_NOTIFICATION_UNSUPPORTED_HINT: string = '当前 PC 系统未向三方应用开放通知内容订阅；系统开放后会显示真实微信新消息';
-const SOCIAL_MESSAGE_STORE: SocialMessageStore = new SocialMessageStore();
 const NAVIGATION_CARD_TTL_MS: number = 60 * 60 * 1000;
 
 type HtmlActionValue = Object | string | number | boolean | null | undefined;
@@ -149,18 +142,17 @@ struct Index {
   @State surfaceRenderTick: number = 0;
   @State isAwaitingFirstSurface: boolean = false;
   @State inputText: string = '';
+  @State isVoiceListening: boolean = false;
+  @State voiceInputMessage: string = '';
   @State inputPlaceholder: string = DEFAULT_INPUT_PLACEHOLDER;
   @State messages: A2uiMessage[] = [];
-  @State selectedSocialMessageId: string = '';
-  @State selectedSocialConversationTitle: string = '';
-  @State socialLastCapture: string = '无真实消息';
-  @State socialLastSend: string = '未发送';
-  @State hasSocialReturnSurface: boolean = false;
-  @State socialReturnSurface: A2uiSurfaceState = initialSurface;
-  @State socialReturnInputText: string = '';
-  @State socialReturnInputPlaceholder: string = DEFAULT_INPUT_PLACEHOLDER;
   private htmlHomeCacheKey: string = '';
   private htmlHomeCacheHtml: string = '';
+  private voiceSession: VoiceInputSession | null = null;
+  private voiceSessionSeq: number = 0;
+  private voiceBaseInputText: string = '';
+  private voiceStopRequested: boolean = false;
+  private voiceCompletionHandled: boolean = false;
 
   private getSettings(): LocalModelSettings {
     return {
@@ -246,56 +238,6 @@ struct Index {
     }
   }
 
-  private emptySocialModel(): A2uiRuntimeDataModel {
-    return {
-      rows: [],
-      trains: [],
-      flights: [],
-      travelOptions: [],
-      foods: [],
-      social: {
-        messages: [],
-        replies: [],
-        diagnostics: []
-      },
-      thoughts: [],
-      summary: {
-        text: '',
-        toolName: '',
-        dataLabel: '',
-        count: 0
-      },
-      trip: {
-        rows: []
-      },
-      rowGroups: {
-        train: [],
-        flight: [],
-        food: []
-      },
-      form: {},
-      toolRequest: {
-        toolId: '',
-        prompt: '',
-        actionId: ''
-      },
-      dynamicToolConnect: {
-        toolId: '',
-        prompt: '',
-        manifestId: '',
-        displayName: '',
-        sourceUrl: '',
-        status: '',
-        message: '',
-        credentialName: '',
-        credentialRef: '',
-        registrationUrl: '',
-        actions: []
-      },
-      genericToolResults: []
-    };
-  }
-
   private currentHtmlHomeDocument(): HtmlHomeDocument {
     if (shouldShowWelcome(this.isBusy, this.messages.length, this.currentSurface) ||
       shouldShowQueryPendingSurface(this.isBusy, this.isAwaitingFirstSurface)) {
@@ -359,6 +301,260 @@ struct Index {
       ' renderTick=' + this.surfaceRenderTick.toString());
   }
 
+  private defaultSocialHubConnections(): SocialHubConnectionData[] {
+    return [
+      {
+        platform: 'x',
+        status: 'needs_auth',
+        displayName: 'X',
+        accountId: '',
+        message: '等待授权接入'
+      },
+      {
+        platform: 'slack',
+        status: 'needs_auth',
+        displayName: 'Slack',
+        accountId: '',
+        message: '等待授权接入'
+      },
+      {
+        platform: 'wecom',
+        status: 'needs_auth',
+        displayName: '企业微信',
+        accountId: '',
+        message: '等待授权接入'
+      }
+    ];
+  }
+
+  private createSocialHubSurface(): A2uiSurfaceState {
+    const store = new A2uiSurfaceStore();
+    store.apply({
+      version: 'v0.9.1',
+      createSurface: {
+        surfaceId: 'surface_social_hub',
+        root: 'root',
+        title: 'SocialHub',
+        intent: 'social',
+        status: 'ready',
+        sendDataModel: true
+      }
+    });
+    store.apply({
+      version: 'v0.9.1',
+      updateComponents: {
+        surfaceId: 'surface_social_hub',
+        components: [
+          {
+            id: 'root',
+            component: A2UI_COMPONENT_SURFACE_ROOT,
+            child: 'socialHub',
+            title: 'SocialHub',
+            status: 'ready'
+          },
+          {
+            id: 'socialHub',
+            component: A2UI_COMPONENT_SOCIAL_HUB,
+            title: 'SocialHub',
+            status: 'ready',
+            dataPath: '/socialHub/items'
+          }
+        ]
+      }
+    });
+    store.apply({
+      version: 'v0.9.1',
+      updateDataModel: {
+        surfaceId: 'surface_social_hub',
+        path: '/socialHub/connections',
+        value: this.defaultSocialHubConnections()
+      }
+    });
+    return store.getSurface();
+  }
+
+  private openSocialHub(): void {
+    this.showHistory = false;
+    this.isBusy = false;
+    this.isAwaitingFirstSurface = false;
+    this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
+    this.applySurface(this.createSocialHubSurface());
+    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+      ok: true,
+      status: 'ready',
+      message: 'SocialHub 已打开；等待真实社交数据接入。',
+      requestDebug: this.lastModelRequest,
+      assistantDebug: this.lastModelOutput,
+      error: ''
+    }));
+  }
+
+  private applySocialHubData(path: string, value: A2uiDataValue): void {
+    const store = new A2uiSurfaceStore();
+    store.seed(this.currentSurface);
+    const result = store.apply({
+      version: 'v0.9.1',
+      updateDataModel: {
+        surfaceId: this.currentSurface.surfaceId,
+        path: path,
+        value: value
+      }
+    });
+    if (!result.ok) {
+      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
+        ok: false,
+        status: 'error',
+        message: 'SocialHub 本地状态更新失败。',
+        requestDebug: this.lastModelRequest,
+        assistantDebug: this.lastModelOutput,
+        error: result.error
+      }));
+      return;
+    }
+    this.applySurface(store.getSurface());
+  }
+
+  private currentSocialHubItems(): SocialHubItemData[] {
+    const model = this.parsedDataModel();
+    if (model === null || model.socialHub === undefined || model.socialHub === null) {
+      return [];
+    }
+    return Array.isArray(model.socialHub.items) ? model.socialHub.items : [];
+  }
+
+  private currentSocialHubSelected(): SocialHubItemData | null {
+    const model = this.parsedDataModel();
+    if (model === null || model.socialHub === undefined || model.socialHub === null ||
+      model.socialHub.selected === undefined || model.socialHub.selected === null ||
+      model.socialHub.selected.id.length === 0) {
+      return null;
+    }
+    return model.socialHub.selected;
+  }
+
+  private findSocialHubItem(itemId: string): SocialHubItemData | null {
+    const items = this.currentSocialHubItems();
+    for (let index = 0; index < items.length; index++) {
+      if (items[index].id === itemId) {
+        return items[index];
+      }
+    }
+    return null;
+  }
+
+  private findSocialHubItemByUrl(url: string): SocialHubItemData | null {
+    if (url.length === 0) {
+      return null;
+    }
+    const items = this.currentSocialHubItems();
+    for (let index = 0; index < items.length; index++) {
+      if (items[index].url === url) {
+        return items[index];
+      }
+    }
+    return null;
+  }
+
+  private hasSocialHubComponent(): boolean {
+    for (let index = 0; index < this.currentSurface.components.length; index++) {
+      if (this.currentSurface.components[index].component === A2UI_COMPONENT_SOCIAL_HUB) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private isCurrentSocialHubSurface(): boolean {
+    const model = this.parsedDataModel();
+    return this.currentSurface.intent === 'social' &&
+      this.hasSocialHubComponent() &&
+      model !== null &&
+      model.socialHub !== undefined &&
+      model.socialHub !== null &&
+      Array.isArray(model.socialHub.items);
+  }
+
+  private socialHubDraftError(itemId: string, message: string): SocialHubDraftData {
+    const selected = this.currentSocialHubSelected();
+    return {
+      itemId: itemId,
+      platform: selected === null ? 'unknown' : selected.platform,
+      text: '',
+      status: 'error',
+      error: message,
+      localOnly: true,
+      sent: false
+    };
+  }
+
+  private socialHubDraftSnippet(text: string): string {
+    const trimmed = text.trim();
+    if (trimmed.length <= 80) {
+      return trimmed;
+    }
+    return trimmed.substring(0, 80) + '...';
+  }
+
+  private selectSocialHubItem(action: A2uiAction): void {
+    const item = this.findSocialHubItem(action.prompt);
+    if (item === null) {
+      this.applySocialHubData('/socialHub/draft',
+        this.socialHubDraftError(action.prompt, '未找到这条真实消息，无法选择。'));
+      return;
+    }
+    this.applySocialHubData('/socialHub/selected', item);
+  }
+
+  private draftSocialHubReply(action: A2uiAction): void {
+    const selected = this.currentSocialHubSelected();
+    const itemId = action.prompt.length > 0 ? action.prompt : (selected === null ? '' : selected.id);
+    if (itemId.length === 0) {
+      this.applySocialHubData('/socialHub/draft',
+        this.socialHubDraftError('', '请先选择一条真实消息，再生成草稿。'));
+      return;
+    }
+    const item = this.findSocialHubItem(itemId);
+    if (item === null) {
+      this.applySocialHubData('/socialHub/draft',
+        this.socialHubDraftError(itemId, '未找到这条真实消息，不能生成草稿。'));
+      return;
+    }
+    const sourceText = item.text.trim();
+    if (sourceText.length === 0) {
+      this.applySocialHubData('/socialHub/draft',
+        this.socialHubDraftError(itemId, '选中消息没有正文，不能生成本地草稿预览。'));
+      return;
+    }
+    this.applySocialHubData('/socialHub/selected', item);
+    const draft: SocialHubDraftData = emptySocialHubDraft();
+    draft.itemId = item.id;
+    draft.platform = item.platform;
+    draft.status = 'draft';
+    draft.text = '本地草稿预览（未发送）：\n\n我会基于这条真实消息回复：' + this.socialHubDraftSnippet(sourceText);
+    this.applySocialHubData('/socialHub/draft', draft);
+  }
+
+  private async openSocialHubSource(action: A2uiAction): Promise<void> {
+    const item = this.findSocialHubItemByUrl(action.prompt);
+    if (item === null) {
+      this.applySocialHubData('/socialHub/draft',
+        this.socialHubDraftError('', '这条消息没有匹配的来源 URL。'));
+      return;
+    }
+    await this.openExternalUrl(item.url);
+  }
+
+  private isSocialHubActionId(action: A2uiAction): boolean {
+    return action.kind === 'client' &&
+      (action.id === 'social_hub_select_item' ||
+        action.id === 'social_hub_draft_reply' ||
+        action.id === 'social_hub_open_source');
+  }
+
+  private isSocialHubClientAction(action: A2uiAction): boolean {
+    return this.isSocialHubActionId(action) && this.isCurrentSocialHubSurface();
+  }
+
   private resetCurrentSession(): void {
     this.showHistory = false;
     this.isBusy = false;
@@ -368,12 +564,6 @@ struct Index {
     this.surfaceRenderTick = this.surfaceRenderTick + 1;
     this.inputText = '';
     this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
-    this.selectedSocialMessageId = '';
-    this.selectedSocialConversationTitle = '';
-    this.hasSocialReturnSurface = false;
-    this.socialReturnSurface = this.surfaceSnapshot(createSeedA2uiSurface());
-    this.socialReturnInputText = '';
-    this.socialReturnInputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
     this.resetPanelState();
   }
 
@@ -405,198 +595,12 @@ struct Index {
     this.messages = next;
   }
 
-  private shouldOpenSocialPrompt(prompt: string): boolean {
-    return prompt.indexOf('社交') >= 0 ||
-      prompt.indexOf('微信消息') >= 0 ||
-      prompt.indexOf('微信收件箱') >= 0 ||
-      prompt.indexOf('打开微信') >= 0;
-  }
-
-  private currentSocialMessages(): A2uiSocialMessageData[] {
-    const model = this.parsedDataModel();
-    if (model === null || model.social === undefined || model.social === null || !Array.isArray(model.social.messages)) {
-      return [];
-    }
-    return model.social.messages;
-  }
-
-  private currentSocialReplies(): A2uiSocialReplyData[] {
-    const model = this.parsedDataModel();
-    if (model === null || model.social === undefined || model.social === null || !Array.isArray(model.social.replies)) {
-      return [];
-    }
-    return model.social.replies;
-  }
-
   private currentDynamicToolConnect(): A2uiDynamicToolConnectData | null {
     const model = this.parsedDataModel();
     if (model === null || model.dynamicToolConnect === undefined || model.dynamicToolConnect === null) {
       return null;
     }
     return model.dynamicToolConnect;
-  }
-
-  private selectedSocialMessage(): A2uiSocialMessageData | null {
-    const messages = this.currentSocialMessages();
-    for (let index = 0; index < messages.length; index++) {
-      if (messages[index].id === this.selectedSocialMessageId) {
-        return messages[index];
-      }
-    }
-    return null;
-  }
-
-  private isSocialReplyMode(): boolean {
-    return this.selectedSocialMessageId.length > 0 && this.currentSurface.intent === 'social';
-  }
-
-  private replaceCurrentSocialData(messages: A2uiSocialMessageData[], replies: A2uiSocialReplyData[]): void {
-    let model = this.parsedDataModel();
-    if (model === null) {
-      model = this.emptySocialModel();
-    }
-    if (model.social === undefined || model.social === null) {
-      model.social = {
-        messages: [],
-        replies: [],
-        diagnostics: []
-      };
-    }
-    model.social.messages = messages;
-    model.social.replies = replies;
-    const nextSurface = this.surfaceSnapshot(this.currentSurface);
-    nextSurface.dataModelJson = JSON.stringify(model);
-    nextSurface.sequence = nextSurface.sequence + 1;
-    this.applySurface(nextSurface);
-  }
-
-  private markSocialMessageStatus(messageId: string, status: string): A2uiSocialMessageData[] {
-    const messages = this.currentSocialMessages();
-    const next: A2uiSocialMessageData[] = [];
-    for (let index = 0; index < messages.length; index++) {
-      const item = messages[index];
-      next.push({
-        id: item.id,
-        platform: item.platform,
-        conversationId: item.conversationId,
-        conversationTitle: item.conversationTitle,
-        senderName: item.senderName,
-        preview: item.preview,
-        receivedAt: item.receivedAt,
-        source: item.source,
-        status: item.id === messageId ? status : item.status
-      });
-    }
-    return next;
-  }
-
-  private selectSocialMessageById(messageId: string): void {
-    const messages = this.currentSocialMessages();
-    for (let index = 0; index < messages.length; index++) {
-      if (messages[index].id === messageId) {
-        const message = messages[index];
-        this.selectedSocialMessageId = message.id;
-        this.selectedSocialConversationTitle = message.conversationTitle;
-        this.inputText = '';
-        this.inputPlaceholder = '回复 微信 · ' + message.conversationTitle;
-        this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-          ok: true,
-          status: 'ready',
-          message: '正在回复 ' + message.conversationTitle,
-          requestDebug: this.lastModelRequest,
-          assistantDebug: this.lastModelOutput,
-          error: ''
-        }));
-        this.replaceCurrentSocialData(this.markSocialMessageStatus(message.id, 'selected'), this.currentSocialReplies());
-        return;
-      }
-    }
-    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-      ok: false,
-      status: 'error',
-      message: '没有找到可回复的微信消息。',
-      requestDebug: this.lastModelRequest,
-      assistantDebug: this.lastModelOutput,
-      error: 'social message not found: ' + messageId
-    }));
-  }
-
-  private readSocialNotificationArchive(): SocialNotificationArchiveRead {
-    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    return readNotificationCaptureArchive(context);
-  }
-
-  private rememberSocialReturnSurface(): void {
-    if (this.currentSurface.intent === 'social') {
-      return;
-    }
-    this.socialReturnSurface = this.surfaceSnapshot(this.currentSurface);
-    this.socialReturnInputText = this.inputText;
-    this.socialReturnInputPlaceholder = this.inputPlaceholder;
-    this.hasSocialReturnSurface = true;
-  }
-
-  private restoreSocialReturnSurface(): void {
-    if (!this.hasSocialReturnSurface) {
-      return;
-    }
-    const surface = this.surfaceSnapshot(this.socialReturnSurface);
-    this.selectedSocialMessageId = '';
-    this.selectedSocialConversationTitle = '';
-    this.inputText = this.socialReturnInputText;
-    this.inputPlaceholder = this.socialReturnInputPlaceholder.length > 0 ? this.socialReturnInputPlaceholder : DEFAULT_INPUT_PLACEHOLDER;
-    this.hasSocialReturnSurface = false;
-    this.applySurface(surface);
-    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-      ok: true,
-      status: 'ready',
-      message: '已返回上一页。',
-      requestDebug: this.lastModelRequest,
-      assistantDebug: this.lastModelOutput,
-      error: ''
-    }));
-  }
-
-  private handleSocialNavigation(): void {
-    if (this.currentSurface.intent === 'social' && this.hasSocialReturnSurface) {
-      this.restoreSocialReturnSurface();
-      return;
-    }
-    this.openSocialInbox();
-  }
-
-  private async openSocialNotificationSubscriptionSettings(): Promise<void> {
-    try {
-      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      await notificationExtensionSubscription.openSubscriptionSettings(context);
-      this.socialLastCapture = '已请求系统通知订阅授权';
-      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-        ok: true,
-        status: 'ready',
-        message: '已打开通知订阅授权。',
-        requestDebug: this.lastModelRequest,
-        assistantDebug: this.lastModelOutput,
-        error: ''
-      }));
-      aiLogInfo('[AIPhone][SocialNotificationSettings] opened');
-    } catch (error) {
-      const businessError = error as BusinessError;
-      const code = businessError.code === undefined || businessError.code === null ? 'unknown' : businessError.code.toString();
-      const message = code === '201' ?
-        '通知订阅不可用：权限被拒绝，或当前 PC 系统未向三方应用开放通知内容订阅' :
-        ('通知订阅授权页打开失败：' + businessError.message);
-      this.socialLastCapture = message;
-      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-        ok: false,
-        status: 'error',
-        message: code === '201' ? '当前设备不支持通知订阅桥接。' : '通知授权不可用。',
-        requestDebug: this.lastModelRequest,
-        assistantDebug: this.lastModelOutput,
-        error: message
-      }));
-      aiLogError('[AIPhone][SocialNotificationSettingsError] code=' + code +
-        ' message=' + businessError.message);
-    }
   }
 
   private async openExternalUrl(url: string): Promise<void> {
@@ -625,188 +629,6 @@ struct Index {
     }
   }
 
-  private openSocialInbox(): void {
-    this.rememberSocialReturnSurface();
-    const archive = this.readSocialNotificationArchive();
-    const wechatProbe = detectWechatBundleSync();
-    const accessibilityProbe = detectSocialAccessibilitySync();
-    aiLogInfo('[AIPhone][SocialWechatProbe] installed=' + wechatProbe.installed.toString() +
-      ' bundle=' + wechatProbe.bundleName +
-      ' detail=' + wechatProbe.detail);
-    aiLogInfo('[AIPhone][SocialAccessibilityProbe] available=' + accessibilityProbe.available.toString() +
-      ' detail=' + accessibilityProbe.detail);
-    const notificationCandidates = archive.ok ? archive.candidates.filter(candidate => candidate.source === 'notification') : [];
-    const accessibilityCandidates = archive.ok ? archive.candidates.filter(candidate => candidate.source === 'accessibility') : [];
-    const notificationUnavailable = archive.ok ?
-      SOCIAL_NOTIFICATION_UNSUPPORTED_HINT :
-      ('通知中心缓存读取失败：' + archive.error);
-    const notification = new NotificationIngestProvider(notificationCandidates.length > 0, notificationUnavailable, notificationCandidates).capture();
-    const accessibilityUnavailable = archive.ok ? accessibilityProbe.detail : ('辅助缓存读取失败：' + archive.error);
-    const accessibility = new AccessibilityIngestProvider(accessibilityProbe.available || accessibilityCandidates.length > 0,
-      accessibilityUnavailable, accessibilityCandidates).capture();
-    this.socialLastCapture = notification.ok ? '通知中心返回 ' + notification.messages.length.toString() + ' 条' :
-      (accessibility.ok ? '辅助捕获返回 ' + accessibility.messages.length.toString() + ' 条' : '无真实消息：' + notification.error + '；' + accessibility.error);
-    notification.messages.forEach(candidate => {
-      SOCIAL_MESSAGE_STORE.ingest(candidate);
-    });
-    accessibility.messages.forEach(candidate => {
-      SOCIAL_MESSAGE_STORE.ingest(candidate);
-    });
-    const capabilities = probeSocialCapabilities({
-      notificationBridgeAvailable: notification.ok,
-      notificationBridgeDetail: notification.ok ? '已读取真实通知缓存' : notification.error,
-      accessibilityAvailable: accessibility.ok,
-      accessibilityDetail: accessibility.ok ? accessibilityProbe.detail + '；缓存 ' + accessibility.messages.length.toString() + ' 条' : accessibility.error,
-      wechatInstalled: wechatProbe.installed || notification.messages.length > 0 || accessibility.messages.length > 0,
-      wechatBundleName: wechatProbe.bundleName,
-      wechatDetectionDetail: wechatProbe.detail,
-      lastCapture: this.socialLastCapture,
-      lastSend: this.socialLastSend
-    });
-    const store = new A2uiSurfaceStore();
-    store.apply({
-      version: 'v0.9.1',
-      createSurface: {
-        surfaceId: 'surface_social',
-        root: 'root',
-        title: '社交收件箱',
-        intent: 'social',
-        status: 'ready',
-        sendDataModel: true
-      }
-    });
-    store.apply({
-      version: 'v0.9.1',
-      updateComponents: {
-        surfaceId: 'surface_social',
-        components: [
-          {
-            id: 'root',
-            component: A2UI_COMPONENT_SURFACE_ROOT,
-            child: 'social_inbox',
-            title: '社交收件箱',
-            status: 'ready'
-          },
-          {
-            id: 'social_inbox',
-            component: A2UI_COMPONENT_SOCIAL_INBOX,
-            title: '微信消息',
-            body: '只展示真实捕获的新消息；当前不会生成测试消息。',
-            status: 'ready',
-            dataPath: '/social/messages',
-            actions: []
-          }
-        ]
-      }
-    });
-    store.apply({
-      version: 'v0.9.1',
-      updateDataModel: {
-        surfaceId: 'surface_social',
-        path: '/social/messages',
-        value: SOCIAL_MESSAGE_STORE.messages()
-      }
-    });
-    store.apply({
-      version: 'v0.9.1',
-      updateDataModel: {
-        surfaceId: 'surface_social',
-        path: '/social/replies',
-        value: this.currentSocialReplies()
-      }
-    });
-    store.apply({
-      version: 'v0.9.1',
-      updateDataModel: {
-        surfaceId: 'surface_social',
-        path: '/social/diagnostics',
-        value: buildSocialDiagnosticsRows(capabilities)
-      }
-    });
-    this.selectedSocialMessageId = '';
-    this.selectedSocialConversationTitle = '';
-    this.inputPlaceholder = '选择微信消息后在这里回复';
-    this.inputText = '';
-    this.applySurface(store.getSurface());
-    this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-      ok: true,
-      status: 'ready',
-      message: '社交收件箱已打开：当前只显示真实捕获的新消息。',
-      requestDebug: this.lastModelRequest,
-      assistantDebug: this.lastModelOutput,
-      error: ''
-    }));
-    this.appendMessage('assistant', '社交收件箱已打开：当前只显示真实捕获的新消息。');
-  }
-
-  private async sendSelectedSocialReply(): Promise<void> {
-    const text = this.inputText.trim();
-    if (text.length === 0 || this.isBusy) {
-      return;
-    }
-    const message = this.selectedSocialMessage();
-    if (message === null) {
-      this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-        ok: false,
-        status: 'error',
-        message: '请先选择一条微信消息。',
-        requestDebug: this.lastModelRequest,
-        assistantDebug: this.lastModelOutput,
-        error: '缺少社交会话'
-      }));
-      return;
-    }
-    this.isBusy = true;
-    this.inputText = inputTextAfterPromptSubmit(this.inputText);
-    this.replaceCurrentSocialData(this.markSocialMessageStatus(message.id, 'sending'), this.currentSocialReplies());
-    aiLogInfo('[AIPhone][SocialReplyRequest] messageId=' + message.id +
-      ' platform=' + message.platform +
-      ' target=' + message.conversationTitle +
-      ' textChars=' + text.length.toString());
-    try {
-      const automation = new WechatReplyAutomation(false, SOCIAL_REPLY_UNAVAILABLE);
-      const reply = automation.send({
-        targetMessageId: message.id,
-        platform: message.platform,
-        conversationId: message.conversationId,
-        text
-      });
-      const replies = this.currentSocialReplies();
-      const nextReplies = replies.slice();
-      nextReplies.push(reply);
-      const nextStatus = reply.status === 'sent' ? 'replied' : 'failed';
-      this.replaceCurrentSocialData(this.markSocialMessageStatus(message.id, nextStatus), nextReplies);
-      this.socialLastSend = reply.status === 'sent' ? '已发送 ' + text.length.toString() + ' 字' : '失败：' + reply.error;
-      aiLogInfo('[AIPhone][SocialReplyResult] messageId=' + message.id +
-        ' platform=' + message.platform +
-        ' status=' + reply.status +
-        ' failureStep=' + reply.error);
-      if (reply.status === 'sent') {
-        this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-          ok: true,
-          status: 'ready',
-          message: '微信回复已发送。',
-          requestDebug: this.lastModelRequest,
-          assistantDebug: this.lastModelOutput,
-          error: ''
-        }));
-        this.appendMessage('assistant', '微信回复已发送。');
-      } else {
-        this.applyPanelState(updateConnectionPanelState(this.currentPanelState(), {
-          ok: false,
-          status: 'error',
-          message: '微信回复失败。',
-          requestDebug: this.lastModelRequest,
-          assistantDebug: this.lastModelOutput,
-          error: reply.error
-        }));
-        this.appendMessage('assistant', '微信回复失败：' + reply.error);
-      }
-    } finally {
-      this.isBusy = false;
-    }
-  }
-
   private async submitPrompt(prompt: string, visibleText: string, actionId: string = '', actionArgs: Object | null = null): Promise<void> {
     const trimmed = prompt.trim();
     if (trimmed.length === 0 || this.isBusy) {
@@ -825,9 +647,6 @@ struct Index {
       }));
       return;
     }
-
-    this.selectedSocialMessageId = '';
-    this.selectedSocialConversationTitle = '';
     this.inputPlaceholder = DEFAULT_INPUT_PLACEHOLDER;
     this.appendMessage('user', visibleText);
     aiLogInfo('[AIPhone][A2uiHomeSubmitPrompt] chars=' + modelPrompt.length.toString() +
@@ -904,16 +723,98 @@ struct Index {
   }
 
   private async sendPrompt(): Promise<void> {
-    if (this.isSocialReplyMode()) {
-      await this.sendSelectedSocialReply();
-      return;
-    }
-    if (this.shouldOpenSocialPrompt(this.inputText)) {
-      this.appendMessage('user', this.inputText);
-      this.openSocialInbox();
-      return;
-    }
     await this.submitPrompt(this.inputText, this.inputText);
+  }
+
+  private currentVoiceSession(seq: number): boolean {
+    return this.isVoiceListening && this.voiceSessionSeq === seq && !this.voiceCompletionHandled;
+  }
+
+  private voiceLiveLabel(text: string): string {
+    const next = text.trim();
+    return next.length > 0 ? next : '语音识别中';
+  }
+
+  private finishVoiceInputWithResult(seq: number, result: VoiceInputResult): void {
+    if (!this.currentVoiceSession(seq)) {
+      return;
+    }
+    this.voiceCompletionHandled = true;
+    const next = voiceInputTextAfterRecognition(this.voiceBaseInputText, result.text);
+    if (next === this.voiceBaseInputText) {
+      this.voiceInputMessage = '没有识别到语音内容';
+    } else {
+      this.inputText = next;
+      this.voiceInputMessage = '已加入输入框';
+    }
+    this.voiceSession = null;
+    this.isVoiceListening = false;
+  }
+
+  private finishVoiceInputWithError(seq: number, error: Error | Object | string | number | boolean | null | undefined): void {
+    if (!this.currentVoiceSession(seq)) {
+      return;
+    }
+    this.voiceCompletionHandled = true;
+    const serialized = error === null || error === undefined ? '' : JSON.stringify(error);
+    const message = error instanceof Error ? error.message : (serialized === undefined ? '' : serialized);
+    this.voiceInputMessage = message.length > 0 ? '语音输入失败：' + message : '语音输入失败';
+    this.voiceSession = null;
+    this.isVoiceListening = false;
+  }
+
+  private async startVoiceInput(): Promise<void> {
+    if (this.isBusy || this.isVoiceListening) {
+      return;
+    }
+    const seq = this.voiceSessionSeq + 1;
+    this.voiceSessionSeq = seq;
+    this.voiceSession = null;
+    this.voiceBaseInputText = this.inputText;
+    this.voiceStopRequested = false;
+    this.voiceCompletionHandled = false;
+    this.isVoiceListening = true;
+    this.voiceInputMessage = '语音识别中';
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const session = await startVoiceInputSession(context, (text: string) => {
+        if (this.currentVoiceSession(seq)) {
+          this.voiceInputMessage = this.voiceLiveLabel(text);
+        }
+      });
+      if (!this.currentVoiceSession(seq)) {
+        session.stop().catch((_error: Error) => {});
+        return;
+      }
+      this.voiceSession = session;
+      session.result
+        .then((result: VoiceInputResult) => {
+          this.finishVoiceInputWithResult(seq, result);
+        })
+        .catch((error: Error) => {
+          this.finishVoiceInputWithError(seq, error);
+        });
+      if (this.voiceStopRequested) {
+        session.stop().catch((_error: Error) => {});
+      }
+    } catch (error) {
+      this.finishVoiceInputWithError(seq, error as Error | Object | string | number | boolean | null | undefined);
+    }
+  }
+
+  private stopVoiceInput(): void {
+    if (!this.isVoiceListening) {
+      return;
+    }
+    this.voiceStopRequested = true;
+    if (this.voiceSession === null) {
+      this.voiceInputMessage = '识别整理中';
+      return;
+    }
+    if (this.voiceInputMessage === '语音识别中') {
+      this.voiceInputMessage = '识别整理中';
+    }
+    this.voiceSession.stop().catch((_error: Error) => {});
   }
 
   private htmlPinPayload(action: A2uiAction): HtmlPinPayload {
@@ -1264,6 +1165,22 @@ struct Index {
 
   private async handleClientAction(action: A2uiAction): Promise<void> {
     aiLogInfo('[AIPhone][A2uiHomeClientAction] id=' + action.id);
+    if (this.isSocialHubActionId(action) && !this.isCurrentSocialHubSurface()) {
+      this.logHtmlHomeActionError(action, 'social_hub_surface_required');
+      return;
+    }
+    if (action.id === 'social_hub_select_item') {
+      this.selectSocialHubItem(action);
+      return;
+    }
+    if (action.id === 'social_hub_draft_reply') {
+      this.draftSocialHubReply(action);
+      return;
+    }
+    if (action.id === 'social_hub_open_source') {
+      await this.openSocialHubSource(action);
+      return;
+    }
     if (await this.handleHtmlFoodMapAction(action)) {
       return;
     }
@@ -1303,14 +1220,6 @@ struct Index {
         return;
       }
       await this.openExternalUrl(mediaUrl);
-      return;
-    }
-    if (action.id === 'social_select_message') {
-      this.selectSocialMessageById(action.prompt);
-      return;
-    }
-    if (action.id === 'social_open_notification_settings') {
-      await this.openSocialNotificationSubscriptionSettings();
       return;
     }
     if (action.id === 'dynamic_open_registration') {
@@ -1468,6 +1377,14 @@ struct Index {
   private async sendAction(action: A2uiAction): Promise<void> {
     if (this.isBusy) {
       aiLogInfo('[AIPhone][A2uiHomeActionIgnored] id=' + action.id + ' reason=busy');
+      return;
+    }
+    if (this.isSocialHubActionId(action) && !this.isCurrentSocialHubSurface()) {
+      this.logHtmlHomeActionError(action, 'social_hub_surface_required');
+      return;
+    }
+    if (this.isSocialHubClientAction(action)) {
+      await this.handleClientAction(action);
       return;
     }
     if (!isHtmlHomeActionAllowed(this.currentHtmlHomeDocument(), action)) {
@@ -1680,20 +1597,21 @@ struct Index {
         showHistory: this.showHistory,
         messages: this.messages,
         currentSurface: this.currentSurface,
-        htmlHomeHtml: this.currentHtmlHomeHtml(),
+        htmlHomeHtml: this.currentSurface.intent === 'social' ? '' : this.currentHtmlHomeHtml(),
         surfaceRenderTick: this.surfaceRenderTick,
         isAwaitingFirstSurface: this.isAwaitingFirstSurface,
         inputPlaceholder: this.inputPlaceholder,
-        isSocialReturnAvailable: this.hasSocialReturnSurface,
+        isVoiceListening: this.isVoiceListening,
+        voiceInputMessage: this.voiceInputMessage,
         showWelcome: shouldShowWelcome(this.isBusy, this.messages.length, this.currentSurface),
         onToggleHistory: () => {
           this.showHistory = !this.showHistory;
         },
-        onOpenSocial: () => {
-          this.handleSocialNavigation();
-        },
         onOpenConfig: () => {
           this.showConfigPage = true;
+        },
+        onOpenSocialHub: () => {
+          this.openSocialHub();
         },
         onResetSession: () => {
           this.resetCurrentSession();
@@ -1707,6 +1625,12 @@ struct Index {
         },
         onSendPrompt: () => {
           this.sendPrompt();
+        },
+        onStartVoiceInput: () => {
+          this.startVoiceInput();
+        },
+        onStopVoiceInput: () => {
+          this.stopVoiceInput();
         },
         onAction: (action: A2uiAction) => {
           this.sendAction(action);

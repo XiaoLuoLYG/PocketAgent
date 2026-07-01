@@ -31,6 +31,9 @@ function documentFixture(): HtmlHomeDocument {
 
 function dynamicCredentialDocumentFixture(): HtmlHomeDocument {
   const doc = documentFixture();
+  doc.kind = 'dynamic-tools';
+  doc.title = '动态工具连接';
+  doc.subtitle = '工具需要授权后才能继续';
   doc.blocks = [{
     id: 'connect',
     kind: 'dynamic-tool-connect',
@@ -215,9 +218,70 @@ function googleMapsDocumentFixture(): HtmlHomeDocument {
   return doc;
 }
 
-function mailAggregateDocumentFixture(): HtmlHomeDocument {
+function calendarSearchDocumentFixture(): HtmlHomeDocument {
   const doc = documentFixture();
   doc.kind = 'dynamic-tools';
+  doc.title = '明日 Google Calendar';
+  doc.subtitle = 'Google Calendar API 查询成功。';
+  doc.blocks = [{
+    id: 'calendar-search-0',
+    kind: 'generic-tool-result',
+    title: '产品同步',
+    subtitle: 'Google Calendar API 查询成功。',
+    status: 'success',
+    source: 'Google Calendar API',
+    metrics: [
+      { label: 'source', value: 'Google Calendar API' },
+      { label: 'toolName', value: 'calendar.events.search' }
+    ],
+    rows: [
+      { label: 'Event ID', value: 'event-1' },
+      { label: 'Start', value: '2026-07-02T10:00:00+08:00' },
+      { label: 'End', value: '2026-07-02T10:30:00+08:00' },
+      { label: 'Link', value: 'https://calendar.google.com/calendar/event?eid=event-1' }
+    ],
+    actions: []
+  }];
+  doc.actions = [];
+  doc.history = [];
+  return doc;
+}
+
+function calendarEmptySearchDocumentFixture(): HtmlHomeDocument {
+  const doc = calendarSearchDocumentFixture();
+  doc.title = '明日 Google Calendar';
+  doc.subtitle = 'Google Calendar API 查询成功，但没有可展示事件。';
+  doc.blocks[0].title = '没有找到日程';
+  doc.blocks[0].subtitle = 'Google Calendar API 查询成功，但没有可展示事件。';
+  doc.blocks[0].rows = [
+    { label: 'Window Start', value: '2026-07-02T00:00:00+08:00' },
+    { label: 'Window End', value: '2026-07-03T00:00:00+08:00' }
+  ];
+  return doc;
+}
+
+function calendarCreateDocumentFixture(): HtmlHomeDocument {
+  const doc = calendarSearchDocumentFixture();
+  doc.title = '已创建一对一会议';
+  doc.subtitle = '已直接写入真实 Google Calendar。';
+  doc.blocks[0].title = '一对一会议';
+  doc.blocks[0].subtitle = '已直接写入真实 Google Calendar。';
+  doc.blocks[0].metrics = [
+    { label: 'source', value: 'Google Calendar API' },
+    { label: 'toolName', value: 'calendar.event.create' }
+  ];
+  doc.blocks[0].rows = [
+    { label: 'Event ID', value: 'event-create-1' },
+    { label: 'Start', value: '2026-07-02T16:30:00+08:00' },
+    { label: 'End', value: '2026-07-02T17:00:00+08:00' },
+    { label: 'Link', value: 'https://calendar.google.com/calendar/event?eid=event-create-1' }
+  ];
+  return doc;
+}
+
+function mailAggregateDocumentFixture(): HtmlHomeDocument {
+  const doc = documentFixture();
+  doc.kind = 'gmail';
   doc.title = '邮箱';
   doc.subtitle = '聚合展示 Gmail 和 QQ 邮箱';
   doc.blocks = [{
@@ -257,10 +321,38 @@ function mailAggregateDocumentFixture(): HtmlHomeDocument {
   return doc;
 }
 
+function socialDocumentFixture(): HtmlHomeDocument {
+  const doc = documentFixture();
+  doc.kind = 'social';
+  doc.title = '微信消息';
+  doc.subtitle = '来自通知捕获的真实消息';
+  doc.blocks = [{
+    id: 'wechat-1',
+    kind: 'social-message',
+    title: 'Alice',
+    subtitle: '晚上一起吃饭吗',
+    status: 'unread',
+    source: 'notification',
+    metrics: [
+      { label: 'platform', value: 'wechat' },
+      { label: 'sender', value: 'Alice' }
+    ],
+    rows: [
+      { label: 'receivedAt', value: '2026-06-11T08:30:00.000Z' }
+    ],
+    actions: [
+      { id: 'social_select_message', label: '选择消息', prompt: 'wechat-1', variant: 'secondary', kind: 'client' }
+    ]
+  }];
+  doc.actions = [];
+  doc.history = [];
+  return doc;
+}
+
 function mediaAggregateDocumentFixture(): HtmlHomeDocument {
   const doc = documentFixture();
-  doc.kind = 'dynamic-tools';
-  doc.title = '媒体视频';
+  doc.kind = 'media';
+  doc.title = 'Qwen Max 官方视频';
   doc.subtitle = '聚合展示 YouTube 和 Bilibili';
   doc.blocks = [{
     id: 'youtube-1',
@@ -277,7 +369,20 @@ function mediaAggregateDocumentFixture(): HtmlHomeDocument {
       { label: 'Video ID', value: 'abc123' },
       { label: 'Watch URL', value: 'https://www.youtube.com/watch?v=abc123' }
     ],
-    actions: []
+    actions: [{
+      id: 'media.open.web',
+      label: '打开网页',
+      prompt: 'https://www.youtube.com/watch?v=abc123',
+      variant: 'primary',
+      kind: 'client'
+    }],
+    mediaEmbed: {
+      provider: 'YouTube',
+      title: 'YouTube video',
+      embedUrl: 'https://www.youtube.com/embed/abc123?playsinline=1&rel=0&enablejsapi=1&origin=https%3A%2F%2Faiphone.local',
+      pageUrl: 'https://www.youtube.com/watch?v=abc123',
+      thumbnail: 'https://i.ytimg.com/vi/abc123/mqdefault.jpg'
+    }
   }, {
     id: 'bilibili-1',
     kind: 'generic-tool-result',
@@ -292,6 +397,75 @@ function mediaAggregateDocumentFixture(): HtmlHomeDocument {
     rows: [
       { label: 'BVID', value: 'BV1h57y6pE5o' },
       { label: 'Playback URL', value: 'https://www.bilibili.com/video/BV1h57y6pE5o' }
+    ],
+    actions: [{
+      id: 'media.open.web',
+      label: '打开网页',
+      prompt: 'https://www.bilibili.com/video/BV1h57y6pE5o',
+      variant: 'primary',
+      kind: 'client'
+    }],
+    mediaEmbed: {
+      provider: 'Bilibili',
+      title: 'Bilibili video',
+      embedUrl: 'https://player.bilibili.com/player.html?bvid=BV1h57y6pE5o&p=1&autoplay=0&poster=true&danmaku=0&isOutside=true',
+      pageUrl: 'https://www.bilibili.com/video/BV1h57y6pE5o',
+      thumbnail: 'https://i1.hdslb.com/bfs/archive/cover.jpg'
+    }
+  }];
+  doc.actions = [];
+  return doc;
+}
+
+function socialHubDocumentFixture(): HtmlHomeDocument {
+  const doc = documentFixture();
+  doc.kind = 'social';
+  doc.title = '社交工作台';
+  doc.subtitle = 'X, Slack, WeCom';
+  doc.blocks = [{
+    id: 'social_hub-item-0',
+    kind: 'social-hub-item',
+    title: '@openai',
+    subtitle: 'Hello from X',
+    status: 'unread',
+    source: 'x',
+    metrics: [
+      { label: 'platform', value: 'x' },
+      { label: 'kind', value: 'post' },
+      { label: 'time', value: '2026-07-01T01:00:00.000Z' }
+    ],
+    rows: [
+      { label: 'text', value: 'Hello from X' },
+      { label: 'url', value: 'https://x.com/openai/status/1' }
+    ],
+    actions: [
+      { id: 'social_hub_select_item', label: '查看', prompt: 'x-1', variant: 'secondary', kind: 'client' },
+      { id: 'social_hub_draft_reply', label: '生成草稿', prompt: 'x-1', variant: 'secondary', kind: 'client' },
+      { id: 'social_hub_open_source', label: '打开原文', prompt: 'https://x.com/openai/status/1', variant: 'secondary', kind: 'client' }
+    ]
+  }, {
+    id: 'social_hub-connection-0',
+    kind: 'social-hub-connection',
+    title: 'Slack',
+    subtitle: 'Slack token required',
+    status: 'needs_auth',
+    source: 'slack',
+    metrics: [{ label: 'platform', value: 'slack' }],
+    rows: [{ label: 'message', value: 'Slack token required' }],
+    actions: []
+  }, {
+    id: 'social_hub-draft',
+    kind: 'social-hub-draft',
+    title: '回复草稿',
+    subtitle: 'local draft only; not sent',
+    status: 'error',
+    source: 'x',
+    metrics: [{ label: 'platform', value: 'x' }],
+    rows: [
+      { label: 'text', value: 'Thanks for the update' },
+      { label: 'error', value: 'local draft only; not sent' },
+      { label: 'localOnly', value: 'true' },
+      { label: 'sent', value: 'false' }
     ],
     actions: []
   }];
@@ -330,6 +504,12 @@ export default function htmlHomeRendererTest() {
     it('includes dynamic credential save and local action interception', 0, () => {
       const html = renderHtmlHomeDocument(dynamicCredentialDocumentFixture());
 
+      expect(html.indexOf('data-scene="dynamic-tools"')).assertEqual(-1);
+      expect(html.indexOf('Tool Console')).assertEqual(-1);
+      expect(html.indexOf('tool-hero')).assertEqual(-1);
+      expect(html.indexOf('tool-console')).assertEqual(-1);
+      expect(html.indexOf('media-shell')).assertEqual(-1);
+      expect(html.indexOf('任务结果')).assertLarger(-1);
       expect(html.indexOf('保存并测试')).assertLarger(-1);
       expect(html.indexOf('html_dynamic_save_and_test')).assertLarger(-1);
       expect(html.indexOf('handleLocalAction')).assertLarger(-1);
@@ -484,6 +664,10 @@ export default function htmlHomeRendererTest() {
       const html = renderHtmlHomeDocument(documentFixture());
 
       expect(html.indexOf('food-scene-shell')).assertEqual(-1);
+      expect(html.indexOf('data-scene="generic"')).assertEqual(-1);
+      expect(html.indexOf('result-hero')).assertEqual(-1);
+      expect(html.indexOf('result-canvas')).assertEqual(-1);
+      expect(html.indexOf('calendar-shell')).assertEqual(-1);
       expect(html.indexOf('任务结果')).assertLarger(-1);
       expect(html.indexOf('Project Brief')).assertLarger(-1);
     });
@@ -497,11 +681,55 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('22.609878,114.029506')).assertLarger(-1);
       expect(html.indexOf('maps.open.web')).assertLarger(-1);
       expect(html.indexOf('打开 Google Maps')).assertLarger(-1);
+      expect(html.indexOf('calendar-shell')).assertEqual(-1);
+    });
+
+    it('renders Google Calendar search results as a day week month workspace', 0, () => {
+      const html = renderHtmlHomeDocument(calendarSearchDocumentFixture());
+
+      expect(html.indexOf('calendar-shell')).assertLarger(-1);
+      expect(html.indexOf('calendar-view-day')).assertLarger(-1);
+      expect(html.indexOf('calendar-view-week')).assertLarger(-1);
+      expect(html.indexOf('calendar-view-month')).assertLarger(-1);
+      expect(html.indexOf('data-calendar-view="day"')).assertLarger(-1);
+      expect(html.indexOf('Google Calendar API')).assertLarger(-1);
+      expect(html.indexOf('产品同步')).assertLarger(-1);
+      expect(html.indexOf('10:00')).assertLarger(-1);
+      expect(html.indexOf('任务结果')).assertEqual(-1);
+    });
+
+    it('uses the requested Google Calendar search window for empty results', 0, () => {
+      const html = renderHtmlHomeDocument(calendarEmptySearchDocumentFixture());
+
+      expect(html.indexOf('7月2日 周四')).assertLarger(-1);
+      expect(html.indexOf('无定时日程')).assertLarger(-1);
+      expect(html.indexOf('这个时间窗没有可放入时间轴的日程')).assertLarger(-1);
+      expect(html.indexOf('6月25日')).assertEqual(-1);
+    });
+
+    it('renders Google Calendar create results as a write confirmation', 0, () => {
+      const html = renderHtmlHomeDocument(calendarCreateDocumentFixture());
+
+      expect(html.indexOf('calendar-confirmation')).assertLarger(-1);
+      expect(html.indexOf('一对一会议')).assertLarger(-1);
+      expect(html.indexOf('16:30')).assertLarger(-1);
+      expect(html.indexOf('17:00')).assertLarger(-1);
+      expect(html.indexOf('已写入')).assertLarger(-1);
     });
 
     it('renders Gmail and QQ mail sources with app icons and separate card frames', 0, () => {
       const html = renderHtmlHomeDocument(mailAggregateDocumentFixture());
 
+      expect(html.indexOf('data-scene="gmail"')).assertLarger(-1);
+      expect(html.indexOf('Mail Deck')).assertLarger(-1);
+      expect(html.indexOf('gmail-hero')).assertLarger(-1);
+      expect(html.indexOf('mail-hero-icon')).assertLarger(-1);
+      expect(html.indexOf('mail-rail')).assertLarger(-1);
+      expect(html.indexOf('mail_filter_gmail')).assertLarger(-1);
+      expect(html.indexOf('mail_filter_qq')).assertLarger(-1);
+      expect(html.indexOf('data-mail-filter')).assertLarger(-1);
+      expect(html.indexOf('星标')).assertEqual(-1);
+      expect(html.indexOf('草稿</button>')).assertEqual(-1);
       expect(html.indexOf('Gmail message')).assertLarger(-1);
       expect(html.indexOf('QQ message')).assertLarger(-1);
       expect(html.indexOf('MAIL_ICON_GMAIL')).assertLarger(-1);
@@ -515,22 +743,124 @@ export default function htmlHomeRendererTest() {
       expect(html.indexOf('border-color: rgba(45, 120, 196, 0.45)')).assertLarger(-1);
     });
 
-    it('renders media sources with app icons and separate card frames', 0, () => {
+    it('keeps social documents on the legacy frame with actions intact', 0, () => {
+      const html = renderHtmlHomeDocument(socialDocumentFixture());
+
+      expect(html.indexOf('data-scene="social"')).assertEqual(-1);
+      expect(html.indexOf('social-hero')).assertEqual(-1);
+      expect(html.indexOf('chat-bubble')).assertEqual(-1);
+      expect(html.indexOf('任务结果')).assertLarger(-1);
+      expect(html.indexOf('social_select_message')).assertLarger(-1);
+    });
+
+    it('renders media sources with app icons and unified playable card frames', 0, () => {
       const html = renderHtmlHomeDocument(mediaAggregateDocumentFixture());
 
+      expect(html.indexOf('media-shell')).assertLarger(-1);
+      expect(html.indexOf('media-hero')).assertLarger(-1);
+      expect(html.indexOf('media-source-rail')).assertLarger(-1);
+      expect(html.indexOf('media-stage')).assertEqual(-1);
+      expect(html.indexOf('media-provider-grid')).assertLarger(-1);
+      expect(html.indexOf('media-inspector')).assertEqual(-1);
+      expect(html.indexOf('media-source-summary')).assertEqual(-1);
+      expect(html.indexOf('media-source-facts')).assertEqual(-1);
+      expect(html.indexOf('media-theater')).assertEqual(-1);
+      expect(html.indexOf('media-cover-wall')).assertEqual(-1);
+      expect(html.indexOf('media-hero-frame')).assertEqual(-1);
+      expect(html.indexOf('media-hero-art')).assertEqual(-1);
+      expect(html.indexOf('media-hero-stats')).assertLarger(-1);
+      expect(html.indexOf('media-card-player')).assertLarger(-1);
+      expect(html.indexOf('media-card-title-row')).assertLarger(-1);
+      expect(html.indexOf('media-card-detail')).assertLarger(-1);
+      expect(html.indexOf('media-thumb-shell')).assertEqual(-1);
+      expect(html.indexOf('media-inline-player')).assertEqual(-1);
+      expect(html.indexOf('media-inline-mount')).assertEqual(-1);
+      expect(html.indexOf('media-logo-mark')).assertLarger(-1);
+      expect(html.indexOf('Qwen Max 官方视频')).assertLarger(-1);
       expect(html.indexOf('YouTube video')).assertLarger(-1);
       expect(html.indexOf('Bilibili video')).assertLarger(-1);
-      expect(html.indexOf('MEDIA_ICON_YOUTUBE')).assertLarger(-1);
-      expect(html.indexOf('MEDIA_ICON_BILIBILI')).assertLarger(-1);
-      expect(html.indexOf("if (key === 'media-youtube')")).assertLarger(-1);
-      expect(html.indexOf("if (key === 'media-bilibili')")).assertLarger(-1);
       expect(html.indexOf('data-source-key="media-youtube"')).assertLarger(-1);
       expect(html.indexOf('data-source-key="media-bilibili"')).assertLarger(-1);
+      expect(html.indexOf('https://upload.wikimedia.org/wikipedia/commons/e/ef/Youtube_logo.png')).assertLarger(-1);
+      expect(html.indexOf('data:image/svg+xml;charset=utf-8,%3Csvg')).assertLarger(-1);
+      expect(html.indexOf('%3Ebilibili%3C/text%3E')).assertLarger(-1);
+      expect(html.indexOf('data-filter="youtube"')).assertLarger(-1);
+      expect(html.indexOf('data-filter="bilibili"')).assertLarger(-1);
+      expect(html.indexOf('data-filter="playable"')).assertEqual(-1);
+      expect(html.indexOf('data-mode')).assertEqual(-1);
+      expect(html.indexOf('data-filter="error"')).assertLarger(-1);
+      expect(html.indexOf('B 站')).assertLarger(-1);
+      expect(html.indexOf('media.open.web')).assertLarger(-1);
+      expect(html.indexOf("var play = add(actions")).assertEqual(-1);
+      expect(html.indexOf("var detail = add(actions")).assertEqual(-1);
+      expect(html.indexOf("add(heroCaption, 'span'")).assertEqual(-1);
+      expect(html.indexOf('aria-expanded')).assertLarger(-1);
+      expect(html.indexOf('data-broken')).assertLarger(-1);
+      expect(html.indexOf('剧场')).assertEqual(-1);
+      expect(html.indexOf('封面墙')).assertEqual(-1);
+      expect(html.indexOf('置顶舞台')).assertEqual(-1);
+      expect(html.indexOf('来源概览')).assertEqual(-1);
       expect(html.indexOf("iframe.setAttribute('referrerpolicy', 'origin-when-cross-origin')")).assertLarger(-1);
-      expect(html.indexOf(".block[data-source-key=\"media-youtube\"]")).assertLarger(-1);
-      expect(html.indexOf(".block[data-source-key=\"media-bilibili\"]")).assertLarger(-1);
-      expect(html.indexOf('border-color: rgba(196, 48, 43, 0.45)')).assertLarger(-1);
-      expect(html.indexOf('border-color: rgba(45, 143, 189, 0.45)')).assertLarger(-1);
+      expect(html.indexOf('https://i.ytimg.com/vi/abc123/mqdefault.jpg')).assertLarger(-1);
+      expect(html.indexOf('https://i1.hdslb.com/bfs/archive/cover.jpg')).assertLarger(-1);
+    });
+
+    it('normalizes generic dynamic media titles in the H5 document', 0, () => {
+      const doc = mediaAggregateDocumentFixture();
+      doc.title = '动态工具结果';
+      doc.subtitle = '帮我在b站和youtube里搜索qwen max 的官方视频';
+      const html = renderHtmlHomeDocument(doc);
+
+      expect(html.indexOf('<title>媒体搜索结果</title>')).assertLarger(-1);
+      expect(html.indexOf('"title":"媒体搜索结果"')).assertLarger(-1);
+      expect(html.indexOf('帮我在b站和youtube里搜索qwen max 的官方视频')).assertLarger(-1);
+      expect(html.indexOf('"title":"动态工具结果"')).assertEqual(-1);
+    });
+
+    it('does not render mixed generic blocks as media cards', 0, () => {
+      const doc = mediaAggregateDocumentFixture();
+      doc.blocks.push({
+        id: 'plain-generic',
+        kind: 'generic-tool-result',
+        title: 'Plain tool result',
+        subtitle: 'Not a video result',
+        status: 'success',
+        source: 'Generic API',
+        metrics: [
+          { label: 'source', value: 'Generic API' },
+          { label: 'toolName', value: 'generic.search' }
+        ],
+        rows: [
+          { label: 'URL', value: 'https://example.com/plain' }
+        ],
+        actions: [{
+          id: 'generic.open',
+          label: '打开',
+          prompt: 'https://example.com/plain',
+          variant: 'secondary',
+          kind: 'client'
+        }]
+      });
+      const html = renderHtmlHomeDocument(doc);
+
+      expect(html.indexOf('media-shell')).assertLarger(-1);
+      expect(html.indexOf('Plain tool result')).assertEqual(-1);
+      expect(html.indexOf('generic.open')).assertEqual(-1);
+    });
+
+    it('renders SocialHub blocks with actions and platform styles', 0, () => {
+      const html = renderHtmlHomeDocument(socialHubDocumentFixture());
+
+      expect(html.indexOf('data-scene="social"')).assertLarger(-1);
+      expect(html.indexOf('Hello from X')).assertLarger(-1);
+      expect(html.indexOf('Slack token required')).assertLarger(-1);
+      expect(html.indexOf('Thanks for the update')).assertLarger(-1);
+      expect(html.indexOf('social_hub_draft_reply')).assertLarger(-1);
+      expect(html.indexOf('social_hub_open_source')).assertLarger(-1);
+      expect(html.indexOf('data-kind="social-hub-item"')).assertLarger(-1);
+      expect(html.indexOf('social-x')).assertLarger(-1);
+      expect(html.indexOf('social-slack')).assertLarger(-1);
+      expect(html.indexOf('social_select_message')).assertEqual(-1);
     });
 
     it('does not auto-render welcome scene and source chips', 0, () => {
@@ -546,6 +876,8 @@ export default function htmlHomeRendererTest() {
       doc.actions = [];
       const html = renderHtmlHomeDocument(doc);
 
+      expect(html.indexOf('data-scene="welcome"')).assertEqual(-1);
+      expect(html.indexOf('status-hero')).assertEqual(-1);
       expect(html.indexOf('场景')).assertEqual(-1);
       expect(html.indexOf('来源')).assertEqual(-1);
       expect(html.indexOf('待命')).assertEqual(-1);

@@ -383,7 +383,15 @@ const DIGICERT_GLOBAL_ROOT_G2_CA = '-----BEGIN CERTIFICATE-----\n' +
   'pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl\n' +
   'MrY=\n' +
   '-----END CERTIFICATE-----';
-const IMAP_READ_TIMEOUT_MS = 60000;
+const IMAP_READ_TIMEOUT_MS = 20000;
+
+function imapCommandSummary(line: string): string {
+  const parts = line.trim().split(' ');
+  if (parts.length >= 2) {
+    return parts[0] + ' ' + parts[1];
+  }
+  return parts.length === 1 ? parts[0] : 'unknown';
+}
 
 export class TlsImapTransport implements ImapTransport {
   private tcpSocket: socket.TCPSocket | null = null;
@@ -392,6 +400,7 @@ export class TlsImapTransport implements ImapTransport {
   private decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
 
   async connect(host: string, port: number): Promise<void> {
+    aiLogInfo('[AIPhone][QqMailImapConnectStart] host=' + host + ' port=' + port.toString());
     this.tcpSocket = socket.constructTCPSocketInstance();
     await this.tcpSocket.bind({ address: '0.0.0.0', port: 0 });
     await this.tcpSocket.connect({
@@ -407,27 +416,36 @@ export class TlsImapTransport implements ImapTransport {
       secureOptions: { ca: [DIGICERT_GLOBAL_ROOT_G2_CA] },
       timeout: 15000
     });
+    aiLogInfo('[AIPhone][QqMailImapConnectOk] host=' + host + ' port=' + port.toString());
   }
 
   async send(line: string): Promise<void> {
     if (this.tlsSocket === null) {
       throw new Error('IMAP socket is not connected.');
     }
+    aiLogInfo('[AIPhone][QqMailImapSend] command=' + imapCommandSummary(line));
     const payload = utf8Bytes(line + '\r\n');
     await this.tlsSocket.send(payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength));
   }
 
   async readUntil(tag: string): Promise<string[]> {
     const started = Date.now();
+    aiLogInfo('[AIPhone][QqMailImapReadStart] tag=' + tag);
     while (this.buffer.indexOf(tag + ' OK') < 0 && this.buffer.indexOf(tag + ' NO') < 0 && this.buffer.indexOf(tag + ' BAD') < 0) {
       if (Date.now() - started > IMAP_READ_TIMEOUT_MS) {
+        aiLogInfo('[AIPhone][QqMailImapReadTimeout] tag=' + tag +
+          ' bufferedChars=' + this.buffer.length.toString());
         throw new Error('QQ IMAP timeout waiting for ' + tag + ' buffered=' + this.buffer.substring(0, 120));
       }
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
     }
     const text = this.buffer;
     this.buffer = '';
-    return text.split('\r\n').filter((line: string) => line.length > 0);
+    const lines = text.split('\r\n').filter((line: string) => line.length > 0);
+    aiLogInfo('[AIPhone][QqMailImapReadDone] tag=' + tag +
+      ' lines=' + lines.length.toString() +
+      ' chars=' + text.length.toString());
+    return lines;
   }
 
   async close(): Promise<void> {

@@ -96,7 +96,8 @@ export default function dynamicToolRegistryTest() {
       expect(isBuiltInToolId('train.search')).assertTrue();
       expect(isBuiltInToolId('flight.search')).assertTrue();
       expect(isBuiltInToolId('food.search')).assertTrue();
-      expect(isBuiltInToolId('social.reply.send')).assertTrue();
+      expect(isBuiltInToolId('social.reply.send')).assertFalse();
+      expect(isBuiltInToolId('social.feed.search')).assertFalse();
       expect(isBuiltInToolId('ferry.ticket.search')).assertFalse();
     });
 

@@ -8,6 +8,7 @@ const envPath = join(rootDir, 'tool-gateway', '.env.local');
 const outPath = join(rootDir, 'entry', 'src', 'main', 'resources', 'rawfile', 'aiphone_provider_config.json');
 
 const providerKeys = [
+  'TOOL_GATEWAY_API_KEY',
   'DASHSCOPE_API_KEY',
   'FLIGHT_MCP_KEY',
   'VARIFLIGHT_API_KEY',
@@ -106,6 +107,7 @@ writeFileSync(outPath, JSON.stringify(config, null, 2) + '\n');
 
 console.log(`Wrote ${outPath}`);
 console.log(maskedStatus(config, [
+  'TOOL_GATEWAY_API_KEY',
   'DASHSCOPE_API_KEY',
   'FLIGHT_MCP_KEY',
   'VARIFLIGHT_API_KEY',

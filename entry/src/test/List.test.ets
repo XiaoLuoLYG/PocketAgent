@@ -1,7 +1,6 @@
 import localUnitTest from './LocalUnit.test';
 import a2uiParserTest from './A2uiParser.test';
 import localModelClientTest from './LocalModelClient.test';
-import socialBridgeTest from './SocialBridge.test';
 import toolGatewayClientTest from './ToolGatewayClient.test';
 import a2uiHomeStateTest from './A2uiHomeState.test';
 import a2uiRenderDataTest from './A2uiRenderData.test';
@@ -39,12 +38,16 @@ import htmlHomeRendererTest from './HtmlHomeRenderer.test';
 import htmlHomeActionPolicyTest from './HtmlHomeActionPolicy.test';
 import calendarApiClientTest from './CalendarApiClient.test';
 import mapsApiClientTest from './MapsApiClient.test';
+import socialHubTypesTest from './SocialHubTypes.test';
+import socialHubViewDataTest from './SocialHubViewData.test';
+import socialHubA2uiTest from './SocialHubA2ui.test';
+import socialHubClientTest from './SocialHubClient.test';
+import voiceInputBridgeTest from './VoiceInputBridge.test';
 
 export default function testsuite() {
   localUnitTest();
   a2uiParserTest();
   localModelClientTest();
-  socialBridgeTest();
   toolGatewayClientTest();
   a2uiHomeStateTest();
   a2uiRenderDataTest();
@@ -79,6 +82,11 @@ export default function testsuite() {
   mediaVideoClientTest();
   calendarApiClientTest();
   mapsApiClientTest();
+  socialHubTypesTest();
+  socialHubViewDataTest();
+  socialHubA2uiTest();
+  socialHubClientTest();
+  voiceInputBridgeTest();
   htmlHomeSnapshotTest();
   htmlHomeRendererTest();
   htmlHomeActionPolicyTest();

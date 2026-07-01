@@ -124,14 +124,23 @@ Gmail：
 社交：
 
 ```text
-打开微信消息
+打开社交消息聚合，看看 Slack、X、企业微信
+搜索 X 上关于 AIPhone 的公开帖子
 ```
 
-社交 demo 需要真实设备权限和真实捕获/发送路径。空收件箱和缺失权限应该显示诊断，不应该显示示例联系人。
+SocialHub v1 通过 Node Social Bridge 读取已授权 X/Slack 来源和企业微信回调缓存，并只生成本地草稿；缺少 gateway、token、scope 或回调缓存时应该显示连接/错误状态，不应该显示示例联系人、消息或帖子。
 
-## 6. 可选 gateway smoke
+## 6. Node Social Bridge 和 gateway smoke
 
-默认 HAP 使用 `local://aiphone-tools`。Node gateway 只用于开发 smoke 或显式 HTTP gateway 实验。
+出行、航班、火车、餐饮等默认 HAP 路径仍使用 `local://aiphone-tools` 和设备直连 provider。SocialHub v1 例外：真实 feed/draft bridge 调用需要本机 Node gateway 暴露在 `127.0.0.1:8787`。设备测试前启动 gateway 并设置 HDC reverse：
+
+```bash
+cd tool-gateway
+TOOL_GATEWAY_PORT=8787 npm start
+hdc -t <target> rport tcp:8787 tcp:8787
+```
+
+gateway smoke：
 
 ```bash
 cd tool-gateway
@@ -152,5 +161,5 @@ node scripts/aiphone-device-smoke.mjs
 
 - 不订票、不支付、不抢票、不出票。
 - 不下餐饮订单、不创建购物车、不兑换积分、不自动领券。
-- 不伪造微信消息，也不会在没有真实设备发送器确认时声称已回复。
-- 默认安装路径不需要运行可选 Node gateway。
+- 不伪造 SocialHub、X、Slack 或企业微信消息/帖子/联系人，也不会伪造发送成功。
+- SocialHub v1 没有社交发送工具；草稿只保存在本地等待用户检查。

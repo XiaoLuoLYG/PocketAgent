@@ -60,6 +60,9 @@ import { callMediaVideoSearch, mediaVideoQueryFromArgs } from './MediaVideoClien
 import { callCalendarTool } from './CalendarApiClient';
 import { callMapsPlaceDetails, callMapsPlaceSearch, mapsFoodRecordFromResult } from './MapsApiClient';
 import { QqMailConfig, QqMailImapClient } from './QqMailImapClient';
+import { socialHubDraftA2ui, socialHubFeedA2ui } from './SocialHubA2ui';
+import { SocialHubClient } from './SocialHubClient';
+import { SocialHubPlatform } from './SocialHubTypes';
 import { discoverDynamicToolForPrompt, DynamicToolDiscoveryResult } from './DynamicToolDiscovery';
 import { DynamicToolRegistry, isBuiltInToolId, isUnsafeMcpTool, selectBestRemoteTransport } from './DynamicToolRegistry';
 import { sampleManifestForToolId } from './DynamicToolSamples';
@@ -148,6 +151,7 @@ interface StationDefault {
 }
 
 interface LocalProviderConfig {
+  toolGatewayApiKey: string;
   flightMcpKey: string;
   variflightApiUrl: string;
   amapKey: string;
@@ -186,6 +190,7 @@ interface LocalProviderConfig {
 }
 
 interface LocalProviderRawConfig {
+  TOOL_GATEWAY_API_KEY?: string;
   FLIGHT_MCP_KEY?: string;
   VARIFLIGHT_API_KEY?: string;
   X_VARIFLIGHT_KEY?: string;
@@ -262,6 +267,7 @@ interface LocalProviderRawConfig {
   qqMailImapHost?: string;
   qqMailImapPort?: string;
   qqMailDraftsMailbox?: string;
+  toolGatewayApiKey?: string;
 }
 
 interface VariFlightRequestParams {
@@ -966,6 +972,7 @@ const CHINA_FLIGHT_CITY_CODES: FlightCityCode[] = [
 
 let stationCache: StationCache | null = null;
 let localProviderConfig: LocalProviderConfig = {
+  toolGatewayApiKey: '',
   flightMcpKey: '',
   variflightApiUrl: DEFAULT_VARIFLIGHT_API_URL,
   amapKey: '',
@@ -1117,6 +1124,7 @@ function firstText(values: Array<Object | string | number | boolean | null | und
 
 export function configureLocalProviderConfig(config: LocalProviderConfig): void {
   localProviderConfig = {
+    toolGatewayApiKey: config.toolGatewayApiKey.trim(),
     flightMcpKey: config.flightMcpKey.trim(),
     variflightApiUrl: config.variflightApiUrl.trim().length > 0 ? config.variflightApiUrl.trim() : DEFAULT_VARIFLIGHT_API_URL,
     amapKey: config.amapKey.trim(),
@@ -1154,6 +1162,7 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
     qqMailDraftsMailbox: config.qqMailDraftsMailbox.trim()
   };
   aiLogInfo('[AIPhone][LocalProviderConfig] rawfile=' + LOCAL_PROVIDER_CONFIG_RAWFILE +
+    ' toolGatewayApiKeyChars=' + localProviderConfig.toolGatewayApiKey.length.toString() +
     ' flightKeyChars=' + localProviderConfig.flightMcpKey.length.toString() +
     ' amapKeyChars=' + localProviderConfig.amapKey.length.toString() +
     ' tencentMapKeyChars=' + localProviderConfig.tencentMapKey.length.toString() +
@@ -1177,6 +1186,7 @@ export function configureLocalProviderConfig(config: LocalProviderConfig): void 
 export function configureLocalProviderConfigFromRawJson(rawJson: string): void {
   const parsed = JSON.parse(rawJson) as LocalProviderRawConfig;
   configureLocalProviderConfig({
+    toolGatewayApiKey: firstText([parsed.TOOL_GATEWAY_API_KEY, parsed.toolGatewayApiKey]),
     flightMcpKey: firstText([parsed.FLIGHT_MCP_KEY, parsed.VARIFLIGHT_API_KEY, parsed.X_VARIFLIGHT_KEY, parsed.FLIGHT_API_KEY, parsed.flightMcpKey]),
     variflightApiUrl: firstText([parsed.VARIFLIGHT_API_URL, parsed.FLIGHT_VARIFLIGHT_URL, parsed.variflightApiUrl]),
     amapKey: firstText([parsed.AMAP_KEY, parsed.amapKey]),
@@ -1217,6 +1227,7 @@ export function configureLocalProviderConfigFromRawJson(rawJson: string): void {
 
 export function localProviderConfigDebugSummary(): string {
   return 'rawfile=' + LOCAL_PROVIDER_CONFIG_RAWFILE +
+    ', toolGatewayApiKey=' + (localProviderConfig.toolGatewayApiKey.length > 0 ? 'present(' + localProviderConfig.toolGatewayApiKey.length.toString() + ')' : 'missing') +
     ', flightKey=' + (localProviderConfig.flightMcpKey.length > 0 ? 'present(' + localProviderConfig.flightMcpKey.length.toString() + ')' : 'missing') +
     ', amapKey=' + (localProviderConfig.amapKey.length > 0 ? 'present(' + localProviderConfig.amapKey.length.toString() + ')' : 'missing') +
     ', tencentMapKey=' + (localProviderConfig.tencentMapKey.length > 0 ? 'present(' + localProviderConfig.tencentMapKey.length.toString() + ')' : 'missing') +
@@ -2232,9 +2243,6 @@ function filterHighSpeed(source: string, trains: A2uiTrainData[]): A2uiTrainData
 }
 
 function intentForTool(toolId: string): string {
-  if (toolId === 'social.reply.send') {
-    return 'social';
-  }
   if (toolId === 'food.search') {
     return 'food';
   }
@@ -2245,9 +2253,6 @@ function intentForTool(toolId: string): string {
 }
 
 function componentForTool(toolId: string): string {
-  if (toolId === 'social.reply.send') {
-    return 'SocialInbox';
-  }
   if (toolId === 'travel.search') {
     return 'TravelOptions';
   }
@@ -2264,9 +2269,6 @@ function componentForTool(toolId: string): string {
 }
 
 function dataPathForTool(toolId: string): string {
-  if (toolId === 'social.reply.send') {
-    return '/social/messages';
-  }
   if (toolId === 'travel.search') {
     return '/travelOptions';
   }
@@ -2283,9 +2285,6 @@ function dataPathForTool(toolId: string): string {
 }
 
 function dataLabelForTool(toolId: string): string {
-  if (toolId === 'social.reply.send') {
-    return 'social';
-  }
   if (toolId === 'travel.search') {
     return 'travelOptions';
   }
@@ -2302,9 +2301,6 @@ function dataLabelForTool(toolId: string): string {
 }
 
 function titleForTool(toolId: string): string {
-  if (toolId === 'social.reply.send') {
-    return '微信回复发送';
-  }
   if (toolId === 'travel.search') {
     return '出行方案查询';
   }
@@ -5275,6 +5271,7 @@ interface DynamicPromptArgs {
 const dynamicToolRegistry: DynamicToolRegistry = new DynamicToolRegistry();
 const genericMcpClient: GenericMcpClient = new GenericMcpClient();
 const dynamicCredentialStore: AssetCredentialStore = new AssetCredentialStore();
+const socialHubClient: SocialHubClient = new SocialHubClient();
 
 let gmailMcpClient: GenericMcpClient = genericMcpClient;
 let gmailCredentialStore: CredentialStore = dynamicCredentialStore;
@@ -6165,6 +6162,55 @@ function youtubeQueryFromArgs(prompt: string, args: Object | null): string {
   return mediaVideoQueryFromArgs(prompt, args);
 }
 
+interface SocialHubDraftRequestArgs {
+  itemId?: Object | string | number | boolean | null;
+  platform?: Object | string | number | boolean | null;
+  instruction?: Object | string | number | boolean | null;
+}
+
+function emptySocialHubDraftRequestArgs(): SocialHubDraftRequestArgs {
+  return {
+    itemId: '',
+    platform: '',
+    instruction: ''
+  };
+}
+
+function socialHubPlatformFromText(value: string): SocialHubPlatform {
+  const text = value.trim().toLowerCase();
+  if (text === 'x' || text === 'twitter') {
+    return 'x';
+  }
+  if (text === 'slack') {
+    return 'slack';
+  }
+  if (text === 'wecom' || text === 'wework' || text === '企业微信') {
+    return 'wecom';
+  }
+  return 'unknown';
+}
+
+function isSocialHubToolId(toolId: string): boolean {
+  return toolId === 'social.feed.search' || toolId === 'social.reply.draft' || toolId === 'x.post.search';
+}
+
+async function callLocalSocialHubTool(toolId: string, prompt: string, surfaceId: string, args: Object | null = null): Promise<string> {
+  if (toolId === 'social.reply.draft') {
+    const request: SocialHubDraftRequestArgs = args === null ? emptySocialHubDraftRequestArgs() : args as SocialHubDraftRequestArgs;
+    const itemId = textOf(request.itemId).trim();
+    const instruction = textOf(request.instruction).trim();
+    const draft = await socialHubClient.draft(
+      itemId.length > 0 ? itemId : prompt,
+      socialHubPlatformFromText(textOf(request.platform)),
+      instruction.length > 0 ? instruction : '生成一条简洁、可审核的回复草稿',
+      localProviderConfig.toolGatewayApiKey
+    );
+    return socialHubDraftA2ui(surfaceId, draft);
+  }
+  const result = toolId === 'x.post.search' ? await socialHubClient.xPostSearch(prompt, localProviderConfig.toolGatewayApiKey) : await socialHubClient.feed(prompt, localProviderConfig.toolGatewayApiKey);
+  return socialHubFeedA2ui(surfaceId, result.items, result.connections);
+}
+
 async function callLocalYouTubeTool(toolId: string, prompt: string, surfaceId: string, args: Object | null = null): Promise<string> {
   if (toolId === 'youtube.video.search') {
     return genericToolResultsA2ui(
@@ -6468,15 +6514,8 @@ async function buildLocalToolJsonl(toolId: string, prompt: string, surfaceId: st
   if (isYouTubeToolId(toolId)) {
     return callLocalYouTubeTool(toolId, prompt, surfaceId, args);
   }
-  if (toolId === 'social.reply.send') {
-    return errorA2ui(
-      surfaceId,
-      toolId,
-      '微信回复未发送',
-      'social.reply.send 已注册为真实本地动作，但当前 HAP 未接入可执行的微信辅助发送器；不会假装发送成功。',
-      ['缺少真实微信辅助发送执行器', '请先授权并接入通知/辅助桥接后重试'],
-      ['打开社交权限诊断']
-    );
+  if (isSocialHubToolId(toolId)) {
+    return callLocalSocialHubTool(toolId, prompt, surfaceId, args);
   }
   if (toolId === 'travel.search') {
     return callLocalTravelSearch(prompt, surfaceId);

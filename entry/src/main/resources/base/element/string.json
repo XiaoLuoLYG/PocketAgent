@@ -13,22 +13,6 @@
       "value": "Appless Phone"
     },
     {
-      "name": "NotificationSubscriberExtAbility_desc",
-      "value": "Appless Phone social notification subscriber"
-    },
-    {
-      "name": "NotificationSubscriberExtAbility_label",
-      "value": "Appless Phone Social"
-    },
-    {
-      "name": "SocialAccessibilityExtAbility_desc",
-      "value": "Appless Phone social accessibility capture"
-    },
-    {
-      "name": "SocialAccessibilityExtAbility_label",
-      "value": "Appless Phone Social Assist"
-    },
-    {
       "name": "NavigationCardFormExtensionAbility_desc",
       "value": "Appless Phone navigation desktop card"
     },
@@ -47,6 +31,10 @@
     {
       "name": "location_permission_reason",
       "value": "用于在点击系统地图导航时获取一次当前位置作为起点"
+    },
+    {
+      "name": "microphone_permission_reason",
+      "value": "用于把语音输入转成发送栏文字"
     }
   ]
 }

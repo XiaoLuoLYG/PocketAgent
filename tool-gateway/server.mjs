@@ -100,14 +100,6 @@ const TOOL_DEFS = {
     requiredArgs: ['location', 'keyword'],
     configItems: ['AMAP_KEY', 'AMAP_DEFAULT_LOCATION=经度,纬度', 'MEITUAN_UNION_APP_KEY/SECRET', 'TAOBAO_APP_KEY/SECRET/TAOBAO_FLASH_PID'],
     actions: ['配置外卖来源 Key', '设置默认坐标', '只查询不下单']
-  },
-  'social.reply.send': {
-    title: '微信回复发送',
-    envPrefix: 'SOCIAL',
-    providerHint: 'AIPhone 设备侧通知/辅助桥接和真实微信发送执行器',
-    requiredArgs: ['target_message_id', 'conversation_id', 'text'],
-    configItems: ['系统/特权通知桥接或用户授权辅助捕获', '真实微信辅助发送执行器'],
-    actions: ['打开社交权限诊断']
   }
 };
 
@@ -264,6 +256,26 @@ function readJson(req) {
   });
 }
 
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let total = 0;
+    const chunks = [];
+    req.on('data', chunk => {
+      total += chunk.length;
+      if (total > MAX_BODY_BYTES) {
+        reject(new Error('Request body is too large.'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      resolve(Buffer.concat(chunks).toString('utf8'));
+    });
+    req.on('error', reject);
+  });
+}
+
 function textOf(value) {
   if (value === undefined || value === null) {
     return '';
@@ -274,11 +286,325 @@ function textOf(value) {
   return JSON.stringify(value);
 }
 
+const socialCache = {
+  items: []
+};
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function hasEnv(name) {
+  return textOf(process.env[name]).trim().length > 0;
+}
+
+function describeError(error) {
+  return error instanceof Error ? error.message : textOf(error);
+}
+
+function socialConnection(platform, configured, displayName, accountId, configuredMessage, setupMessage) {
+  return {
+    platform,
+    status: configured ? 'connected' : 'needs_auth',
+    displayName,
+    accountId: configured ? accountId : '',
+    message: configured ? configuredMessage : setupMessage
+  };
+}
+
+function socialConnectionError(platform, message) {
+  return {
+    platform,
+    status: 'error',
+    displayName: platform === 'x' ? 'X' : 'Slack',
+    accountId: '',
+    message
+  };
+}
+
+function socialConnections(source = '') {
+  const xConfigured = hasEnv('X_BEARER_TOKEN') || hasEnv('X_ACCESS_TOKEN') || hasEnv('X_OAUTH_TOKEN');
+  const slackConfigured = hasEnv('SLACK_BOT_TOKEN') || hasEnv('SLACK_USER_TOKEN');
+  const wecomConfigured = ['WECOM_CORP_ID', 'WECOM_AGENT_ID', 'WECOM_SECRET', 'WECOM_CALLBACK_TOKEN', 'WECOM_ENCODING_AES_KEY'].every(hasEnv);
+  const connections = [
+    socialConnection('x', xConfigured, 'X', textOf(process.env.X_ACCOUNT_ID || process.env.X_USER_ID), 'X token configured.', 'Set X_BEARER_TOKEN or an OAuth-backed X access token.'),
+    socialConnection('slack', slackConfigured, 'Slack', textOf(process.env.SLACK_TEAM_ID || process.env.SLACK_ACCOUNT_ID), 'Slack token configured.', 'Set SLACK_USER_TOKEN or SLACK_BOT_TOKEN with read scopes.'),
+    socialConnection('wecom', wecomConfigured, '企业微信', textOf(process.env.WECOM_CORP_ID), 'WeCom app and callback secrets configured.', 'Set WECOM_CORP_ID, WECOM_AGENT_ID, WECOM_SECRET, WECOM_CALLBACK_TOKEN, and WECOM_ENCODING_AES_KEY.')
+  ];
+  return source === 'x' ? connections.filter(connection => connection.platform === 'x') : connections;
+}
+
+function replaceSocialConnection(connections, replacement) {
+  return connections.map(connection => connection.platform === replacement.platform ? replacement : connection);
+}
+
+function socialItemMatchesQuery(item, query) {
+  const needle = textOf(query).trim().toLowerCase();
+  if (needle.length === 0) {
+    return true;
+  }
+  return [item.author, item.handle, item.text, item.channel, item.threadId]
+    .map(textOf)
+    .some(value => value.toLowerCase().includes(needle));
+}
+
+function upsertSocialItems(items) {
+  items.forEach(item => {
+    const id = textOf(item?.id).trim();
+    if (id.length === 0) {
+      return;
+    }
+    const index = socialCache.items.findIndex(cached => cached.id === id);
+    if (index >= 0) {
+      socialCache.items[index] = item;
+      return;
+    }
+    socialCache.items.push(item);
+  });
+}
+
+function uniqueSocialItems(items) {
+  const seen = new Set();
+  return items.filter(item => {
+    const id = textOf(item?.id).trim();
+    if (id.length === 0 || seen.has(id)) {
+      return false;
+    }
+    seen.add(id);
+    return true;
+  });
+}
+
+async function fetchXRecentSearch(query) {
+  const token = textOf(process.env.X_BEARER_TOKEN || process.env.X_ACCESS_TOKEN || process.env.X_OAUTH_TOKEN).trim();
+  if (token.length === 0 || textOf(query).trim().length === 0) {
+    return { items: [], connection: null };
+  }
+  const params = new URLSearchParams({
+    query: textOf(query).trim(),
+    max_results: '10',
+    'tweet.fields': 'created_at,author_id,conversation_id',
+    expansions: 'author_id',
+    'user.fields': 'username,name'
+  });
+  const response = await fetch(`https://api.x.com/2/tweets/search/recent?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json'
+    }
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`X recent search failed: HTTP ${response.status} ${text.slice(0, 240)}`);
+  }
+  const payload = JSON.parse(text);
+  const users = new Map((Array.isArray(payload.includes?.users) ? payload.includes.users : [])
+    .map(user => [textOf(user.id), user]));
+  const items = (Array.isArray(payload.data) ? payload.data : []).map(tweet => {
+    const user = users.get(textOf(tweet.author_id)) || {};
+    const username = textOf(user.username);
+    return {
+      id: `x-${textOf(tweet.id)}`,
+      platform: 'x',
+      kind: 'post',
+      author: textOf(user.name || username),
+      handle: username.length > 0 ? `@${username}` : '',
+      text: textOf(tweet.text),
+      timestamp: textOf(tweet.created_at),
+      url: username.length > 0 && textOf(tweet.id).length > 0 ? `https://x.com/${username}/status/${tweet.id}` : '',
+      channel: '',
+      threadId: textOf(tweet.conversation_id || tweet.id),
+      unread: false
+    };
+  });
+  return { items, connection: null };
+}
+
+async function fetchSlackSearch(query) {
+  const token = textOf(process.env.SLACK_USER_TOKEN || process.env.SLACK_BOT_TOKEN).trim();
+  const searchQuery = slackSearchQuery(query);
+  if (token.length === 0 || searchQuery.length === 0) {
+    return { items: [], connection: null };
+  }
+  const params = new URLSearchParams({
+    query: searchQuery,
+    count: '10'
+  });
+  const response = await fetch(`https://slack.com/api/search.messages?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json'
+    }
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Slack search.messages failed: HTTP ${response.status} ${text.slice(0, 240)}`);
+  }
+  const payload = JSON.parse(text);
+  if (payload.ok === false) {
+    throw new Error(`Slack search.messages failed: ${textOf(payload.error || 'ok:false')}`);
+  }
+  const matches = Array.isArray(payload.messages?.matches) ? payload.messages.matches : [];
+  const items = matches.map(match => {
+    const ts = textOf(match.ts || match.iid);
+    return {
+      id: `slack-${textOf(match.channel?.id || match.channel_name)}-${ts}`.replaceAll(/\s+/g, '_'),
+      platform: 'slack',
+      kind: 'message',
+      author: textOf(match.user_name || match.username || match.user),
+      handle: textOf(match.user_name || match.username || match.user),
+      text: textOf(match.text),
+      timestamp: ts,
+      url: textOf(match.permalink),
+      channel: textOf(match.channel?.name || match.channel_name),
+      threadId: textOf(match.thread_ts || match.previous?.ts || ts),
+      unread: false
+    };
+  });
+  return { items, connection: null };
+}
+
+function slackSearchQuery(query) {
+  const prompt = textOf(query).trim();
+  const operator = /\b(?:from|after|before|in):[^\s,，]+/i.exec(prompt);
+  if (operator !== null) {
+    return operator[0];
+  }
+  const match = /(?:Slack|slack)\s*(?:搜索|查找|查看|search)?\s*[:：]?\s*(.+)$/i.exec(prompt) ||
+    /(?:搜索|查找|查看)\s*(?:Slack|slack)\s*(?:消息)?\s*[:：]?\s*(.+)$/i.exec(prompt);
+  return match === null ? prompt : textOf(match[1]).trim();
+}
+
+async function socialFeedResponse(url) {
+  const source = textOf(url.searchParams.get('source')).trim().toLowerCase();
+  const query = url.searchParams.get('q') || '';
+  let connections = socialConnections(source);
+  const fetchedItems = [];
+  if (query.trim().length > 0) {
+    if (source === '' || source === 'x') {
+      try {
+        const items = (await fetchXRecentSearch(query)).items;
+        upsertSocialItems(items);
+        fetchedItems.push(...items);
+      } catch (error) {
+        connections = replaceSocialConnection(connections, socialConnectionError('x', describeError(error)));
+      }
+    }
+    if (source === '') {
+      try {
+        const items = (await fetchSlackSearch(query)).items;
+        upsertSocialItems(items);
+        fetchedItems.push(...items);
+      } catch (error) {
+        connections = replaceSocialConnection(connections, socialConnectionError('slack', describeError(error)));
+      }
+    }
+  }
+  let items = uniqueSocialItems(socialCache.items.filter(item => socialItemMatchesQuery(item, query)).concat(fetchedItems));
+  if (source === 'x') {
+    items = items.filter(item => item.platform === 'x' && item.kind === 'post');
+  }
+  return {
+    items,
+    connections
+  };
+}
+
+function findSocialItem(itemId) {
+  return socialCache.items.find(item => item.id === itemId) || null;
+}
+
+function normalizeSocialPlatform(value) {
+  const platform = textOf(value).trim().toLowerCase();
+  if (platform === 'x' || platform === 'twitter') {
+    return 'x';
+  }
+  if (platform === 'slack') {
+    return 'slack';
+  }
+  if (platform === 'wecom' || platform === 'wework' || platform === '企业微信') {
+    return 'wecom';
+  }
+  return 'unknown';
+}
+
+function socialDraftResponse(body) {
+  const itemId = textOf(body.itemId).trim();
+  const platform = normalizeSocialPlatform(body.platform);
+  if (itemId.length === 0) {
+    return {
+      draft: {
+        itemId: '',
+        platform,
+        text: '',
+        status: 'error',
+        error: 'itemId is required to create a local SocialHub draft.',
+        localOnly: true,
+        sent: false
+      }
+    };
+  }
+  const item = findSocialItem(itemId);
+  if (!item || (platform !== 'unknown' && item.platform !== platform)) {
+    return {
+      draft: {
+        itemId,
+        platform,
+        text: '',
+        status: 'error',
+        error: `SocialHub item not found for local draft: ${itemId}`,
+        localOnly: true,
+        sent: false
+      }
+    };
+  }
+  return {
+    draft: {
+      itemId,
+      platform: item.platform,
+      text: textOf(body.instruction).trim(),
+      status: 'draft',
+      error: '',
+      localOnly: true,
+      sent: false
+    }
+  };
+}
+
+function isWecomCallbackAuthorized(req, url) {
+  if (!isGatewayAuthorized(req)) {
+    return false;
+  }
+  const callbackToken = textOf(process.env.WECOM_CALLBACK_TOKEN).trim();
+  if (callbackToken.length === 0) {
+    return true;
+  }
+  const suppliedToken = textOf(url.searchParams.get('token') || req.headers['x-wecom-token']).trim();
+  return suppliedToken === callbackToken;
+}
+
+function wecomCallbackItem(raw) {
+  const text = textOf(raw).trim();
+  if (text.length === 0) {
+    return null;
+  }
+  return {
+    id: `wecom-${Date.now()}`,
+    platform: 'wecom',
+    kind: 'message',
+    author: '',
+    handle: '',
+    text,
+    timestamp: nowIso(),
+    url: '',
+    channel: '',
+    threadId: '',
+    unread: true
+  };
+}
+
 function normalizeToolId(name) {
   const value = textOf(name).trim().toLowerCase().replaceAll('_', '.');
-  if (value === 'social.reply.send' || value.includes('social.reply') || value.includes('微信回复') || value.includes('社交回复')) {
-    return 'social.reply.send';
-  }
   if (value === 'travel.search' || value.includes('travel') || value.includes('出行方案') || value.includes('搜索出行') || value.includes('综合出行')) {
     return 'travel.search';
   }
@@ -385,9 +711,6 @@ function safeId(value) {
 }
 
 function surfaceIdForTool(toolName) {
-  if (toolName === 'social.reply.send') {
-    return 'surface_social';
-  }
   if (toolName === 'travel.search') {
     return 'surface_travel';
   }
@@ -404,9 +727,6 @@ function surfaceIdForTool(toolName) {
 }
 
 function intentForTool(toolName) {
-  if (toolName === 'social.reply.send') {
-    return 'social';
-  }
   if (toolName === 'food.search') {
     return 'food';
   }
@@ -2210,21 +2530,6 @@ async function callTool(toolName, args) {
   if (toolName === 'travel.search') {
     return callTravelSearch(args);
   }
-  if (toolName === 'social.reply.send') {
-    return generated(
-      '微信回复未发送。',
-      [
-        {
-          type: 'tool_required',
-          title: '微信回复未发送',
-          body: 'social.reply.send 已注册为真实动作，但 HTTP 兼容网关没有设备侧通知/辅助桥接和微信发送执行器；不会假装发送成功。',
-          toolName,
-          items: ['缺少真实微信辅助发送执行器', '请在 AIPhone HAP 内授权并接入设备侧桥接'],
-          actions: ['打开社交权限诊断']
-        }
-      ]
-    );
-  }
   const config = providerConfig(toolName);
   if (config.mcpUrl.length > 0) {
     return callHttpMcp(toolName, args, config);
@@ -2336,6 +2641,42 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/mcp/tools') {
       handleTools(res);
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/api/social/feed') {
+      if (!isGatewayAuthorized(req)) {
+        rejectUnauthorized(res);
+        return;
+      }
+      sendJson(res, 200, await socialFeedResponse(url));
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/social/draft') {
+      if (!isGatewayAuthorized(req)) {
+        rejectUnauthorized(res);
+        return;
+      }
+      sendJson(res, 200, socialDraftResponse(await readJson(req)));
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/social/wecom/callback') {
+      if (!isWecomCallbackAuthorized(req, url)) {
+        rejectUnauthorized(res);
+        return;
+      }
+      const item = wecomCallbackItem(await readRawBody(req));
+      if (!item) {
+        sendJson(res, 400, {
+          ok: false,
+          error: 'WeCom callback body is empty; no SocialHub item was cached.'
+        });
+        return;
+      }
+      socialCache.items.push(item);
+      sendJson(res, 200, {
+        ok: true,
+        item
+      });
       return;
     }
     if (req.method === 'POST' && url.pathname === '/mcp/call') {

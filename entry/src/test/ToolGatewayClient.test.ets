@@ -194,7 +194,7 @@ export default function toolGatewayClientTest() {
       expect(isRegisteredToolId('train.search')).assertTrue();
       expect(isRegisteredToolId('flight.search')).assertTrue();
       expect(isRegisteredToolId('food.search')).assertTrue();
-      expect(isRegisteredToolId('social.reply.send')).assertTrue();
+      expect(isRegisteredToolId('social.reply.send')).assertFalse();
     });
 
     it('allows only explicit dynamic catalog aliases to enter the local tool host', 0, () => {

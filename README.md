@@ -13,6 +13,7 @@ The HarmonyOS app is a temporary shell. The plan is to make the app layer option
 - Travel choices across rail and flight
 - Nearby place search with map actions
 - Gmail inbox and draft flows
+- SocialHub read across X, Slack, and WeCom, public X post viewing, and reviewable local reply drafts; v1 does not send
 - Dynamic weather lookup
 - Home cards for saved results
 

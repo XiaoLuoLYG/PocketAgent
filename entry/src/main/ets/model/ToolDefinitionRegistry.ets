@@ -56,16 +56,40 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     actions: []
   },
   {
-    toolId: 'social.reply.send',
+    toolId: 'social.feed.search',
     domain: 'social',
-    intent: 'social.reply.send',
-    riskLevel: 'confirm_required',
+    intent: 'social.feed.search',
+    riskLevel: 'read',
     backendPriority: ['local_adapter'],
-    authModes: ['system'],
-    inputSchema: 'socialReplyRequest',
-    outputSchema: 'socialReplyResult',
-    a2uiComponent: 'SocialInbox',
+    authModes: ['oauth', 'provider_key'],
+    inputSchema: 'socialFeedSearchQuery',
+    outputSchema: 'socialHubFeed',
+    a2uiComponent: 'SocialHub',
+    actions: ['social.reply.draft']
+  },
+  {
+    toolId: 'social.reply.draft',
+    domain: 'social',
+    intent: 'social.reply.draft',
+    riskLevel: 'draft',
+    backendPriority: ['local_adapter'],
+    authModes: ['oauth', 'provider_key'],
+    inputSchema: 'socialReplyDraftRequest',
+    outputSchema: 'socialHubDraft',
+    a2uiComponent: 'SocialHub',
     actions: []
+  },
+  {
+    toolId: 'x.post.search',
+    domain: 'x',
+    intent: 'x.post.search',
+    riskLevel: 'read',
+    backendPriority: ['local_adapter'],
+    authModes: ['oauth', 'provider_key'],
+    inputSchema: 'xPostSearchQuery',
+    outputSchema: 'socialHubFeed',
+    a2uiComponent: 'SocialHub',
+    actions: ['social.reply.draft']
   },
   {
     toolId: 'mail.search',

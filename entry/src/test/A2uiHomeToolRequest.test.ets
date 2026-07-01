@@ -8,7 +8,6 @@ import {
   A2uiLabelValueData,
   A2uiRuntimeDataModel,
   A2uiRowGroupsData,
-  A2uiSocialData,
   A2uiSummaryData,
   A2uiSurfaceState,
   A2uiToolRequestData,
@@ -16,6 +15,7 @@ import {
   A2uiTrainData,
   A2uiTripData
 } from '../main/ets/model/A2uiTypes';
+import { emptySocialHub } from '../main/ets/model/SocialHubTypes';
 
 interface ToolRequestArgsFixture {
   query: string;
@@ -89,11 +89,6 @@ function surfaceWithToolRequest(
   const flights: A2uiFlightData[] = [];
   const travelOptions: A2uiTravelOptionData[] = [];
   const foods: A2uiFoodData[] = [];
-  const social: A2uiSocialData = {
-    messages: [],
-    replies: [],
-    diagnostics: []
-  };
   const summary: A2uiSummaryData = {
     text: '',
     toolName: '',
@@ -114,13 +109,12 @@ function surfaceWithToolRequest(
     flights: flights,
     travelOptions: travelOptions,
     foods: foods,
-    social: social,
     thoughts: thoughts,
     summary: summary,
     trip: trip,
-      rowGroups: rowGroups,
-      form: form === null ? {} : form,
-      toolRequest: request,
+    rowGroups: rowGroups,
+    form: form === null ? {} : form,
+    toolRequest: request,
     dynamicToolConnect: {
       toolId: '',
       prompt: '',
@@ -134,7 +128,8 @@ function surfaceWithToolRequest(
       registrationUrl: '',
       actions: []
     },
-    genericToolResults: []
+    genericToolResults: [],
+    socialHub: emptySocialHub()
   };
   const components: A2uiComponent[] = [];
   return {
@@ -324,6 +319,92 @@ export default function a2uiHomeToolRequestTest() {
       expect(resolved.toolId).assertEqual('youtube.video.search');
       expect(argText(resolved.args, 'query')).assertEqual('帮我在 YouTube 搜索 qwen max 官方介绍视频');
       expect(argSources(resolved.args).length).assertEqual(0);
+    });
+
+    it('infers SocialHub feed, X public search, and social drafts conservatively', 0, () => {
+      const feed = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '打开社交消息聚合，看看 Slack、X、企业微信',
+        ''
+      );
+      const xPost = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '帮我搜索 x.com 上 openai 最近的公开 post',
+        ''
+      );
+      const standaloneX = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '帮我搜索 X 上 openai 最近的公开动态',
+        ''
+      );
+      const draft = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '帮我给 Slack 这条社交消息起草回复草稿',
+        ''
+      );
+      const notDraft = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '帮我回复刚才的邮件',
+        ''
+      );
+
+      expect(feed.toolId).assertEqual('social.feed.search');
+      expect(xPost.toolId).assertEqual('x.post.search');
+      expect(standaloneX.toolId).assertEqual('x.post.search');
+      expect(draft.toolId).assertEqual('social.reply.draft');
+      expect(notDraft.toolId).assertEqual('mail.draft.create');
+    });
+
+    it('does not infer X post search from Xcode or generic post text', 0, () => {
+      const xcode = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        '帮我搜索 Xcode 构建报错',
+        ''
+      );
+      const postProcessing = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('', '', ''),
+        'search post processing techniques',
+        ''
+      );
+
+      expect(xcode.toolId).assertEqual('');
+      expect(postProcessing.toolId).assertEqual('');
+    });
+
+    it('guards model-selected X post requests with the same public-post intent gate', 0, () => {
+      const xcode = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('x.post.search', '帮我搜索 Xcode 构建报错', 'model_tool_request'),
+        '帮我搜索 Xcode 构建报错',
+        ''
+      );
+      const postProcessing = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('x.post.search', 'search post processing techniques', 'model_tool_request'),
+        'search post processing techniques',
+        ''
+      );
+      const twitter = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('x.post.search', 'search Twitter public posts about OpenAI', 'model_tool_request'),
+        'search Twitter public posts about OpenAI',
+        ''
+      );
+      const tweet = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('x.post.search', '搜索 OpenAI 最近的推文', 'model_tool_request'),
+        '搜索 OpenAI 最近的推文',
+        ''
+      );
+      const xcom = resolveA2uiHomeToolRequest(
+        surfaceWithToolRequest('x.post.search', '帮我搜索 x.com 上 OpenAI 最近的公开 post', 'model_tool_request'),
+        '帮我搜索 x.com 上 OpenAI 最近的公开 post',
+        ''
+      );
+
+      expect(xcode.hasTool).assertFalse();
+      expect(xcode.toolId).assertEqual('');
+      expect(postProcessing.hasTool).assertFalse();
+      expect(postProcessing.toolId).assertEqual('');
+      expect(twitter.toolId).assertEqual('x.post.search');
+      expect(tweet.toolId).assertEqual('x.post.search');
+      expect(xcom.toolId).assertEqual('x.post.search');
     });
 
     it('infers explicit Google Calendar tools without inventing args', 0, () => {

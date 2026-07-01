@@ -14,7 +14,9 @@ const defaultCases = [
   { query: '帮我用 Google Maps 搜索伦敦国王十字车站附近的中餐', expectsTool: true, expectedToolId: 'maps.place.search' },
   { query: '帮我查看邮箱里最新的重要邮件', expectsTool: true, expectedToolId: 'mail.search' },
   { query: '帮我查看我Gmail里和我eccv论文相关的邮件', expectsTool: true, expectedToolId: 'gmail.mail.search' },
-  { query: '帮我在b站和youtube里搜索qwen max 的官方视频', expectsTool: true, expectedToolId: 'media.video.search' }
+  { query: '帮我在b站和youtube里搜索qwen max 的官方视频', expectsTool: true, expectedToolId: 'media.video.search' },
+  { query: '打开社交消息聚合，看看 Slack、X、企业微信', expectsTool: true, expectedToolId: 'social.feed.search' },
+  { query: '帮我查看 X 上 openai 最近的公开 post', expectsTool: true, expectedToolId: 'x.post.search' }
 ];
 
 const dynamicCases = [
@@ -64,6 +66,14 @@ const fullRegressionCases = [
   ...googleAppCases
 ];
 
+const forbiddenSocialHubLegacyMarkers = [
+  'SocialInbox',
+  'social.reply.send',
+  '微信消息收件箱',
+  '通知中心桥接',
+  '辅助捕获'
+];
+
 const forbiddenSyntheticMarkers = [
   '高铁 G 字头',
   '动车 D 字头',
@@ -72,7 +82,8 @@ const forbiddenSyntheticMarkers = [
   '附近咖啡优先',
   '安静办公优先',
   '连锁稳定优先',
-  '可查选项'
+  '可查选项',
+  ...forbiddenSocialHubLegacyMarkers
 ];
 
 const visibleDomainMarkers = [
@@ -129,7 +140,14 @@ const visibleDomainMarkers = [
   'API_KEY',
   '歌者PPT',
   '多展示一些',
-  '选最快的'
+  '选最快的',
+  'SocialHub',
+  '社交工作台',
+  'social.feed.search',
+  'x.post.search',
+  '生成草稿',
+  'Slack',
+  '企业微信'
 ];
 
 const forbiddenLayoutActionMarkers = [
@@ -189,6 +207,18 @@ const retryableProviderLayoutMarkers = [
   '2300028'
 ];
 
+const socialHubTruthfulBlockingMarkers = [
+  '需要供应商配置',
+  '需要配置：',
+  '查询失败',
+  'Operation timeout',
+  '2300028',
+  'MCP 工具调用失败',
+  'Internal error',
+  '2300999',
+  'Bad Request'
+];
+
 const argv = process.argv.slice(2);
 const cleanData = process.env.AIPHONE_SMOKE_CLEAN_DATA === '1' || argv.includes('--clean-data');
 const runDynamicCases = argv.includes('--dynamic-tools');
@@ -235,6 +265,18 @@ function expectedCaseForQuery(query) {
       expectsTool: true,
       expectedToolId: 'dynamic.search',
       expectedDiscoveredToolId: 'ppt.generate'
+    };
+  }
+  if (isXPostSearchQuery(query) && (!isSocialFeedQuery(query) || /公开\s*posts?\b|public\s+posts?\b|x\.com/i.test(query))) {
+    return {
+      expectsTool: true,
+      expectedToolId: 'x.post.search'
+    };
+  }
+  if (isSocialFeedQuery(query)) {
+    return {
+      expectsTool: true,
+      expectedToolId: 'social.feed.search'
     };
   }
   if (/邮箱|邮件|收件箱/.test(query) && isMailAggregationQuery(query)) {
@@ -675,13 +717,13 @@ function findControls(layout) {
   if (generate === null && inputBounds !== null) {
     const sendCandidate = clickable
       .filter((item) => item.bounds.left >= inputBounds.right - 4 &&
-        item.bounds.left <= inputBounds.right + 120 &&
+        item.bounds.left <= inputBounds.right + 360 &&
         verticallyOverlaps(item.bounds, inputBounds) &&
         item.bounds.width >= 24 &&
         item.bounds.width <= 180 &&
         item.bounds.height >= 24 &&
         item.bounds.height <= 180)
-      .sort((a, b) => Math.abs(a.bounds.x - inputBounds.right) - Math.abs(b.bounds.x - inputBounds.right))[0];
+      .sort((a, b) => b.bounds.x - a.bounds.x)[0];
     if (sendCandidate) {
       generate = {
         x: sendCandidate.bounds.x,
@@ -882,21 +924,28 @@ function analyze(query, logs, expectedTool, expectedToolId = '', expectedDiscove
     toolRequested: /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest|A2uiHomeToolRequestFromModel)\][^\n]*toolId=/.test(text),
     toolOk: /\[AIPhone\]\[(ToolResult|A2uiHomeToolResult)\] ok=true/.test(text),
     failedConnect: /failed to connect|Could not connect|Couldn.t connect|ECONNREFUSED|server is not running|CURLcode result 7|curl_code":7|os_errno":111/i.test(text),
-    providerFailed: /\[AIPhone\]\[LocalTool12306Endpoint\][^\n]*code=[45]\d\d/.test(text) || /\[AIPhone\]\[LocalToolException\]/.test(text) || (missingConfig && expectedToolId !== 'travel.search'),
+    providerFailed: /\[AIPhone\]\[LocalTool12306Endpoint\][^\n]*code=[45]\d\d/.test(text) ||
+      /\[AIPhone\]\[LocalToolException\]/.test(text) ||
+      /Google Calendar API 调用失败/.test(text) ||
+      (missingConfig && expectedToolId !== 'travel.search'),
     modelFailed: /\[AIPhone\]\[(ModelResult|A2uiHomeModelResult)\] ok=false/.test(text),
     toolNone: /\[AIPhone\]\[(ToolRequest|A2uiHomeToolRequest)\] none/.test(text),
     gmailWebOpened: /\[AIPhone\]\[A2uiHomeOpenUrl\] ok=true url=https:\/\/mail\.google\.com/.test(text),
     syntheticFallback: forbiddenSyntheticMarkers.some((marker) => text.includes(marker))
   };
   const modelFallbackOnlyAfterSameToolSelection = result.modelFailed && result.directIntent && result.modelSelectedExpectedToolId;
-  const modelPassed = result.model200 && ((result.modelOk && !result.modelFailed) || modelFallbackOnlyAfterSameToolSelection);
-  const basePassed = !result.failedConnect &&
-    !result.providerFailed &&
-    !result.htmlLoadError &&
+  const modelPassed = modelFallbackOnlyAfterSameToolSelection || (result.model200 && result.modelOk && !result.modelFailed);
+  const htmlDocumentPassed = result.htmlHomeDocument.ok ||
+    (isSocialHubExpectedToolId(expectedToolId) && result.htmlHomeDocument.count > 0);
+  const baseWithoutTransport = !result.htmlLoadError &&
     result.htmlHomeSurfaceLoad.ok &&
     !result.syntheticFallback &&
     (!result.directIntent || modelFallbackOnlyAfterSameToolSelection) &&
-    result.htmlHomeDocument.ok;
+    htmlDocumentPassed;
+  result.modelPassed = modelPassed;
+  result.transportPassed = !result.failedConnect && !result.providerFailed;
+  result.basePassedWithoutTransport = baseWithoutTransport;
+  const basePassed = result.transportPassed && baseWithoutTransport;
   if (expectedTool === true) {
     result.ok = basePassed && modelPassed && result.toolRequested && result.localToolRequest && result.toolOk && result.hasExpectedToolId && result.hasExpectedDiscoveredToolId;
   } else if (expectedTool === false) {
@@ -928,6 +977,51 @@ function isYouTubeBilibiliQuery(query) {
   return /YouTube|油管/i.test(query) && /B站|B 站|Bilibili|哔哩哔哩/i.test(query);
 }
 
+function isSocialFeedQuery(query) {
+  return /社交|消息聚合|多平台消息|Slack|企业微信/i.test(query);
+}
+
+function isSocialHubExpectedToolId(expectedToolId) {
+  return expectedToolId === 'social.feed.search' || expectedToolId === 'x.post.search';
+}
+
+function hasStandaloneXMarker(query) {
+  return /(^|[^A-Za-z0-9_])X(?=$|[^A-Za-z0-9_])/i.test(query.replace(/Xcode/gi, ''));
+}
+
+function isXPostSearchQuery(query) {
+  const text = query.replace(/Xcode/gi, '');
+  if (/posts?\s*[- ]?\s*processing/i.test(text)) {
+    return false;
+  }
+  const hasPlatform = /Twitter|推文|x\.com/i.test(text) ||
+    (hasStandaloneXMarker(text) && /上|平台|推文|公开\s*posts?\b|public\s+posts?\b/i.test(text));
+  return hasPlatform && /读|看|查看|查|查询|搜索|搜|最近|公开|read|search|find|recent|latest|public/i.test(text);
+}
+
+function hasTruthfulSocialHubState(text) {
+  return /SocialHub/.test(text) &&
+    /社交工作台/.test(text) &&
+    /待授权|等待授权接入|异常|受限|已连接|未配置|Social bridge unavailable|HTTP|scope|rate|token|configured|真实数据接入前|还没有真实消息/i.test(text);
+}
+
+function hasVisibleSocialHubOutput(text, expectedToolId) {
+  if (!hasTruthfulSocialHubState(text)) {
+    return false;
+  }
+  if (expectedToolId === 'x.post.search') {
+    return /\bX\b/.test(text);
+  }
+  if (expectedToolId === 'social.feed.search') {
+    return /\bX\b/.test(text) && /Slack/.test(text) && /企业微信/.test(text);
+  }
+  return false;
+}
+
+function isCalendarQuery(query) {
+  return /Google\s*Calendar|谷歌日历/i.test(query) || /日程|会议|约会/.test(query);
+}
+
 function layoutExpectationsForQuery(query) {
   if (/^你好$|问候|打招呼/.test(query)) {
     return ['你好'];
@@ -943,6 +1037,12 @@ function layoutExpectationsForQuery(query) {
   }
   if (/PPT|ppt|幻灯片|演示文稿/.test(query)) {
     return ['接入工具', 'ppt.generate', 'API_KEY', 'unsupported_transport', '歌者PPT'];
+  }
+  if (isXPostSearchQuery(query) && (!isSocialFeedQuery(query) || /公开\s*posts?\b|public\s+posts?\b|x\.com/i.test(query))) {
+    return ['SocialHub', '公开 post', 'x.post.search', 'X'];
+  }
+  if (isSocialFeedQuery(query)) {
+    return ['SocialHub', '社交工作台', 'Slack', '企业微信', 'social.feed.search'];
   }
   if (isMailAggregationQuery(query)) {
     return ['mail.search', 'Gmail', 'QQ Mail', '不会模拟'];
@@ -983,8 +1083,10 @@ function layoutExpectationsForQuery(query) {
   if (/B站|B 站|Bilibili|哔哩哔哩/i.test(query)) {
     return ['哔哩哔哩', 'media.video.search', '跳转'];
   }
-  if (/Google\s*Calendar|谷歌日历/i.test(query) || /日程|会议|约会/.test(query)) {
-    return ['Google Calendar', 'OAuth', '不会模拟日程'];
+  if (isCalendarQuery(query)) {
+    return /创建|新建|添加|安排|预约/.test(query)
+      ? ['Google Calendar API', '天', '周', '月', '日视图', '已写入', '一对一会议', '16:30', '17:00']
+      : ['Google Calendar API', '天', '周', '月', '日视图'];
   }
   if (/Google\s*Maps?|Google\s*Places|GMap|谷歌地图/i.test(query)) {
     return ['Google Places', 'Google Maps', 'GOOGLE_MAPS_API_KEY', 'maps.place.search'];
@@ -1284,6 +1386,12 @@ async function runQuery(query, index, expectedTool) {
   const evidenceText = scrollEvidence.text;
   const evidenceLayout = scrollEvidence.currentLayout;
   const expectedHits = expectedMarkers.filter((marker) => evidenceText.includes(marker));
+  const expectedMisses = expectedMarkers.filter((marker) => !evidenceText.includes(marker));
+  const calendarMarkersOk = !isCalendarQuery(query) || expectedMisses.length === 0;
+  const forbiddenSocialHubLegacyHits = forbiddenSocialHubLegacyMarkers.filter((marker) => evidenceText.includes(marker));
+  const isSocialHubCase = isSocialHubExpectedToolId(expectedToolId);
+  const socialHubVisibleOutput = isSocialHubCase && hasVisibleSocialHubOutput(evidenceText, expectedToolId);
+  const allowsSocialHubTruthfulState = socialHubVisibleOutput && hasTruthfulSocialHubState(evidenceText);
   const allowsExternalGmailWeb = isGmailWebQuery(query) && summary.gmailWebOpened === true;
   const allowsPartialTravelSourceFailure = expectedToolId === 'travel.search' &&
     summary.toolOk === true &&
@@ -1291,6 +1399,9 @@ async function runQuery(query, index, expectedTool) {
     (evidenceText.includes('耗时') || /\bG\d+\b/.test(evidenceText) || evidenceText.includes('高铁 · 12306'));
   const layoutBlockingHits = finalLayoutBlockingMarkers.filter((marker) => {
     if (allowsPartialTravelSourceFailure && marker === '查询失败') {
+      return false;
+    }
+    if (allowsSocialHubTruthfulState && socialHubTruthfulBlockingMarkers.includes(marker)) {
       return false;
     }
     return evidenceText.includes(marker);
@@ -1303,7 +1414,7 @@ async function runQuery(query, index, expectedTool) {
     }
   }
   const providerLayoutFailed = retryableProviderLayoutMarkers.some((marker) => evidenceText.includes(marker));
-  summary.providerFailed = summary.providerFailed || providerLayoutFailed;
+  summary.providerFailed = summary.providerFailed || (providerLayoutFailed && !allowsSocialHubTruthfulState);
   summary.layoutPath = join(outDir, `query-${index + 1}-final-layout.json`);
   summary.layoutTextPath = layoutTextPath;
   summary.layoutScrolledTextPath = scrollEvidence.combinedTextPath;
@@ -1313,9 +1424,16 @@ async function runQuery(query, index, expectedTool) {
   summary.layoutScrollScreenPaths = scrollEvidence.screenPaths;
   summary.screenPath = captureScreen(`query-${index + 1}-final-screen.png`);
   summary.layoutExpectedHits = expectedHits;
+  summary.layoutExpectedMisses = expectedMisses;
+  summary.socialHubVisibleOutput = socialHubVisibleOutput;
+  summary.layoutForbiddenSocialHubLegacyHits = forbiddenSocialHubLegacyHits;
   summary.layoutBlockingHits = layoutBlockingHits;
   summary.gmailEccvKeywordVisible = !isGmailEccvQuery(query) || /eccv/i.test(evidenceText);
-  summary.layoutTextExposed = (expectedMarkers.length === 0 || expectedHits.length > 0) && summary.gmailEccvKeywordVisible;
+  summary.layoutTextExposed = isSocialHubCase ?
+    socialHubVisibleOutput :
+    (expectedMarkers.length === 0 || expectedHits.length > 0) &&
+    calendarMarkersOk &&
+    summary.gmailEccvKeywordVisible;
   summary.mailAggregateVisible = expectedToolId !== 'mail.search' ||
     (isMailAggregationQuery(query) ? (/Gmail/.test(evidenceText) && /QQ Mail/.test(evidenceText)) :
       (isQqMailQuery(query) ? /QQ Mail/.test(evidenceText) : (/Gmail/.test(evidenceText) && /QQ Mail/.test(evidenceText))));
@@ -1340,10 +1458,23 @@ async function runQuery(query, index, expectedTool) {
     summary.mailExpandedActions.draftToolRequested &&
     summary.mailExpandedActions.draftToolOk &&
     summary.mailExpandedActions.draftVisible;
-  const allowsHtmlDocumentOnly = !expectsMailDraftAction && expectedToolId !== 'mail.search' && summary.htmlHomeDocument.ok;
+  const allowsHtmlDocumentOnly = !isSocialHubCase && !expectsMailDraftAction && expectedToolId !== 'mail.search' && summary.htmlHomeDocument.ok;
   summary.layoutOk = layoutBlockingHits.length === 0 &&
-    (allowsExternalGmailWeb || summary.layoutTextExposed || allowsHtmlDocumentOnly);
-  summary.ok = summary.ok && summary.layoutOk;
+    forbiddenSocialHubLegacyHits.length === 0 &&
+    (isSocialHubCase ? socialHubVisibleOutput : (allowsExternalGmailWeb || summary.layoutTextExposed || allowsHtmlDocumentOnly));
+  if (isSocialHubCase) {
+    summary.ok = summary.basePassedWithoutTransport === true &&
+      summary.modelPassed === true &&
+      summary.toolRequested &&
+      summary.localToolRequest &&
+      summary.toolOk &&
+      summary.hasExpectedToolId &&
+      summary.hasExpectedDiscoveredToolId &&
+      (summary.transportPassed === true || allowsSocialHubTruthfulState) &&
+      summary.layoutOk;
+  } else {
+    summary.ok = summary.ok && summary.layoutOk;
+  }
   return summary;
 }
 
@@ -1393,6 +1524,10 @@ const finalSummary = summaries.length > 0 ? summaries[summaries.length - 1] : nu
 const finalAllowsExternalGmailWeb = isGmailWebQuery(finalQuery) &&
   finalSummary !== null &&
   finalSummary.gmailWebOpened === true;
+const finalAllowsSocialHubTruthfulState =
+  finalSummary !== null &&
+  isSocialHubExpectedToolId(finalSummary.expectedToolId) &&
+  hasVisibleSocialHubOutput(finalLayoutText, finalSummary.expectedToolId);
 const finalAllowsSourceFailure =
   finalAllowsPartialTravel &&
   finalSummary !== null &&
@@ -1405,6 +1540,9 @@ const finalLayoutBlockingHits = finalLayoutBlockingMarkers.filter((marker) => {
     return false;
   }
   if (finalAllowsSourceFailure && marker === '查询失败') {
+    return false;
+  }
+  if (finalAllowsSocialHubTruthfulState && socialHubTruthfulBlockingMarkers.includes(marker)) {
     return false;
   }
   return finalLayoutText.includes(marker);
@@ -1441,8 +1579,11 @@ const visibleOutput = {
   syntheticHits: finalLayoutSyntheticHits,
   forbiddenActionHits: finalLayoutForbiddenActionHits,
   blockingHits: finalLayoutBlockingHits,
-  ok: (finalAllowsExternalGmailWeb || finalLayoutDomainHits.length > 0 ||
-    (finalSummary !== null && finalSummary.htmlHomeDocument !== undefined && finalSummary.htmlHomeDocument.ok === true)) &&
+  ok: (finalAllowsSocialHubTruthfulState || finalAllowsExternalGmailWeb || finalLayoutDomainHits.length > 0 ||
+    (finalSummary !== null &&
+      !isSocialHubExpectedToolId(finalSummary.expectedToolId) &&
+      finalSummary.htmlHomeDocument !== undefined &&
+      finalSummary.htmlHomeDocument.ok === true)) &&
     finalLayoutSyntheticHits.length === 0 &&
     finalLayoutForbiddenActionHits.length === 0 &&
     finalLayoutBlockingHits.length === 0

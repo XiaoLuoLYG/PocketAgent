@@ -205,7 +205,12 @@ function resultOf(result: DynamicGenericToolResult): A2uiGenericToolResultData {
   };
 }
 
+function genericResultTitle(toolId: string): string {
+  return toolId.indexOf('calendar.') === 0 ? 'Google Calendar' : '动态工具结果';
+}
+
 function genericResultComponents(toolId: string): A2uiComponent[] {
+  const title = genericResultTitle(toolId);
   const retryAction: A2uiAction = {
     id: 'dynamic_retry',
     label: '重新查询',
@@ -217,13 +222,13 @@ function genericResultComponents(toolId: string): A2uiComponent[] {
     id: 'root',
     component: A2UI_COMPONENT_SURFACE_ROOT,
     child: 'results',
-    title: '动态工具结果',
+    title: title,
     status: 'ready'
   };
   const results: A2uiComponent = {
     id: 'results',
     component: A2UI_COMPONENT_GENERIC_TOOL_RESULTS,
-    title: '动态工具结果',
+    title: title,
     body: '以下只展示 MCP tools/call 的真实返回或真实错误。',
     status: 'ready',
     dataPath: '/genericToolResults',
@@ -233,6 +238,7 @@ function genericResultComponents(toolId: string): A2uiComponent[] {
 }
 
 export function genericToolResultsA2ui(surfaceId: string, toolId: string, results: DynamicGenericToolResult[]): string {
+  const title = genericResultTitle(toolId);
   const a2uiResults: A2uiGenericToolResultData[] = results.map((result: DynamicGenericToolResult): A2uiGenericToolResultData => resultOf(result));
   const summary: A2uiSummaryData = {
     text: a2uiResults.length > 0 ? a2uiResults[0].summary : '动态工具没有返回可展示结果。',
@@ -245,7 +251,7 @@ export function genericToolResultsA2ui(surfaceId: string, toolId: string, result
       createSurface: {
         surfaceId: surfaceId,
         root: 'root',
-        title: '动态工具结果',
+        title: title,
         intent: 'dynamic_tool',
         status: 'ready',
         sendDataModel: true

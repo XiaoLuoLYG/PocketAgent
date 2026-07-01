@@ -7,12 +7,12 @@ import {
   foodOptions,
   genericToolResults,
   labelValues,
-  socialMessages,
-  socialReplies,
+  resolveData,
   toolRequest,
   trainOptions,
   travelOptions
 } from '../main/ets/model/A2uiData';
+import { SocialHubItemData } from '../main/ets/model/SocialHubTypes';
 import {
   appendThinkingStream,
   extractA2uiJsonlFromModelChunk,
@@ -292,12 +292,20 @@ export default function a2uiParserTest() {
       expect(results[0].rows[0].value).assertEqual('');
     });
 
-    it('accepts SocialInbox messages and reply state without falling back to rows', 0, () => {
+    it('rejects the removed SocialInbox component', 0, () => {
       const stream =
         '{"version":"v0.9.1","createSurface":{"surfaceId":"social","root":"root","title":"社交收件箱","intent":"social","status":"ready"}}\n' +
-        '{"version":"v0.9.1","updateComponents":{"surfaceId":"social","components":[{"id":"root","component":"SurfaceRoot","child":"inbox","title":"社交收件箱","status":"ready"},{"id":"inbox","component":"SocialInbox","title":"微信消息","dataPath":"/social/messages","status":"ready"}]}}\n' +
-        '{"version":"v0.9.1","updateDataModel":{"surfaceId":"social","path":"/social/messages","value":[{"id":"wechat-1","platform":"wechat","conversationId":"wechat-alice","conversationTitle":"Alice","senderName":"Alice","preview":"晚上一起吃饭吗","receivedAt":"2026-06-11T08:30:00.000Z","source":"notification","status":"unread"}]}}\n' +
-        '{"version":"v0.9.1","updateDataModel":{"surfaceId":"social","path":"/social/replies","value":[{"id":"reply-1","targetMessageId":"wechat-1","platform":"wechat","conversationId":"wechat-alice","text":"可以","status":"sent","error":"","sentAt":"2026-06-11T08:31:00.000Z"}]}}\n';
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"social","components":[{"id":"root","component":"SurfaceRoot","child":"inbox","title":"社交收件箱","status":"ready"},{"id":"inbox","component":"SocialInbox","title":"微信消息","dataPath":"/social/messages","status":"ready"}]}}\n';
+      const parsed = parseA2uiJsonl(stream);
+
+      expect(parsed.error.indexOf('SocialInbox')).assertLarger(-1);
+    });
+
+    it('accepts SocialHub components bound to socialHub items', 0, () => {
+      const stream =
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"social-hub","root":"root","title":"Social Hub","intent":"social","status":"ready"}}\n' +
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"social-hub","components":[{"id":"root","component":"SurfaceRoot","child":"hub","title":"Social Hub","status":"ready"},{"id":"hub","component":"SocialHub","title":"Social Hub","dataPath":"/socialHub/items","status":"ready"}]}}\n' +
+        '{"version":"v0.9.1","updateDataModel":{"surfaceId":"social-hub","path":"/socialHub/items","value":[{"id":"slack-1","platform":"slack","kind":"message","author":"Lin","text":"standup moved","channel":"#core"}]}}\n';
       const parsed = parseA2uiJsonl(stream);
       const store = new A2uiSurfaceStore();
 
@@ -305,15 +313,13 @@ export default function a2uiParserTest() {
         store.apply(envelope);
       });
 
-      const surface = store.getSurface();
-      const inbox = componentById(surface, 'inbox');
+      const hub = componentById(store.getSurface(), 'hub');
+      const items = resolveData(store.getSurface(), '/socialHub/items') as SocialHubItemData[];
       expect(parsed.error).assertEqual('');
-      expect(inbox !== null).assertTrue();
-      if (inbox !== null) {
-        expect(socialMessages(surface, inbox)[0].conversationTitle).assertEqual('Alice');
-        expect(socialMessages(surface, inbox)[0].source).assertEqual('notification');
-        expect(socialReplies(surface)[0].status).assertEqual('sent');
-      }
+      expect(hub !== null).assertTrue();
+      expect(items.length).assertEqual(1);
+      expect(items[0].platform).assertEqual('slack');
+      expect(items[0].text).assertEqual('standup moved');
     });
 
     it('extracts model A2UI from think blocks and markdown fences', 0, () => {

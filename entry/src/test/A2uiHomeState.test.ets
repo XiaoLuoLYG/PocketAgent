@@ -10,7 +10,8 @@ import {
   shouldShowWelcome,
   shouldShowQueryPendingSurface,
   shouldApplySurfaceUpdate,
-  updateConnectionPanelState
+  updateConnectionPanelState,
+  voiceInputTextAfterRecognition
 } from '../main/ets/pages/A2uiHome/state/A2uiHomeState';
 
 function surface(sequence: number, status: string, surfaceId: string = 'surface_model'): A2uiSurfaceState {
@@ -80,6 +81,13 @@ export default function a2uiHomeStateTest() {
       expect(isPromptInputEnabled(false)).assertTrue();
       expect(isPromptInputEnabled(true)).assertFalse();
       expect(inputTextAfterPromptSubmit('帮我查深圳北站附近餐馆')).assertEqual('帮我查深圳北站附近餐馆');
+    });
+
+    it('appends recognized voice input to the current draft', 0, () => {
+      expect(voiceInputTextAfterRecognition('', ' 明天的天气 ')).assertEqual('明天的天气');
+      expect(voiceInputTextAfterRecognition('帮我查深圳北站', '附近餐馆')).assertEqual('帮我查深圳北站 附近餐馆');
+      expect(voiceInputTextAfterRecognition('帮我查深圳北站 ', '附近餐馆')).assertEqual('帮我查深圳北站 附近餐馆');
+      expect(voiceInputTextAfterRecognition('原始草稿 ', '   ')).assertEqual('原始草稿 ');
     });
 
     it('shows the query pending surface only before the first new render arrives', 0, () => {

@@ -45,17 +45,17 @@ Task components:
 - `TrainOptions`
 - `FlightBoard`
 - `FoodChoices`
-- `SocialInbox`
 - `ConfirmPanel`
 - `InfoRows`
+- `SocialHub`
 
-Unknown component names are parser errors. Components can bind to the surface data model with JSON Pointer style paths such as `/rows`, `/travelOptions`, `/trains`, `/flights`, `/foods`, `/social/messages`, `/social/replies`, `/social/diagnostics`, `/thoughts`, and `/toolRequest`.
+Unknown component names are parser errors. Components can bind to the surface data model with JSON Pointer style paths such as `/rows`, `/travelOptions`, `/trains`, `/flights`, `/foods`, `/thoughts`, `/toolRequest`, `/socialHub/items`, `/socialHub/selected`, `/socialHub/draft`, and `/socialHub/connections`.
 
 `TravelOptions` renders mixed train and flight choices from `/travelOptions`, ordered by departure time. Each item must include a `sourceTag`, for example `高铁 · 12306` or `飞机 · 飞常准`, so users can see which real provider produced the row. Source filters such as `只看高铁` and `只看飞机` should be client actions over the existing rows, not new model prompts.
 
 `FoodChoices` renders food search choices from `/foods`. Each item may include `sourceTags`, for example `["高德","腾讯地图","百度地图","美团","淘宝闪购"]`; the renderer shows these as small source tags beside the store result. Missing `sourceTags` are allowed for older Amap-only payloads.
 
-`SocialInbox` renders real captured social messages from `/social/messages`, reply state from `/social/replies`, and permission status rows from `/social/diagnostics`. The first channel is WeChat. A message row must include platform, conversation ID/title, sender, preview text, receive time, source (`notification`, `accessibility`, or `official`), and status. Empty social inboxes should show diagnostics; they must not create sample contacts or synthetic messages.
+`SocialHub` renders aggregated social read results from `/socialHub/items`. Each item uses `author`, `handle`, `text`, `timestamp`, `url`, `channel`, `threadId`, and `unread`; `/socialHub/selected` points at the active item, `/socialHub/draft` stores a reviewable local draft with `localOnly` and `sent`, and `/socialHub/connections` exposes provider connection statuses.
 
 ## Tool boundary
 
@@ -65,7 +65,9 @@ The local gateway exposes registered tool IDs:
 - `flight.search`
 - `travel.search`
 - `food.search`
-- `social.reply.send`
+- `social.feed.search`
+- `social.reply.draft`
+- `x.post.search`
 
 Tool results must return A2UI surfaces. Provider errors, missing keys, empty results, and invalid inputs also return A2UI error or confirmation surfaces. They should not fall back to legacy UI payloads or opaque text blobs.
 
@@ -73,4 +75,6 @@ Tool results must return A2UI surfaces. Provider errors, missing keys, empty res
 
 `food.search` is also an aggregate query tool. It calls configured Amap POI, Tencent Maps POI, Baidu Maps POI, Meituan Union, Taobao Flash/Ele.me Union, McDonald's China MCP, and Luckin Coffee MCP adapters, deduplicates by normalized store name, merges only the source tags, and writes missing keys or provider errors into `/rows`. The brand MCP adapters are only used for relevant McDonald's/Luckin/coffee-like prompts and only call read/query allowlisted tools. It never places orders, creates carts, pays, auto-binds coupons, redeems points, cancels orders, or fabricates platform-specific prices.
 
-`social.reply.send` is a local action for sending the user's exact text to a selected WeChat message. It must only report `sent` after a real device-side WeChat executor confirms the action. Missing notification permissions, missing accessibility permissions, missing WeChat detection, or missing automation executors must return explicit A2UI errors or diagnostics instead of pretending success.
+`social.feed.search` reads authorized X/Twitter and Slack sources into SocialHub when their tokens are configured and the query is non-empty; X uses API v2 recent search, and Slack uses `search.messages` for first-version compatibility even though Slack marks it legacy and recommends Real-time Search API for future work. WeCom reads callback-cache items. `x.post.search` returns only X posts and the X connection. `social.reply.draft` creates a local draft only, requires an existing selected or cached SocialHub item, and does not send to any provider. The first version has no social send tool.
+
+Social tools must not return synthetic social messages, posts, contacts, channels, or send results. Missing auth, scope failure, rate limits, provider errors, and bridge outages should render visible connection or error state. If `TOOL_GATEWAY_API_KEY` is enabled, run `node scripts/sync-provider-config.mjs` before building the HAP so the app can send `X-API-Key` from its ignored rawfile config.

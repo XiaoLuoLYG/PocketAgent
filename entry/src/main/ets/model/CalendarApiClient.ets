@@ -33,7 +33,7 @@ interface CalendarEventBody {
   end: CalendarEventBodyTime;
 }
 
-interface CalendarEventPayload {
+export interface CalendarEventPayload {
   id?: string;
   summary?: string;
   htmlLink?: string;
@@ -131,6 +131,23 @@ function eventResult(toolId: string, item: CalendarEventPayload, summary: string
   };
 }
 
+export function calendarEventMatchesArgs(item: CalendarEventPayload, args: CalendarEventArgs): boolean {
+  return textOf(item.summary).trim() === textOf(args.title).trim() &&
+    eventTime(item.start) === textOf(args.start).trim() &&
+    eventTime(item.end) === textOf(args.end).trim();
+}
+
+export function calendarMatchingExistingEventFromListPayload(rawJson: string, args: CalendarEventArgs): CalendarEventPayload | null {
+  const payload = JSON.parse(rawJson) as CalendarListPayload;
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  for (let index = 0; index < items.length; index++) {
+    if (calendarEventMatchesArgs(items[index], args)) {
+      return items[index];
+    }
+  }
+  return null;
+}
+
 function errorResult(toolId: string, title: string, message: string): DynamicGenericToolResult {
   return {
     sourceTag: 'Google Calendar API',
@@ -150,9 +167,130 @@ function calendarArgs(args: Object | null): CalendarEventArgs {
   return args as CalendarEventArgs;
 }
 
+function cloneCalendarArgs(args: CalendarEventArgs): CalendarEventArgs {
+  return {
+    eventId: textOf(args.eventId),
+    title: textOf(args.title),
+    start: textOf(args.start),
+    end: textOf(args.end),
+    timezone: textOf(args.timezone),
+    calendarId: textOf(args.calendarId),
+    query: textOf(args.query),
+    timeMin: textOf(args.timeMin),
+    timeMax: textOf(args.timeMax)
+  };
+}
+
+function relativeDayOffset(prompt: string): number {
+  if (prompt.indexOf('大后天') >= 0) {
+    return 3;
+  }
+  if (prompt.indexOf('后天') >= 0) {
+    return 2;
+  }
+  if (prompt.indexOf('明天') >= 0 || prompt.indexOf('明日') >= 0) {
+    return 1;
+  }
+  if (prompt.indexOf('今天') >= 0 || prompt.indexOf('今日') >= 0) {
+    return 0;
+  }
+  return -1;
+}
+
+function relativeMonthOffset(prompt: string): number | null {
+  if (prompt.indexOf('下下个月') >= 0) {
+    return 2;
+  }
+  if (prompt.indexOf('下个月') >= 0 || prompt.indexOf('下月') >= 0) {
+    return 1;
+  }
+  if (prompt.indexOf('上个月') >= 0 || prompt.indexOf('上月') >= 0) {
+    return -1;
+  }
+  if (prompt.indexOf('本月') >= 0 || prompt.indexOf('这个月') >= 0 || prompt.indexOf('当月') >= 0) {
+    return 0;
+  }
+  return null;
+}
+
+function pad2Date(value: number): string {
+  return value < 10 ? '0' + value.toString() : value.toString();
+}
+
+function localDateAfter(now: Date, offset: number): Date {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
+}
+
+function localMonthAfter(now: Date, offset: number): Date {
+  return new Date(now.getFullYear(), now.getMonth() + offset, 1);
+}
+
+function localDateString(date: Date): string {
+  return date.getFullYear().toString() + '-' + pad2Date(date.getMonth() + 1) + '-' + pad2Date(date.getDate());
+}
+
+function startOfLocalDay(date: Date): string {
+  return localDateString(date) + 'T00:00:00+08:00';
+}
+
+function startOfLocalMonth(date: Date): string {
+  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+  return localDateString(firstDay) + 'T00:00:00+08:00';
+}
+
+function replaceDatePart(value: string, date: string): string {
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return date + value.substring(10);
+  }
+  return value;
+}
+
+export function normalizedCalendarArgsForPrompt(toolId: string, prompt: string, args: CalendarEventArgs, now: Date = new Date()): CalendarEventArgs {
+  const normalized = cloneCalendarArgs(args);
+  const offset = relativeDayOffset(prompt);
+  if (offset >= 0) {
+    const targetDate = localDateAfter(now, offset);
+    const targetDateText = localDateString(targetDate);
+    if (textOf(normalized.timezone).length === 0) {
+      normalized.timezone = 'Asia/Shanghai';
+    }
+    if (toolId === 'calendar.events.search') {
+      normalized.timeMin = startOfLocalDay(targetDate);
+      normalized.timeMax = startOfLocalDay(localDateAfter(now, offset + 1));
+      return normalized;
+    }
+    if (toolId === 'calendar.event.create' || toolId === 'calendar.event.update') {
+      normalized.start = replaceDatePart(textOf(normalized.start), targetDateText);
+      normalized.end = replaceDatePart(textOf(normalized.end), targetDateText);
+    }
+    return normalized;
+  }
+
+  const monthOffset = relativeMonthOffset(prompt);
+  if (monthOffset !== null) {
+    const monthStart = localMonthAfter(now, monthOffset);
+    const monthEnd = localMonthAfter(now, monthOffset + 1);
+    if (textOf(normalized.timezone).length === 0) {
+      normalized.timezone = 'Asia/Shanghai';
+    }
+    normalized.timeMin = startOfLocalMonth(monthStart);
+    normalized.timeMax = startOfLocalMonth(monthEnd);
+    return normalized;
+  }
+
+  if (offset < 0 && monthOffset === null) {
+    return normalized;
+  }
+  return normalized;
+}
+
 export function calendarId(args: CalendarEventArgs): string {
   const value = textOf(args.calendarId).trim();
   return value.length > 0 ? value : 'primary';
+}
+
+export function calendarSearchQueryText(args: CalendarEventArgs): string {
+  return textOf(args.query).trim();
 }
 
 export function calendarEventRequiredFields(toolId: string, args: CalendarEventArgs): string[] {
@@ -172,7 +310,7 @@ export function calendarEventRequiredFields(toolId: string, args: CalendarEventA
   return missing;
 }
 
-export function calendarEventResultsFromListPayload(rawJson: string): DynamicGenericToolResult[] {
+export function calendarEventResultsFromListPayload(rawJson: string, args: CalendarEventArgs | null = null): DynamicGenericToolResult[] {
   const payload = JSON.parse(rawJson) as CalendarListPayload;
   const items = Array.isArray(payload.items) ? payload.items : [];
   const results: DynamicGenericToolResult[] = [];
@@ -180,13 +318,20 @@ export function calendarEventResultsFromListPayload(rawJson: string): DynamicGen
     results.push(eventResult('calendar.events.search', items[index], 'Google Calendar event returned by the real API.'));
   }
   if (results.length === 0) {
+    const rows: A2uiLabelValueData[] = [];
+    if (args !== null && textOf(args.timeMin).length > 0) {
+      rows.push({ label: 'Window Start', value: textOf(args.timeMin) });
+    }
+    if (args !== null && textOf(args.timeMax).length > 0) {
+      rows.push({ label: 'Window End', value: textOf(args.timeMax) });
+    }
     return [{
       sourceTag: 'Google Calendar API',
       toolName: 'calendar.events.search',
       title: '没有找到日程',
       status: 'success',
       summary: 'Google Calendar API 查询成功，但没有可展示事件。',
-      rows: [],
+      rows: rows,
       rawPreview: 'empty calendar list'
     }];
   }
@@ -256,23 +401,42 @@ async function requestJson(method: http.RequestMethod, url: string, accessToken:
 }
 
 async function searchEvents(accessToken: string, prompt: string, args: CalendarEventArgs): Promise<DynamicGenericToolResult[]> {
-  const query = textOf(args.query).trim();
+  const query = calendarSearchQueryText(args);
   const id = textOf(args.calendarId).trim();
   const url = urlWithParams(CALENDAR_API_BASE_URL + '/' + encodeParam(id.length > 0 ? id : 'primary') + '/events', [
     ['singleEvents', 'true'],
     ['orderBy', 'startTime'],
-    ['q', query.length > 0 ? query : prompt],
+    ['q', query],
     ['timeMin', textOf(args.timeMin).trim()],
     ['timeMax', textOf(args.timeMax).trim()],
     ['maxResults', '10']
   ]);
   const payload = await requestJson(http.RequestMethod.GET, url, accessToken, null);
-  return calendarEventResultsFromListPayload(JSON.stringify(payload));
+  return calendarEventResultsFromListPayload(JSON.stringify(payload), args);
+}
+
+async function findExistingCreateEvent(accessToken: string, args: CalendarEventArgs): Promise<CalendarEventPayload | null> {
+  const title = textOf(args.title).trim();
+  const start = textOf(args.start).trim();
+  const end = textOf(args.end).trim();
+  if (title.length === 0 || start.length === 0 || end.length === 0) {
+    return null;
+  }
+  const url = urlWithParams(CALENDAR_API_BASE_URL + '/' + encodeParam(calendarId(args)) + '/events', [
+    ['singleEvents', 'true'],
+    ['orderBy', 'startTime'],
+    ['q', title],
+    ['timeMin', start],
+    ['timeMax', end],
+    ['maxResults', '10']
+  ]);
+  const payload = await requestJson(http.RequestMethod.GET, url, accessToken, null);
+  return calendarMatchingExistingEventFromListPayload(JSON.stringify(payload), args);
 }
 
 export async function callCalendarTool(toolId: string, prompt: string, accessToken: string, args: Object | null = null): Promise<DynamicGenericToolResult[]> {
   try {
-    const eventArgs = calendarArgs(args);
+    const eventArgs = normalizedCalendarArgsForPrompt(toolId, prompt, calendarArgs(args));
     const missing = calendarEventRequiredFields(toolId, eventArgs);
     if (missing.length > 0) {
       return [calendarMissingArgsResult(toolId, missing)];
@@ -282,6 +446,14 @@ export async function callCalendarTool(toolId: string, prompt: string, accessTok
       return await searchEvents(accessToken, prompt, eventArgs);
     }
     if (toolId === 'calendar.event.create') {
+      try {
+        const existing = await findExistingCreateEvent(accessToken, eventArgs);
+        if (existing !== null) {
+          return [eventResult(toolId, existing, '真实 Google Calendar 中已有同名同时间日程，本次避免重复写入。')];
+        }
+      } catch (error) {
+        aiLogError('[AIPhone][CalendarApiExistingLookupError] error=' + (error instanceof Error ? error.message : JSON.stringify(error)).substring(0, 220));
+      }
       const created = await requestJson(http.RequestMethod.POST, base, accessToken, calendarCreateBody(eventArgs)) as CalendarEventPayload;
       return [eventResult(toolId, created, '已直接写入真实 Google Calendar。')];
     }

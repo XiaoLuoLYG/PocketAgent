@@ -69,7 +69,17 @@ export default function dynamicToolA2uiTest() {
       expect(parsed.error).assertEqual('');
       expect(serialized.indexOf('GenericToolResults')).assertLarger(-1);
       expect(serialized.indexOf('/genericToolResults')).assertLarger(-1);
+      expect(serialized.indexOf('动态工具结果')).assertLarger(-1);
       expect(serialized.indexOf('真实工具返回')).assertLarger(-1);
+    });
+
+    it('uses a Calendar surface title for Calendar generic results', 0, () => {
+      const parsed = parseA2uiJsonl(genericToolResultsA2ui('surface_model', 'calendar.events.search', [genericResult()]));
+      const serialized = JSON.stringify(parsed.envelopes);
+
+      expect(parsed.error).assertEqual('');
+      expect(serialized.indexOf('"title":"Google Calendar"')).assertLarger(-1);
+      expect(serialized.indexOf('"title":"动态工具结果"')).assertEqual(-1);
     });
   });
 }

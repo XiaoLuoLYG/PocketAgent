@@ -7,7 +7,7 @@ import {
   A2UI_COMPONENT_GENERIC_TOOL_RESULTS,
   A2UI_COMPONENT_INFO_ROWS,
   A2UI_COMPONENT_ROW,
-  A2UI_COMPONENT_SOCIAL_INBOX,
+  A2UI_COMPONENT_SOCIAL_HUB,
   A2UI_COMPONENT_SURFACE_ROOT,
   A2UI_COMPONENT_TEXT,
   A2UI_COMPONENT_THINKING_CARD,
@@ -23,7 +23,6 @@ import {
   A2uiGenericToolResultData,
   A2uiLabelValueData,
   A2uiMessage,
-  A2uiSocialMessageData,
   A2uiSummaryData,
   A2uiSurfaceState,
   A2uiTrainData,
@@ -37,8 +36,9 @@ import {
   genericToolResults,
   labelValues,
   resolveData,
-  socialDiagnostics,
-  socialMessages,
+  socialHubConnections,
+  socialHubDraft,
+  socialHubItems,
   trainOptions,
   travelOptions
 } from '../../../model/A2uiData';
@@ -51,7 +51,8 @@ import {
 } from '../render/A2uiRenderData';
 import { gmailOpenDraftAction, gmailReplyDraftAction } from '../../../model/GmailToolA2ui';
 import { mailReplyDraftAction } from '../../../model/MailToolA2ui';
-import { mediaVideoPlaybackAction } from '../../../model/MediaVideoToolA2ui';
+import { isMediaVideoResult, mediaVideoPlaybackAction } from '../../../model/MediaVideoToolA2ui';
+import { SocialHubConnectionData, SocialHubDraftData, SocialHubItemData } from '../../../model/SocialHubTypes';
 import {
   HtmlHomeAction,
   HtmlHomeBlock,
@@ -183,8 +184,8 @@ function appendBlocksForComponent(document: HtmlHomeDocument, surface: A2uiSurfa
     appendGenericToolResultBlocks(document, surface, component);
     return;
   }
-  if (component.component === A2UI_COMPONENT_SOCIAL_INBOX) {
-    appendSocialBlocks(document, surface, component);
+  if (component.component === A2UI_COMPONENT_SOCIAL_HUB) {
+    appendSocialHubBlocks(document, surface, component);
     return;
   }
   if (component.component === A2UI_COMPONENT_ACTION_BAR ||
@@ -392,6 +393,63 @@ function appendGenericToolResultBlocks(document: HtmlHomeDocument, surface: A2ui
   });
 }
 
+function appendSocialHubBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState, component: A2uiComponent): void {
+  socialHubItems(surface).forEach((item: SocialHubItemData, index: number) => {
+    const block = newBlock(component.id + '-item-' + index.toString(), 'social-hub-item', firstText(item.handle, item.author, item.platform));
+    block.subtitle = item.text;
+    block.status = item.unread ? 'unread' : item.kind;
+    block.source = item.platform;
+    block.prompt = item.id;
+    appendMetric(block.metrics, 'platform', item.platform);
+    appendMetric(block.metrics, 'kind', item.kind);
+    appendMetric(block.metrics, 'time', item.timestamp);
+    appendMetric(block.metrics, 'author', item.author);
+    appendMetric(block.metrics, 'handle', item.handle);
+    appendMetric(block.rows, 'text', item.text);
+    appendMetric(block.rows, 'url', item.url);
+    appendMetric(block.rows, 'channel', item.channel);
+    appendMetric(block.rows, 'threadId', item.threadId);
+    appendMetric(block.rows, 'unread', item.unread);
+    if (item.id.length > 0) {
+      block.actions.push(clientAction('social_hub_select_item', '查看', item.id, component.id));
+      block.actions.push(clientAction('social_hub_draft_reply', '生成草稿', item.id, component.id));
+    }
+    if (item.url.length > 0) {
+      block.actions.push(clientAction('social_hub_open_source', '打开原文', item.url, component.id));
+    }
+    document.blocks.push(block);
+  });
+
+  socialHubConnections(surface).forEach((connection: SocialHubConnectionData, index: number) => {
+    const block = newBlock(component.id + '-connection-' + index.toString(), 'social-hub-connection', firstText(connection.displayName, connection.platform));
+    block.subtitle = connection.message;
+    block.status = connection.status;
+    block.source = connection.platform;
+    appendMetric(block.metrics, 'platform', connection.platform);
+    appendMetric(block.metrics, 'status', connection.status);
+    appendMetric(block.rows, 'message', connection.message);
+    appendMetric(block.rows, 'accountId', connection.accountId);
+    document.blocks.push(block);
+  });
+
+  const draft: SocialHubDraftData = socialHubDraft(surface);
+  if (draft.text.length > 0 || draft.error.length > 0) {
+    const block = newBlock(component.id + '-draft', 'social-hub-draft', '回复草稿');
+    block.subtitle = draft.error;
+    block.status = draft.status;
+    block.source = draft.platform;
+    block.prompt = draft.itemId;
+    appendMetric(block.metrics, 'platform', draft.platform);
+    appendMetric(block.metrics, 'status', draft.status);
+    appendMetric(block.rows, 'text', draft.text);
+    appendMetric(block.rows, 'error', draft.error);
+    appendMetric(block.rows, 'itemId', draft.itemId);
+    appendMetric(block.rows, 'localOnly', draft.localOnly);
+    appendMetric(block.rows, 'sent', draft.sent);
+    document.blocks.push(block);
+  }
+}
+
 function mediaEmbedForResult(result: A2uiGenericToolResultData): HtmlHomeMediaEmbed | null {
   if (result.status !== 'success') {
     return null;
@@ -506,39 +564,6 @@ function genericResultRowValue(result: A2uiGenericToolResultData, label: string)
   return '';
 }
 
-function appendSocialBlocks(document: HtmlHomeDocument, surface: A2uiSurfaceState, component: A2uiComponent): void {
-  const messages = socialMessages(surface, component);
-  const diagnostics = socialDiagnostics(surface);
-  if (messages.length === 0 && diagnostics.length === 0) {
-    appendGenericComponentBlock(document, surface, component);
-    return;
-  }
-  messages.forEach((item: A2uiSocialMessageData, index: number) => {
-    const block = newBlock(component.id + '-' + index.toString(), 'social-message', firstText(item.conversationTitle, item.senderName, item.id));
-    block.subtitle = item.preview;
-    block.status = item.status;
-    block.source = item.source;
-    appendMetric(block.metrics, 'platform', item.platform);
-    appendMetric(block.metrics, 'sender', item.senderName);
-    appendMetric(block.metrics, 'receivedAt', item.receivedAt);
-    block.actions = htmlActions(actionsOf(component), component.id);
-    const itemId = textOf(item.id);
-    if (itemId.length > 0) {
-      block.actions.push(clientAction('social_select_message', '选择消息', itemId, component.id));
-    }
-    document.blocks.push(block);
-  });
-  if (diagnostics.length > 0) {
-    const block = newBlock(component.id + '-diagnostics', 'social-diagnostics', '社交权限诊断');
-    diagnostics.forEach((row: A2uiLabelValueData) => {
-      appendMetric(block.rows, row.label, row.value);
-    });
-    block.actions.push(clientAction('social_open_notification_settings', '打开通知授权',
-      'social_open_notification_settings', component.id));
-    document.blocks.push(block);
-  }
-}
-
 function appendGenericComponentBlock(document: HtmlHomeDocument, surface: A2uiSurfaceState, component: A2uiComponent): void {
   const title = firstText(componentTitleOf(component), componentTextOf(component), component.component + ':' + component.id);
   const block = newBlock(component.id, component.component, title);
@@ -582,7 +607,7 @@ function isThinkingBlock(block: HtmlHomeBlock): boolean {
 }
 
 function kindOf(surface: A2uiSurfaceState): HtmlHomeKind {
-  if (hasComponent(surface, A2UI_COMPONENT_SOCIAL_INBOX) || surface.intent === 'social') {
+  if (hasComponent(surface, A2UI_COMPONENT_SOCIAL_HUB) || surface.intent === 'social') {
     return 'social';
   }
   if (hasGmailData(surface)) {
@@ -596,6 +621,9 @@ function kindOf(surface: A2uiSurfaceState): HtmlHomeKind {
   }
   if (hasComponent(surface, A2UI_COMPONENT_FOOD_CHOICES) || surface.intent === 'food') {
     return 'food';
+  }
+  if (surface.intent === 'media' || hasMediaVideoData(surface)) {
+    return 'media';
   }
   if (hasComponent(surface, A2UI_COMPONENT_TOOL_CONNECT_CARD) ||
     hasComponent(surface, A2UI_COMPONENT_GENERIC_TOOL_RESULTS) ||
@@ -615,7 +643,7 @@ function sourceOf(kind: HtmlHomeKind, surface: A2uiSurfaceState, isBusy: boolean
   if (kind === 'thinking' || isBusy && surface.status !== 'ready') {
     return 'pending';
   }
-  if (kind === 'travel' || kind === 'food' || kind === 'social' || kind === 'dynamic-tools' || kind === 'gmail') {
+  if (kind === 'travel' || kind === 'food' || kind === 'social' || kind === 'dynamic-tools' || kind === 'gmail' || kind === 'media') {
     return 'tool';
   }
   return 'model';
@@ -635,6 +663,16 @@ function hasDynamicData(surface: A2uiSurfaceState): boolean {
   return hasConnectData(connect) || genericToolResults(surface).length > 0;
 }
 
+function hasMediaVideoData(surface: A2uiSurfaceState): boolean {
+  const results = genericToolResults(surface);
+  for (let index = 0; index < results.length; index++) {
+    if (isMediaVideoResult(results[index])) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function hasConnectData(data: A2uiDynamicToolConnectData): boolean {
   return data.toolId.length > 0 || data.displayName.length > 0 || data.sourceUrl.length > 0 ||
     data.status.length > 0 || data.message.length > 0 || data.credentialName.length > 0 ||
@@ -643,13 +681,20 @@ function hasConnectData(data: A2uiDynamicToolConnectData): boolean {
 
 function hasGmailData(surface: A2uiSurfaceState): boolean {
   const connect = dynamicToolConnect(surface);
-  if (connect.toolId.indexOf('gmail.') >= 0 || connect.displayName.indexOf('Gmail') >= 0) {
+  if (connect.toolId.indexOf('gmail.') >= 0 || connect.toolId.indexOf('mail.') >= 0 ||
+    connect.displayName.indexOf('Gmail') >= 0 || connect.displayName.indexOf('Mail') >= 0 ||
+    connect.displayName.indexOf('邮箱') >= 0) {
     return true;
   }
   const results = genericToolResults(surface);
   for (let index = 0; index < results.length; index++) {
     if (results[index].sourceTag === 'Gmail API' ||
+      results[index].sourceTag === 'Gmail' ||
+      results[index].sourceTag === 'QQ Mail' ||
+      results[index].sourceTag.indexOf('Mail') >= 0 ||
+      results[index].sourceTag.indexOf('邮箱') >= 0 ||
       results[index].toolName.indexOf('gmail.') >= 0 ||
+      results[index].toolName.indexOf('mail.') >= 0 ||
       results[index].toolName.indexOf('users.') === 0) {
       return true;
     }

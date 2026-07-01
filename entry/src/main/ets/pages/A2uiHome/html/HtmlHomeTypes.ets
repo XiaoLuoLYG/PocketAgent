@@ -1,7 +1,7 @@
 import { A2uiComponent } from '../../../model/A2uiTypes';
 
 export type HtmlHomeSource = 'welcome' | 'pending' | 'model' | 'tool';
-export type HtmlHomeKind = 'welcome' | 'thinking' | 'travel' | 'food' | 'social' | 'dynamic-tools' | 'gmail' | 'generic';
+export type HtmlHomeKind = 'welcome' | 'thinking' | 'travel' | 'food' | 'social' | 'dynamic-tools' | 'gmail' | 'media' | 'generic';
 
 export interface HtmlHomeChip {
   label: string;

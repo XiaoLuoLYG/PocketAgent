@@ -35,7 +35,10 @@ export default function toolDefinitionRegistryTest() {
     it('recognizes existing local adapters and Gmail tools through one registry', 0, () => {
       expect(isKnownDomainToolId('travel.search')).assertTrue();
       expect(isKnownDomainToolId('food.search')).assertTrue();
-      expect(isKnownDomainToolId('social.reply.send')).assertTrue();
+      expect(isKnownDomainToolId('social.reply.send')).assertFalse();
+      expect(isKnownDomainToolId('social.feed.search')).assertTrue();
+      expect(isKnownDomainToolId('social.reply.draft')).assertTrue();
+      expect(isKnownDomainToolId('x.post.search')).assertTrue();
       expect(isKnownDomainToolId('gmail.mail.search')).assertTrue();
       expect(isKnownDomainToolId('gmail.thread.read')).assertTrue();
       expect(isKnownDomainToolId('gmail.draft.create')).assertTrue();
@@ -63,6 +66,25 @@ export default function toolDefinitionRegistryTest() {
       expect(isYouTubeToolId('media.video.search')).assertFalse();
       expect(isMediaToolId('media.video.search')).assertTrue();
       expect(isMediaToolId('youtube.video.search')).assertFalse();
+    });
+
+    it('registers SocialHub read and draft tools without send', 0, () => {
+      const feed = toolDefinitionForToolId('social.feed.search') as ToolDefinition;
+      const draft = toolDefinitionForToolId('social.reply.draft') as ToolDefinition;
+      const xPost = toolDefinitionForToolId('x.post.search') as ToolDefinition;
+
+      expect(feed.domain).assertEqual('social');
+      expect(feed.riskLevel).assertEqual('read');
+      expect(feed.outputSchema).assertEqual('socialHubFeed');
+      expect(feed.a2uiComponent).assertEqual('SocialHub');
+      expect(feed.actions[0]).assertEqual('social.reply.draft');
+      expect(draft.riskLevel).assertEqual('draft');
+      expect(draft.outputSchema).assertEqual('socialHubDraft');
+      expect(draft.actions.length).assertEqual(0);
+      expect(xPost.domain).assertEqual('x');
+      expect(xPost.riskLevel).assertEqual('read');
+      expect(xPost.actions[0]).assertEqual('social.reply.draft');
+      expect(toolDefinitionForToolId('social.reply.send')).assertEqual(null);
     });
 
     it('registers Calendar writes and Maps POI search explicitly', 0, () => {

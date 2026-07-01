@@ -7,7 +7,6 @@ import {
   A2uiLabelValueData,
   A2uiRowGroupsData,
   A2uiRuntimeDataModel,
-  A2uiSocialData,
   A2uiSummaryData,
   A2uiSurfaceState,
   A2uiToolRequestData,
@@ -15,6 +14,7 @@ import {
   A2uiTravelOptionData,
   A2uiTripData
 } from '../main/ets/model/A2uiTypes';
+import { emptySocialHub } from '../main/ets/model/SocialHubTypes';
 
 function businessSurface(): A2uiSurfaceState {
   const trains: A2uiTrainData[] = [{
@@ -50,11 +50,6 @@ function businessSurface(): A2uiSurfaceState {
     distance: '300米'
   }];
   const travelOptions: A2uiTravelOptionData[] = [];
-  const social: A2uiSocialData = {
-    messages: [],
-    replies: [],
-    diagnostics: []
-  };
   const rows: A2uiLabelValueData[] = [];
   const thoughts: string[] = [];
   const summary: A2uiSummaryData = {
@@ -86,7 +81,6 @@ function businessSurface(): A2uiSurfaceState {
     flights: flights,
     travelOptions: travelOptions,
     foods: foods,
-    social: social,
     thoughts: thoughts,
     summary: summary,
     trip: trip,
@@ -106,7 +100,8 @@ function businessSurface(): A2uiSurfaceState {
       registrationUrl: '',
       actions: []
     },
-    genericToolResults: []
+    genericToolResults: [],
+    socialHub: emptySocialHub()
   };
   const components: A2uiComponent[] = [];
   return {

@@ -2,7 +2,7 @@
 
 This optional local gateway gives the HarmonyOS demo a stable HTTP endpoint for development-time tool-call smoke tests.
 
-The app does not need this service for its default runtime path. Current HAP builds keep `flight.search`, `train.search`, `travel.search`, `food.search`, and `social.reply.send` on `local://aiphone-tools`; the device calls 12306, VariFlight, Amap, Tencent Maps, Baidu Maps, Meituan Union, Taobao Flash/Ele.me Union, McDonald's China MCP, and Luckin Coffee MCP directly when matching keys are configured. Social reply dispatch stays device-side and only reports success when a real WeChat automation executor is connected. Use `scripts/sync-provider-config.mjs` before installation to package provider keys into the ignored HAP rawfile.
+Current HAP builds keep `flight.search`, `train.search`, `travel.search`, and `food.search` on `local://aiphone-tools`; the device calls 12306, VariFlight, Amap, Tencent Maps, Baidu Maps, Meituan Union, Taobao Flash/Ele.me Union, McDonald's China MCP, and Luckin Coffee MCP directly when matching keys are configured. SocialHub v1 is the exception: it uses this Node gateway as its Social Bridge. Use `scripts/sync-provider-config.mjs` before installation to package provider keys into the ignored HAP rawfile.
 
 ## Start
 
@@ -21,13 +21,13 @@ launchctl submit -l com.aiphone.toolgateway \
   -- /opt/homebrew/bin/node /Users/luoyige/DevEcoStudioProjects/AIPhoneDemo/tool-gateway/server.mjs
 ```
 
-For explicit HTTP gateway testing through HDC reverse port:
+For SocialHub device testing, start this gateway and expose it to the device through HDC reverse port:
 
 ```bash
-hdc -t 45N0124A19000274 rport tcp:8787 tcp:8787
+hdc -t <target> rport tcp:8787 tcp:8787
 ```
 
-Only use this if you have intentionally switched the app to an HTTP gateway for development. The default HAP does not call `http://127.0.0.1:8787`.
+The travel, flight, train, and food tools still use the HAP's `local://aiphone-tools` path by default. Missing SocialHub gateway access should surface as SocialHub connection/error state, not fake content.
 
 Stop the launchd job:
 
@@ -41,13 +41,36 @@ launchctl remove com.aiphone.toolgateway
 - `GET /mcp/tools`
 - `POST /mcp/call`
 - `POST /api/aiphone/tool`
+- `GET /api/social/feed?q=<query>`
+- `POST /api/social/draft`
+- `POST /api/social/wecom/callback`
+
+## Social Bridge
+
+First-version SocialHub uses this Node gateway as a thin Social Bridge. It reads X/Twitter and Slack through their real APIs when tokens are configured and the query is non-empty, reads WeCom from the callback cache, and reports visible connection status. The default feed can be empty until real tokens or callbacks exist.
+
+Required env for real data:
+
+- X: `X_BEARER_TOKEN` or an OAuth-backed X access token.
+- Slack: `SLACK_USER_TOKEN` or `SLACK_BOT_TOKEN` with read/search/history scopes.
+- WeCom: `WECOM_CORP_ID`, `WECOM_AGENT_ID`, `WECOM_SECRET`, `WECOM_CALLBACK_TOKEN`, and `WECOM_ENCODING_AES_KEY`.
+
+X search calls `GET https://api.x.com/2/tweets/search/recent` with Bearer auth. X API tier, scopes, quota, and rate limits can make this return an error connection instead of items.
+
+Slack search calls `https://slack.com/api/search.messages` with Bearer auth for first-version compatibility. Slack marks `search.messages` legacy and recommends Real-time Search API for future work; `ok:false`, HTTP errors, missing scopes, and rate limits are returned as visible Slack connection errors.
+
+`POST /api/social/draft` never sends messages. It only returns a local unsent draft payload.
+Draft success requires an existing cached SocialHub item; unknown `itemId` values return a local error draft instead of inventing a target.
+
+When `TOOL_GATEWAY_API_KEY` is set, `GET /api/social/feed`, `POST /api/social/draft`, and `POST /api/social/wecom/callback` require the same `Authorization: Bearer <key>` or `X-API-Key` header as the other gateway routes. If `WECOM_CALLBACK_TOKEN` is set, the WeCom callback also requires either `?token=<value>` or `X-WeCom-Token: <value>`.
+For HAP builds, run `node scripts/sync-provider-config.mjs` after setting `TOOL_GATEWAY_API_KEY` so the app rawfile includes the key and SocialHubClient can send `X-API-Key`.
+
+No fixture or social mock content is returned by default. Without real tokens or callback input, `GET /api/social/feed` returns `items: []` plus truthful connection setup messages.
 
 ## Provider Configuration
 
 Without provider configuration, the gateway returns an A2UI error surface instead of fake live data.
 `travel.search` is the aggregate travel query. It calls the train and flight providers, sorts the mixed rows by departure time, merges only real returned rows into `TravelOptions`, and writes partial provider failures into source-status rows.
-
-`social.reply.send` is registered for compatibility but the Node gateway cannot send WeChat replies. It returns an explicit A2UI unavailable surface unless the HAP has a real notification/accessibility bridge and device-side WeChat executor.
 
 `POST /api/aiphone/tool` accepts:
 

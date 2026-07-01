@@ -31,6 +31,12 @@ export default function localModelClientTest() {
       expect(baseline.indexOf('同一句同时出现 YouTube/油管 和 B站/Bilibili/哔哩哔哩')).assertLarger(-1);
       expect(baseline.indexOf('模型阶段禁止编造 Google Calendar 日程')).assertLarger(-1);
       expect(baseline.indexOf('Google Maps 搜索')).assertLarger(-1);
+      expect(baseline.indexOf('SocialHub')).assertLarger(-1);
+      expect(baseline.indexOf('social.feed.search|social.reply.draft|x.post.search')).assertLarger(-1);
+      expect(baseline.indexOf('模型阶段禁止编造社交消息、公开 post、联系人、频道或发送结果')).assertLarger(-1);
+      expect(baseline.indexOf('第一版没有真实社交发送工具')).assertLarger(-1);
+      expect(baseline.indexOf('不代表任意字母 X 或 Xcode')).assertLarger(-1);
+      expect(baseline.indexOf('social.reply.send')).assertEqual(-1);
       expect(baseline.indexOf('dynamic.search|mail.search|mail.thread.read|mail.draft.create|gmail.mail.search') >= 0).assertTrue();
       expect(baseline.indexOf('youtube.video.search|youtube.mine.playlists|youtube.mine.subscriptions')).assertLarger(-1);
       expect(baseline.indexOf('"args"') >= 0).assertTrue();

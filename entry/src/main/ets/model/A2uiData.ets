@@ -11,22 +11,24 @@ import {
   A2uiLabelValueData,
   A2uiRowGroupsData,
   A2uiRuntimeDataModel,
-  A2uiSocialData,
-  A2uiSocialMessageData,
-  A2uiSocialReplyData,
   A2uiSurfaceState,
   A2uiToolRequestData,
   A2uiTravelOptionData,
   A2uiTrainData
 } from './A2uiTypes';
+import {
+  emptySocialHub,
+  normalizeSocialHub,
+  SocialHubConnectionData,
+  SocialHubDraftData,
+  SocialHubItemData
+} from './SocialHubTypes';
 
 export type A2uiLabelValue = A2uiLabelValueData;
 export type A2uiTrainOption = A2uiTrainData;
 export type A2uiFlightOption = A2uiFlightData;
 export type A2uiTravelOption = A2uiTravelOptionData;
 export type A2uiFoodOption = A2uiFoodData;
-export type A2uiSocialMessage = A2uiSocialMessageData;
-export type A2uiSocialReply = A2uiSocialReplyData;
 export type A2uiToolRequest = A2uiToolRequestData;
 
 interface LooseRowData {
@@ -65,7 +67,6 @@ function emptyModel(): A2uiRuntimeDataModel {
     flights: [],
     travelOptions: [],
     foods: [],
-    social: emptySocial(),
     thoughts: [],
     summary: {
       text: '',
@@ -84,15 +85,8 @@ function emptyModel(): A2uiRuntimeDataModel {
       actionId: ''
     },
     dynamicToolConnect: emptyDynamicToolConnect(),
-    genericToolResults: []
-  };
-}
-
-function emptySocial(): A2uiSocialData {
-  return {
-    messages: [],
-    replies: [],
-    diagnostics: []
+    genericToolResults: [],
+    socialHub: emptySocialHub()
   };
 }
 
@@ -233,17 +227,6 @@ function normalizeRowGroups(parsed: A2uiRuntimeDataModel, fallback: A2uiRowGroup
   };
 }
 
-function normalizeSocial(parsed: A2uiRuntimeDataModel, fallback: A2uiSocialData): A2uiSocialData {
-  if (parsed.social === undefined || parsed.social === null) {
-    return fallback;
-  }
-  return {
-    messages: Array.isArray(parsed.social.messages) ? parsed.social.messages : fallback.messages,
-    replies: Array.isArray(parsed.social.replies) ? parsed.social.replies : fallback.replies,
-    diagnostics: Array.isArray(parsed.social.diagnostics) ? parsed.social.diagnostics : fallback.diagnostics
-  };
-}
-
 function parseModel(surface: A2uiSurfaceState): A2uiRuntimeDataModel {
   const fallback = emptyModel();
   try {
@@ -254,7 +237,6 @@ function parseModel(surface: A2uiSurfaceState): A2uiRuntimeDataModel {
       flights: Array.isArray(parsed.flights) ? parsed.flights : fallback.flights,
       travelOptions: Array.isArray(parsed.travelOptions) ? parsed.travelOptions : fallback.travelOptions,
       foods: Array.isArray(parsed.foods) ? parsed.foods : fallback.foods,
-      social: normalizeSocial(parsed, fallback.social),
       thoughts: Array.isArray(parsed.thoughts) ? parsed.thoughts : fallback.thoughts,
       summary: parsed.summary === undefined || parsed.summary === null ? fallback.summary : parsed.summary,
       trip: parsed.trip === undefined || parsed.trip === null ? fallback.trip : {
@@ -265,6 +247,7 @@ function parseModel(surface: A2uiSurfaceState): A2uiRuntimeDataModel {
       toolRequest: normalizeToolRequest(parsed, fallback.toolRequest),
       dynamicToolConnect: normalizeDynamicToolConnect(parsed, fallback.dynamicToolConnect),
       genericToolResults: normalizeGenericToolResults(parsed, fallback.genericToolResults),
+      socialHub: normalizeSocialHub(parsed.socialHub, fallback.socialHub),
       toolRequests: Array.isArray(parsed.toolRequests) ? parsed.toolRequests : []
     };
   } catch (_error) {
@@ -367,18 +350,6 @@ export function resolveData(surface: A2uiSurfaceState, path: string | undefined)
   if (path === '/foods') {
     return model.foods;
   }
-  if (path === '/social') {
-    return model.social;
-  }
-  if (path === '/social/messages') {
-    return model.social.messages;
-  }
-  if (path === '/social/replies') {
-    return model.social.replies;
-  }
-  if (path === '/social/diagnostics') {
-    return model.social.diagnostics;
-  }
   if (path === '/thoughts') {
     return model.thoughts;
   }
@@ -409,6 +380,21 @@ export function resolveData(surface: A2uiSurfaceState, path: string | undefined)
   if (path === '/genericToolResults') {
     return model.genericToolResults;
   }
+  if (path === '/socialHub') {
+    return model.socialHub;
+  }
+  if (path === '/socialHub/items') {
+    return model.socialHub.items;
+  }
+  if (path === '/socialHub/selected') {
+    return model.socialHub.selected;
+  }
+  if (path === '/socialHub/draft') {
+    return model.socialHub.draft;
+  }
+  if (path === '/socialHub/connections') {
+    return model.socialHub.connections;
+  }
   if (path === '/') {
     return model;
   }
@@ -424,9 +410,6 @@ export function labelValues(surface: A2uiSurfaceState, component: A2uiComponent)
     return data as A2uiLabelValue[];
   }
   if (component.dataPath === '/rows/train' || component.dataPath === '/rows/flight' || component.dataPath === '/rows/food') {
-    return data as A2uiLabelValue[];
-  }
-  if (component.dataPath === '/social/diagnostics') {
     return data as A2uiLabelValue[];
   }
   return labelValuesFromComponentBody(component);
@@ -482,24 +465,6 @@ export function foodVisualSourceTag(sourceTags: string[] | null | undefined): st
   return tags.length === 1 ? tags[0] : '';
 }
 
-export function socialMessages(surface: A2uiSurfaceState, component: A2uiComponent): A2uiSocialMessage[] {
-  const data = resolveData(surface, component.dataPath);
-  if (component.dataPath === '/social/messages') {
-    return data as A2uiSocialMessage[];
-  }
-  return [];
-}
-
-export function socialReplies(surface: A2uiSurfaceState): A2uiSocialReply[] {
-  const data = resolveData(surface, '/social/replies');
-  return data as A2uiSocialReply[];
-}
-
-export function socialDiagnostics(surface: A2uiSurfaceState): A2uiLabelValue[] {
-  const data = resolveData(surface, '/social/diagnostics');
-  return data as A2uiLabelValue[];
-}
-
 export function actionsOf(component: A2uiComponent): A2uiAction[] {
   if (component.actions === undefined || component.actions === null) {
     return [];
@@ -517,6 +482,22 @@ export function dynamicToolConnect(surface: A2uiSurfaceState): A2uiDynamicToolCo
 
 export function genericToolResults(surface: A2uiSurfaceState): A2uiGenericToolResultData[] {
   return parseModel(surface).genericToolResults;
+}
+
+export function socialHubItems(surface: A2uiSurfaceState): SocialHubItemData[] {
+  return parseModel(surface).socialHub.items;
+}
+
+export function socialHubSelected(surface: A2uiSurfaceState): SocialHubItemData {
+  return parseModel(surface).socialHub.selected;
+}
+
+export function socialHubDraft(surface: A2uiSurfaceState): SocialHubDraftData {
+  return parseModel(surface).socialHub.draft;
+}
+
+export function socialHubConnections(surface: A2uiSurfaceState): SocialHubConnectionData[] {
+  return parseModel(surface).socialHub.connections;
 }
 
 export function componentById(surface: A2uiSurfaceState, id: string): A2uiComponent | null {

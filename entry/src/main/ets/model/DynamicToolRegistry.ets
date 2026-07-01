@@ -17,8 +17,7 @@ const BUILT_IN_TOOL_IDS: string[] = [
   'travel.search',
   'flight.search',
   'train.search',
-  'food.search',
-  'social.reply.send'
+  'food.search'
 ];
 
 const UNSAFE_TOOL_PATTERNS: string[] = [

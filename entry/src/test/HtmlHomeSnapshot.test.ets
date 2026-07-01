@@ -204,7 +204,7 @@ export default function htmlHomeSnapshotTest() {
       expect(serialized.indexOf('Coffee')).assertLarger(-1);
     });
 
-    it('tolerates partial travel food social rows', 0, () => {
+    it('tolerates partial travel and food rows', 0, () => {
       const emptyAction = {} as A2uiAction;
       const travel: A2uiComponent = {
         id: 'partialTravel',
@@ -218,15 +218,9 @@ export default function htmlHomeSnapshotTest() {
         dataPath: '/foods',
         actions: [emptyAction]
       };
-      const social: A2uiComponent = {
-        id: 'partialSocial',
-        component: 'SocialInbox',
-        dataPath: '/social/messages',
-        actions: [emptyAction]
-      };
       const doc = createHtmlHomeDocument({
-        surface: surface('social', 'ready', [root('partialTravel'), travel, food, social],
-          '{"travelOptions":[{}],"foods":[{}],"social":{"messages":[{}]}}'),
+        surface: surface('food', 'ready', [root('partialTravel'), travel, food],
+          '{"travelOptions":[{}],"foods":[{}]}'),
         messages: [],
         isBusy: false,
         isAwaitingFirstSurface: false
@@ -237,20 +231,15 @@ export default function htmlHomeSnapshotTest() {
       expect(JSON.stringify(doc).length).assertLarger(0);
     });
 
-    it('adds social select and food map block actions', 0, () => {
+    it('adds food map block actions', 0, () => {
       const food: A2uiComponent = {
         id: 'food',
         component: 'FoodChoices',
         dataPath: '/foods'
       };
-      const social: A2uiComponent = {
-        id: 'social',
-        component: 'SocialInbox',
-        dataPath: '/social/messages'
-      };
       const doc = createHtmlHomeDocument({
-        surface: surface('social', 'ready', [root('social'), food, social],
-          '{"foods":[{"name":"Coffee","category":"Cafe","address":"Road","distance":"800m","location":"22,113"}],"social":{"messages":[{"id":"msg-1","platform":"wechat","conversationId":"c1","conversationTitle":"Alice","senderName":"Alice","preview":"hi","receivedAt":"now","source":"notification","status":"new"}]}}'),
+        surface: surface('food', 'ready', [root('food'), food],
+          '{"foods":[{"name":"Coffee","category":"Cafe","address":"Road","distance":"800m","location":"22,113"}]}'),
         messages: [],
         isBusy: false,
         isAwaitingFirstSurface: false
@@ -259,32 +248,10 @@ export default function htmlHomeSnapshotTest() {
 
       expect(serialized.indexOf('html_pin_food')).assertLarger(-1);
       expect(serialized.indexOf('html_open_food_map')).assertLarger(-1);
-      expect(serialized.indexOf('social_select_message')).assertLarger(-1);
-      expect(serialized.indexOf('msg-1')).assertLarger(-1);
       expect(doc.blocks[0].actions[0].prompt.indexOf('"name":"Coffee"')).assertLarger(-1);
       expect(doc.blocks[0].actions[0].prompt.indexOf('"address":"Road"')).assertLarger(-1);
       expect(doc.blocks[0].actions[0].prompt.indexOf('"location":"22,113"')).assertLarger(-1);
       expect(doc.blocks[0].actions[0].prompt.indexOf('"distance":"800m"')).assertLarger(-1);
-    });
-
-    it('preserves social diagnostics and notification authorization action', 0, () => {
-      const social: A2uiComponent = {
-        id: 'social',
-        component: 'SocialInbox',
-        dataPath: '/social/messages'
-      };
-      const doc = createHtmlHomeDocument({
-        surface: surface('social', 'ready', [root('social'), social],
-          '{"social":{"messages":[{"id":"msg-1","platform":"wechat","conversationId":"c1","conversationTitle":"Alice","senderName":"Alice","preview":"hi","receivedAt":"now","source":"notification","status":"new"}],"diagnostics":[{"label":"通知桥","value":"未授权"}]}}'),
-        messages: [],
-        isBusy: false,
-        isAwaitingFirstSurface: false
-      });
-      const serialized = JSON.stringify(doc);
-
-      expect(serialized.indexOf('通知桥')).assertLarger(-1);
-      expect(serialized.indexOf('未授权')).assertLarger(-1);
-      expect(serialized.indexOf('social_open_notification_settings')).assertLarger(-1);
     });
 
     it('adds Gmail AI reply draft action to real thread result blocks', 0, () => {
@@ -329,7 +296,7 @@ export default function htmlHomeSnapshotTest() {
       });
       const actions = JSON.stringify(doc.blocks[0].actions);
 
-      expect(doc.kind).assertEqual('dynamic-tools');
+      expect(doc.kind).assertEqual('gmail');
       expect(doc.blocks[0].kind).assertEqual('generic-tool-result');
       expect(actions.indexOf('mail.ai.reply.draft')).assertLarger(-1);
       expect(actions.indexOf('AI 回复草稿')).assertLarger(-1);
@@ -383,6 +350,37 @@ export default function htmlHomeSnapshotTest() {
       expect(actions.indexOf('https://maps.google.com/?cid=123')).assertLarger(-1);
     });
 
+    it('captures SocialHub items, connections, and local draft state', 0, () => {
+      const hub: A2uiComponent = {
+        id: 'social_hub',
+        component: 'SocialHub',
+        title: '社交工作台',
+        dataPath: '/socialHub/items'
+      };
+      const doc = createHtmlHomeDocument({
+        surface: surface('social', 'ready', [root('social_hub'), hub],
+          '{"socialHub":{"items":[{"id":"x-1","platform":"x","kind":"post","author":"OpenAI","handle":"@openai","text":"Hello from X","timestamp":"2026-07-01T01:00:00.000Z","url":"https://x.com/openai/status/1","channel":"timeline","threadId":"thread-x-1","unread":true}],"selected":{},"draft":{"itemId":"x-1","platform":"x","text":"Thanks for the update","status":"error","error":"local draft only; not sent","localOnly":true,"sent":false},"connections":[{"platform":"x","status":"connected","displayName":"X","accountId":"openai","message":"X connected"},{"platform":"slack","status":"needs_auth","displayName":"Slack","accountId":"","message":"Slack token required"},{"platform":"wecom","status":"error","displayName":"企业微信","accountId":"corp-1","message":"WeCom callback unavailable"}]}}'),
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+      const serialized = JSON.stringify(doc);
+
+      expect(doc.kind).assertEqual('social');
+      expect(doc.blocks[0].kind).assertEqual('social-hub-item');
+      expect(doc.blocks[4].kind).assertEqual('social-hub-draft');
+      expect(serialized.indexOf('Hello from X')).assertLarger(-1);
+      expect(serialized.indexOf('Thanks for the update')).assertLarger(-1);
+      expect(serialized.indexOf('local draft only; not sent')).assertLarger(-1);
+      expect(serialized.indexOf('Slack token required')).assertLarger(-1);
+      expect(serialized.indexOf('WeCom callback unavailable')).assertLarger(-1);
+      expect(serialized.indexOf('social_hub_select_item')).assertLarger(-1);
+      expect(serialized.indexOf('social_hub_draft_reply')).assertLarger(-1);
+      expect(serialized.indexOf('social_hub_open_source')).assertLarger(-1);
+      expect(serialized.indexOf('social_select_message')).assertEqual(-1);
+      expect(serialized.indexOf('SocialInbox')).assertEqual(-1);
+    });
+
     it('adds allowed media playback actions to video result blocks', 0, () => {
       const results: A2uiComponent = {
         id: 'media_results',
@@ -392,7 +390,7 @@ export default function htmlHomeSnapshotTest() {
       };
       const pageUrl = 'https://www.bilibili.com/video/BV1h57y6pE5o';
       const doc = createHtmlHomeDocument({
-        surface: surface('media', 'ready', [root('media_results'), results],
+        surface: surface('dynamic_tool', 'ready', [root('media_results'), results],
           '{"genericToolResults":[{"sourceTag":"哔哩哔哩","toolName":"media.video.search","title":"Qwen Max B 站介绍","status":"success","summary":"video result","rows":[{"label":"BVID","value":"BV1h57y6pE5o"},{"label":"Playback URL","value":"https://www.bilibili.com/video/BV1h57y6pE5o"}],"rawPreview":"bvid=BV1h57y6pE5o"}]}'),
         messages: [],
         isBusy: false,
@@ -414,6 +412,7 @@ export default function htmlHomeSnapshotTest() {
         kind: 'client'
       };
 
+      expect(doc.kind).assertEqual('media');
       expect(doc.blocks[0].kind).assertEqual('generic-tool-result');
       expect(doc.blocks[0].mediaEmbed?.embedUrl).assertEqual('https://player.bilibili.com/player.html?bvid=BV1h57y6pE5o&p=1&autoplay=0&poster=true&danmaku=0&isOutside=true');
       expect(doc.blocks[0].mediaEmbed?.pageUrl).assertEqual(pageUrl);
@@ -430,6 +429,26 @@ export default function htmlHomeSnapshotTest() {
         isAwaitingFirstSurface: false
       });
       expect(youtubeDoc.blocks[0].mediaEmbed?.embedUrl).assertEqual('https://www.youtube.com/embed/abc123?playsinline=1&rel=0&enablejsapi=1&origin=https%3A%2F%2Faiphone.local');
+    });
+
+    it('keeps non-media generic tool results as dynamic tools', 0, () => {
+      const results: A2uiComponent = {
+        id: 'generic_results',
+        component: 'GenericToolResults',
+        dataPath: '/genericToolResults'
+      };
+      const doc = createHtmlHomeDocument({
+        surface: surface('dynamic_tool', 'ready', [root('generic_results'), results],
+          '{"genericToolResults":[{"sourceTag":"Fixture","toolName":"fixture.search","title":"Plain result","status":"success","summary":"plain","rows":[{"label":"URL","value":"https://example.com/video/not-media"}],"rawPreview":""}]}'),
+        messages: [],
+        isBusy: false,
+        isAwaitingFirstSurface: false
+      });
+
+      expect(doc.kind).assertEqual('dynamic-tools');
+      expect(doc.blocks.length).assertEqual(1);
+      expect(doc.blocks[0].kind).assertEqual('generic-tool-result');
+      expect(doc.blocks[0].mediaEmbed === undefined).assertTrue();
     });
 
     it('maps dynamic tool provider status and source without crashing', 0, () => {

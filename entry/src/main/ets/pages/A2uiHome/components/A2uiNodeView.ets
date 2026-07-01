@@ -7,7 +7,7 @@ import {
   A2UI_COMPONENT_GENERIC_TOOL_RESULTS,
   A2UI_COMPONENT_INFO_ROWS,
   A2UI_COMPONENT_ROW,
-  A2UI_COMPONENT_SOCIAL_INBOX,
+  A2UI_COMPONENT_SOCIAL_HUB,
   A2UI_COMPONENT_SURFACE_ROOT,
   A2UI_COMPONENT_TEXT,
   A2UI_COMPONENT_THINKING_CARD,
@@ -46,8 +46,8 @@ import { ErrorNoticeView } from './ErrorNoticeView';
 import { FlightBoardView } from './FlightBoardView';
 import { FoodChoicesView } from './FoodChoicesView';
 import { GenericToolResultsView } from './GenericToolResultsView';
+import { SocialHubView } from './SocialHubView';
 import { InfoRowsView } from './InfoRowsView';
-import { SocialInboxView } from './SocialInboxView';
 import { ThinkingStreamView } from './ThinkingStreamView';
 import { ToolConnectCardView } from './ToolConnectCardView';
 import { TrainOptionsView } from './TrainOptionsView';
@@ -213,14 +213,6 @@ export struct A2uiNodeView {
             this.onPinNavigationCard(item);
           }
         })
-      } else if (this.component()?.component === A2UI_COMPONENT_SOCIAL_INBOX) {
-        SocialInboxView({
-          surface: this.surface,
-          component: this.component() as A2uiComponent,
-          renderTick: this.renderTick,
-          isBusy: this.isBusy,
-          onAction: this.onAction
-        })
       } else if (this.component()?.component === A2UI_COMPONENT_TOOL_CONNECT_CARD) {
         ToolConnectCardView({
           surface: this.surface,
@@ -234,6 +226,13 @@ export struct A2uiNodeView {
           surface: this.surface,
           component: this.component() as A2uiComponent,
           renderTick: this.renderTick,
+          isBusy: this.isBusy,
+          onAction: this.onAction
+        })
+      } else if (this.component()?.component === A2UI_COMPONENT_SOCIAL_HUB) {
+        SocialHubView({
+          surface: this.surface,
+          component: this.component() as A2uiComponent,
           isBusy: this.isBusy,
           onAction: this.onAction
         })

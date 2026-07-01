@@ -188,6 +188,77 @@ function inferredMediaToolIdForPrompt(prompt: string): string {
   return mediaArgsForPrompt(prompt) === null ? '' : 'media.video.search';
 }
 
+function hasSocialHubContext(prompt: string): boolean {
+  const lowerPrompt = prompt.toLowerCase();
+  return containsAny(prompt, ['Slack', '企业微信', '社交', '消息聚合', '多平台消息', '社交消息']) ||
+    lowerPrompt.indexOf('slack') >= 0;
+}
+
+function hasSocialDraftIntent(prompt: string): boolean {
+  const lowerPrompt = prompt.toLowerCase();
+  return containsAny(prompt, ['草稿', '回复', '起草']) ||
+    lowerPrompt.indexOf('draft') >= 0 ||
+    lowerPrompt.indexOf('reply') >= 0;
+}
+
+function isAsciiAlphaNumeric(char: string): boolean {
+  return (char >= 'A' && char <= 'Z') ||
+    (char >= 'a' && char <= 'z') ||
+    (char >= '0' && char <= '9') ||
+    char === '_';
+}
+
+function hasStandaloneXMarker(prompt: string): boolean {
+  for (let index = 0; index < prompt.length; index++) {
+    const char = prompt.charAt(index);
+    if (char !== 'X' && char !== 'x') {
+      continue;
+    }
+    const previous = index === 0 ? '' : prompt.charAt(index - 1);
+    const next = index + 1 >= prompt.length ? '' : prompt.charAt(index + 1);
+    if ((previous.length === 0 || !isAsciiAlphaNumeric(previous)) &&
+      (next.length === 0 || !isAsciiAlphaNumeric(next))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasXPostContext(prompt: string): boolean {
+  const lowerPrompt = prompt.toLowerCase();
+  return containsAny(prompt, ['Twitter', '推文', '公开 post']) ||
+    hasStandaloneXMarker(prompt) ||
+    lowerPrompt.indexOf('twitter') >= 0 ||
+    lowerPrompt.indexOf('x.com') >= 0 ||
+    lowerPrompt.indexOf('public post') >= 0;
+}
+
+function hasSocialReadIntent(prompt: string): boolean {
+  const lowerPrompt = prompt.toLowerCase();
+  return containsAny(prompt, ['读', '看', '查看', '查', '查询', '搜索', '搜', '最近', '公开']) ||
+    lowerPrompt.indexOf('read') >= 0 ||
+    lowerPrompt.indexOf('search') >= 0;
+}
+
+function allowsXPostSearchPrompt(prompt: string): boolean {
+  return hasXPostContext(prompt) && hasSocialReadIntent(prompt);
+}
+
+function inferredSocialHubToolIdForPrompt(prompt: string): string {
+  const socialContext = hasSocialHubContext(prompt);
+  if (socialContext && hasSocialDraftIntent(prompt)) {
+    return 'social.reply.draft';
+  }
+  if (allowsXPostSearchPrompt(prompt) &&
+    (!socialContext || containsAny(prompt, ['公开 post']) || prompt.toLowerCase().indexOf('x.com') >= 0 || prompt.toLowerCase().indexOf('public post') >= 0)) {
+    return 'x.post.search';
+  }
+  if (socialContext) {
+    return 'social.feed.search';
+  }
+  return '';
+}
+
 function youtubeArgsForPrompt(prompt: string): Object | null {
   if (hasExplicitYouTubeIntent(prompt) &&
     !hasBilibiliIntent(prompt) &&
@@ -231,6 +302,10 @@ function inferredToolIdForPrompt(prompt: string): string {
   const mediaToolId = inferredMediaToolIdForPrompt(prompt);
   if (mediaToolId.length > 0) {
     return mediaToolId;
+  }
+  const socialHubToolId = inferredSocialHubToolIdForPrompt(prompt);
+  if (socialHubToolId.length > 0) {
+    return socialHubToolId;
   }
   if (containsAny(prompt, ['附近', '周边', '外卖', '咖啡', '奶茶', '餐饮', '美食', '肯德基']) &&
     containsAny(prompt, ['查', '查询', '搜索', '帮我搜', '附近', '周边'])) {
@@ -373,6 +448,7 @@ export function resolveA2uiHomeToolRequest(
   const forcedMapsToolId = inferredMapsToolIdForPrompt(prompt);
   const forcedMediaToolId = inferredMediaToolIdForPrompt(prompt);
   const actionToolId = toolIdForActionId(fallbackActionId);
+  const originalPrompt = fallbackPrompt.length > 0 ? fallbackPrompt : prompt;
   if (forcedDynamicToolId.length > 0) {
     toolId = forcedDynamicToolId;
     if (actionId.length === 0) {
@@ -396,6 +472,9 @@ export function resolveA2uiHomeToolRequest(
   } else if (forcedMediaToolId.length > 0 && toolId !== forcedMediaToolId) {
     actionId = request.toolId.length > 0 ? 'client_media_explicit_reroute' : 'client_intent_fallback';
     toolId = forcedMediaToolId;
+  } else if (request.toolId === 'x.post.search' && !allowsXPostSearchPrompt(originalPrompt)) {
+    toolId = inferredToolIdForPrompt(originalPrompt);
+    actionId = toolId.length > 0 ? 'client_x_post_safety_reroute' : '';
   } else if ((toolId === 'maps.place.search' || toolId === 'maps.place.details') && !hasExplicitMapsIntent(prompt)) {
     toolId = inferredToolIdForPrompt(prompt);
     actionId = 'client_maps_safety_reroute';

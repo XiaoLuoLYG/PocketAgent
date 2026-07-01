@@ -1,5 +1,7 @@
 import { HtmlHomeDocument } from './HtmlHomeTypes';
+import { renderCalendarHomeDocument, shouldRenderCalendarHomeDocument } from './HtmlCalendarHomeRenderer';
 import { renderFoodHomeDocument, shouldRenderFoodHomeDocument } from './HtmlFoodHomeRenderer';
+import { renderMediaHomeDocument, shouldRenderMediaHomeDocument } from './HtmlMediaHomeRenderer';
 import { renderTravelHomeDocument, shouldRenderTravelHomeDocument } from './HtmlTravelHomeRenderer';
 
 type HtmlHomeTextValue = Object | string | number | boolean | null | undefined;
@@ -51,11 +53,18 @@ const HTML_HOME_CSS: string = `
   --youtube-soft: rgba(196, 48, 43, 0.12);
   --bilibili: #2d8fbd;
   --bilibili-soft: rgba(45, 143, 189, 0.12);
+  --social-x: #111111;
+  --social-x-soft: rgba(17, 17, 17, 0.1);
+  --social-slack: #4a154b;
+  --social-slack-soft: rgba(74, 21, 75, 0.12);
+  --social-wecom: #2368d8;
+  --social-wecom-soft: rgba(35, 104, 216, 0.12);
+  --mail-inbox-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='22 12 16 12 14 15 10 15 8 12 2 12'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E");
 }
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
   background:
     linear-gradient(180deg, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0) 45%),
     var(--paper);
@@ -236,6 +245,14 @@ h3 {
   --kind-accent: var(--amber);
   --kind-soft: rgba(154, 100, 24, 0.12);
 }
+.block[data-kind="social-hub-item"],
+.block[data-kind="social-hub-connection"],
+.block[data-kind="social-hub-draft"] {
+  border-color: rgba(42, 124, 255, 0.24);
+}
+.block[data-kind="social-hub-draft"] {
+  background: rgba(36, 126, 94, 0.08);
+}
 .block[data-source-key="mail-gmail"] {
   --kind-accent: var(--gmail);
   --kind-soft: var(--gmail-soft);
@@ -256,9 +273,17 @@ h3 {
   --kind-soft: var(--bilibili-soft);
   border-color: rgba(45, 143, 189, 0.45);
 }
-.block[data-kind="social-message"] {
-  --kind-accent: #2f6f5e;
-  --kind-soft: rgba(47, 111, 94, 0.12);
+.block[data-source-key="social-x"] {
+  --kind-accent: var(--social-x);
+  --kind-soft: var(--social-x-soft);
+}
+.block[data-source-key="social-slack"] {
+  --kind-accent: var(--social-slack);
+  --kind-soft: var(--social-slack-soft);
+}
+.block[data-source-key="social-wecom"] {
+  --kind-accent: var(--social-wecom);
+  --kind-soft: var(--social-wecom-soft);
 }
 .block::before {
   content: "";
@@ -422,18 +447,48 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   white-space: pre-wrap;
 }
 .google-map-preview {
+  position: relative;
   overflow: hidden;
   margin-top: 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: var(--panel-strong);
+  background:
+    radial-gradient(circle at 28% 22%, rgba(65, 95, 155, 0.18), transparent 23%),
+    radial-gradient(circle at 72% 68%, rgba(135, 98, 59, 0.16), transparent 25%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(237, 242, 247, 0.92));
   aspect-ratio: 16 / 9;
+}
+.google-map-preview::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(33, 27, 23, 0.05) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(33, 27, 23, 0.05) 1px, transparent 1px);
+  background-size: 34px 34px;
+  pointer-events: none;
+}
+.google-map-preview::after {
+  content: "Maps";
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  z-index: 2;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #2563af;
+  font-weight: 760;
+  box-shadow: 0 8px 18px rgba(44, 34, 26, 0.1);
 }
 .google-map-preview iframe {
   display: block;
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   border: 0;
+  opacity: 0.18;
 }
 .media-player {
   overflow: hidden;
@@ -466,10 +521,553 @@ h3, .subtitle, .kind-tag, .status, .action, .chip, .label, .meta {
   padding: 10px 11px;
   margin-top: 8px;
 }
+body[data-scene] {
+  --scene-accent: #995f4c;
+  --scene-accent-2: #476f9f;
+  --scene-bg: #f5f2ee;
+  --scene-panel: rgba(255, 255, 255, 0.78);
+  --scene-image: url('https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=80');
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.9), transparent 31%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), transparent 44%),
+    var(--scene-bg);
+}
+body[data-scene="gmail"] {
+  --scene-accent: #c24636;
+  --scene-accent-2: #476f9f;
+  --scene-bg: #f7f3ee;
+  --scene-image: url('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80');
+}
+body[data-scene] .shell {
+  padding: 12px 12px calc(96px + env(safe-area-inset-bottom, 0px));
+}
+body[data-scene] .hero {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  gap: 14px;
+  overflow: hidden;
+  min-height: 312px;
+  border: 1px solid rgba(33, 27, 23, 0.1);
+  border-radius: 28px;
+  padding: 18px;
+  background:
+    linear-gradient(142deg, rgba(24, 20, 16, 0.86), rgba(24, 20, 16, 0.46) 52%, rgba(255, 255, 255, 0.06)),
+    var(--scene-image) center/cover;
+  color: #fffaf4;
+  box-shadow: 0 24px 54px rgba(44, 34, 26, 0.18);
+}
+body[data-scene] .hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -16% -22% 18%;
+  height: 46%;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.38), transparent 64%);
+  filter: blur(8px);
+  z-index: -1;
+}
+.hero-copy {
+  position: relative;
+  z-index: 1;
+}
+body[data-scene] .eyebrow {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 250, 244, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+body[data-scene] h1 {
+  max-width: 8.8em;
+  color: #fffaf4;
+  font-size: 34px;
+  font-weight: 880;
+  letter-spacing: 0;
+}
+body[data-scene] .hero .subtitle {
+  max-width: 25em;
+  color: rgba(255, 250, 244, 0.84);
+  font-size: 14px;
+}
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+.hero-stat {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.hero-stat .label {
+  color: rgba(255, 250, 244, 0.66);
+}
+.hero-stat .value {
+  color: #fffaf4;
+  font-size: 16px;
+}
+.scene-visual {
+  position: relative;
+  z-index: 1;
+  align-self: end;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 22px;
+  padding: 12px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08)),
+    rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+.scene-visual-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(255, 250, 244, 0.92);
+  font-size: 12px;
+  font-weight: 760;
+}
+.scene-orb {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--scene-accent), var(--scene-accent-2));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+.mini-stack {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.mini-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  border-radius: 15px;
+  padding: 9px;
+  background: rgba(255, 250, 244, 0.88);
+  color: #211b17;
+}
+.mini-avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  background: rgba(255, 250, 244, 0.86);
+  color: var(--scene-accent);
+  font-weight: 860;
+}
+.mini-avatar img {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+.mini-title {
+  overflow: hidden;
+  color: #211b17;
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mini-subtitle {
+  overflow: hidden;
+  margin-top: 3px;
+  color: #786e66;
+  font-size: 10px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body[data-scene="gmail"] .scene-gmail .gmail-hero {
+  grid-template-columns: 1fr;
+  min-height: 0;
+  align-items: stretch;
+  background:
+    linear-gradient(120deg, rgba(39, 32, 27, 0.9), rgba(39, 32, 27, 0.48) 44%, rgba(194, 70, 54, 0.22)),
+    var(--scene-image) center/cover;
+}
+.scene-gmail .eyebrow {
+  display: none;
+}
+.mail-rail {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  padding: 4px;
+  background: rgba(255, 250, 244, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.mail-rail::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / 3);
+  border-radius: 999px;
+  background: rgba(255, 250, 244, 0.9);
+  box-shadow: 0 10px 22px rgba(36, 24, 18, 0.16);
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mail-rail[data-mail-filter="mail-gmail"]::before {
+  transform: translateX(100%);
+}
+.mail-rail[data-mail-filter="mail-qq"]::before {
+  transform: translateX(200%);
+}
+.mail-folder {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 5px;
+  background: transparent;
+  color: rgba(255, 250, 244, 0.88);
+  font-size: 11px;
+  font-weight: 720;
+  font-family: inherit;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 180ms ease, transform 180ms ease;
+}
+.mail-folder:focus-visible {
+  outline: 2px solid rgba(255, 250, 244, 0.9);
+  outline-offset: 2px;
+}
+.mail-folder.primary {
+  background: transparent;
+  color: #c24636;
+}
+.mail-folder:active {
+  transform: scale(0.98);
+}
+.mail-folder-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  object-fit: contain;
+}
+.mail-folder-icon.inbox {
+  background: currentColor;
+  -webkit-mask: var(--mail-inbox-icon) center/contain no-repeat;
+  mask: var(--mail-inbox-icon) center/contain no-repeat;
+}
+.mail-copy {
+  position: relative;
+  align-self: end;
+  padding-top: 0;
+}
+.mail-hero-icon {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  margin-left: 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fffaf4' stroke-width='2.35' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='20' height='16' x='2' y='4' rx='2'/%3E%3Cpath d='m22 7-8.991 5.727a2 2 0 0 1-2.018 0L2 7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.26));
+  opacity: 0.96;
+  vertical-align: -6px;
+}
+.mail-deck {
+  grid-column: auto;
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 22px;
+  padding: 12px 11px 13px;
+  background:
+    linear-gradient(145deg, rgba(255, 250, 244, 0.94), rgba(255, 250, 244, 0.78));
+  color: #211b17;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 18px 38px rgba(36, 24, 18, 0.16);
+}
+.mail-deck::before,
+.mail-deck::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: -8px;
+  height: 26px;
+  border-radius: 0 0 20px 20px;
+  background: rgba(255, 250, 244, 0.5);
+  z-index: -1;
+  filter: blur(0.2px);
+}
+.mail-deck::after {
+  left: 32px;
+  right: 32px;
+  bottom: -14px;
+  opacity: 0.46;
+}
+.mail-deck-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #c24636;
+  font-size: 12px;
+  font-weight: 820;
+}
+.mail-deck-kicker {
+  color: rgba(33, 27, 23, 0.44);
+  font-size: 10px;
+  font-weight: 680;
+}
+.mail-thread {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  border-radius: 15px;
+  padding: 9px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 8px 16px rgba(36, 24, 18, 0.06);
+}
+.mail-thread.depth-1 {
+  margin: -1px 6px 0;
+  opacity: 0.92;
+}
+.mail-thread.depth-2 {
+  margin: -1px 14px 0;
+  opacity: 0.82;
+}
+.mail-thread-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #c24636;
+}
+.mail-thread-meta {
+  color: #786e66;
+  font-size: 10px;
+  white-space: nowrap;
+}
+body[data-scene="gmail"] .section {
+  margin-top: 18px;
+}
+body[data-scene="gmail"] .block {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 22px rgba(194, 70, 54, 0.08);
+}
+body[data-scene="gmail"] .block-top {
+  align-items: center;
+}
+body[data-scene="gmail"] .mini-row {
+  grid-template-columns: auto minmax(0, 1fr);
+  border-left: 4px solid rgba(194, 70, 54, 0.72);
+}
+body[data-scene] .chipbar {
+  margin-top: 12px;
+  border: 1px solid rgba(33, 27, 23, 0.08);
+  border-radius: 999px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.66);
+}
+body[data-scene] .section {
+  margin-top: 14px;
+}
+body[data-scene] .section-head {
+  margin: 0 2px 10px;
+}
+body[data-scene] .block,
+body[data-scene] .timeline-item,
+body[data-scene] .history-item,
+body[data-scene] .empty {
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.74)),
+    var(--panel);
+  box-shadow: 0 18px 42px rgba(44, 34, 26, 0.1);
+}
+body[data-scene] .block {
+  padding: 14px;
+}
+body[data-scene] .block::before {
+  width: 5px;
+  background: linear-gradient(180deg, var(--kind-accent), transparent);
+}
+body[data-scene="gmail"] .block {
+  border-color: rgba(194, 70, 54, 0.2);
+}
+body[data-scene="gmail"] .details {
+  border-top-color: rgba(194, 70, 54, 0.14);
+}
+body[data-scene="gmail"] .mail-tech-details {
+  margin-top: 10px;
+  border: 1px solid rgba(194, 70, 54, 0.12);
+  border-radius: 16px;
+  padding: 0;
+  background: rgba(255, 250, 244, 0.62);
+}
+body[data-scene="gmail"] .mail-tech-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  color: #9b3f34;
+  font-size: 12px;
+  font-weight: 760;
+  list-style: none;
+}
+body[data-scene="gmail"] .mail-tech-details > summary::-webkit-details-marker {
+  display: none;
+}
+body[data-scene="gmail"] .mail-tech-details > summary::after {
+  content: "+";
+  color: rgba(155, 63, 52, 0.72);
+  font-size: 16px;
+  line-height: 1;
+}
+body[data-scene="gmail"] .mail-tech-details[open] > summary::after {
+  content: "-";
+}
+body[data-scene="gmail"] .mail-tech-body {
+  border-top: 1px solid rgba(194, 70, 54, 0.1);
+  padding: 0 12px 12px;
+}
+body[data-scene] .kind-tag {
+  border-radius: 999px;
+  padding: 6px 8px;
+  background: var(--kind-soft);
+}
+body[data-scene] .expand-button {
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  border-radius: 0;
+  min-width: 0;
+  min-height: 0;
+  padding: 3px 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 11px;
+}
+body[data-scene] .actions {
+  gap: 7px;
+}
+body[data-scene] .action {
+  border-color: transparent;
+  background: var(--scene-accent);
+  color: #fffaf4;
+  box-shadow: 0 10px 22px rgba(44, 34, 26, 0.14);
+}
+body[data-scene] .action.secondary {
+  border-color: rgba(33, 27, 23, 0.1);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--scene-accent);
+}
+body[data-scene] .credential {
+  border: 1px solid rgba(46, 111, 143, 0.22);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(46, 111, 143, 0.12), rgba(161, 107, 31, 0.08)),
+    rgba(255, 255, 255, 0.72);
+}
+body[data-scene] .credential input {
+  border-radius: 14px;
+}
+body[data-scene] .raw {
+  border: 1px solid rgba(33, 27, 23, 0.08);
+  background: rgba(255, 255, 255, 0.66);
+}
+body[data-scene] .google-map-preview,
+body[data-scene] .media-player {
+  border-radius: 18px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  body[data-scene] .hero,
+  body[data-scene] .block {
+    animation: scene-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+@keyframes scene-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 @media (min-width: 620px) {
   .shell { padding: 24px 22px calc(112px + env(safe-area-inset-bottom, 0px)); }
   h1 { font-size: 34px; }
   .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body[data-scene] .shell { padding: 18px 18px calc(112px + env(safe-area-inset-bottom, 0px)); }
+  body[data-scene] .hero {
+    grid-template-columns: minmax(0, 1.1fr) minmax(230px, 0.72fr);
+    min-height: 292px;
+  }
+  body[data-scene="gmail"] .scene-gmail .gmail-hero {
+    grid-template-columns: 82px minmax(0, 0.9fr) minmax(230px, 1fr);
+  }
+  .mail-rail {
+    grid-column: 1;
+    grid-row: 1;
+    grid-template-columns: 1fr;
+  }
+  .mail-rail::before {
+    top: 4px;
+    bottom: auto;
+    right: 4px;
+    width: auto;
+    height: calc((100% - 8px) / 3);
+  }
+  .mail-rail[data-mail-filter="mail-gmail"]::before {
+    transform: translateY(100%);
+  }
+  .mail-rail[data-mail-filter="mail-qq"]::before {
+    transform: translateY(200%);
+  }
+  .mail-copy {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .scene-gmail .mail-deck {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: end;
+  }
+  .mail-copy {
+    padding-top: 0;
+  }
+  body[data-scene] .scene-visual { align-self: center; }
 }
 `;
 
@@ -484,7 +1082,7 @@ const HTML_HOME_JS: string = `
   }
   var app = document.getElementById('app');
   if (!app) { return; }
-  var localState = { travel: 'all', food: 'all', trainFastest: false, trainAvailable: false, trainShowMore: false, expandedKey: '' };
+  var localState = { travel: 'all', food: 'all', mail: 'all', trainFastest: false, trainAvailable: false, trainShowMore: false, expandedKey: '' };
   function text(value) {
     return value === undefined || value === null ? '' : String(value);
   }
@@ -492,6 +1090,14 @@ const HTML_HOME_JS: string = `
     return Array.isArray(value) ? value : [];
   }
   var isBusy = text(data.isBusy).toLowerCase() === 'true';
+  var scene = sceneKey();
+  if (document.body) {
+    if (isEnhancedScene()) {
+      document.body.setAttribute('data-scene', scene);
+    } else {
+      document.body.removeAttribute('data-scene');
+    }
+  }
   var MAIL_ICON_GMAIL = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTUiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNMTIgMjB2MjhoNDBWMjBMMzIgMzUgMTIgMjBaIiBmaWxsPSIjZmZmIiBzdHJva2U9IiNkOWRkZTMiIHN0cm9rZS13aWR0aD0iMyIvPjxwYXRoIGQ9Ik0xMiAyMGwyMCAxNSAyMC0xNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZWE0MzM1IiBzdHJva2Utd2lkdGg9IjciIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48cGF0aCBkPSJNMTIgMjB2MjgiIHN0cm9rZT0iIzQyODVmNCIgc3Ryb2tlLXdpZHRoPSI3Ii8+PHBhdGggZD0iTTUyIDIwdjI4IiBzdHJva2U9IiMzNGE4NTMiIHN0cm9rZS13aWR0aD0iNyIvPjxwYXRoIGQ9Ik0xMiA0OGg0MCIgc3Ryb2tlPSIjZmJiYzA1IiBzdHJva2Utd2lkdGg9IjciLz48L3N2Zz4=';
   var MAIL_ICON_QQ = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTUiIGZpbGw9IiMyZDc4YzQiLz48cGF0aCBkPSJNMTQgMjFoMzZhNCA0IDAgMCAxIDQgNHYyNGE0IDQgMCAwIDEtNCA0SDE0YTQgNCAwIDAgMS00LTRWMjVhNCA0IDAgMCAxIDQtNFoiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNMTQgMjRsMTggMTUgMTgtMTUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzJkNzhjNCIgc3Ryb2tlLXdpZHRoPSI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PHRleHQgeD0iMzIiIHk9IjQ4IiBmaWxsPSIjMmQ3OGM0IiBmb250LWZhbWlseT0iQXJpYWwsc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZm9udC13ZWlnaHQ9IjcwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+UVE8L3RleHQ+PC9zdmc+';
   var MEDIA_ICON_YOUTUBE = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2215%22 fill=%22%23c4302b%22/%3E%3Cpath d=%22M26 21v22l20-11z%22 fill=%22%23fff%22/%3E%3C/svg%3E';
@@ -508,6 +1114,10 @@ const HTML_HOME_JS: string = `
     if (kind === 'generic') { return '通用任务'; }
     return kind;
   }
+  function sceneKey() {
+    var kind = text(data.kind);
+    return kind.length > 0 ? kind : 'generic';
+  }
   function blockKindLabel(value) {
     var kind = text(value);
     if (kind === 'travel-option') { return '出行方案'; }
@@ -516,7 +1126,9 @@ const HTML_HOME_JS: string = `
     if (kind === 'food-result') { return '餐饮'; }
     if (kind === 'dynamic-tool-connect') { return '授权'; }
     if (kind === 'generic-tool-result') { return '工具结果'; }
-    if (kind === 'social-message') { return '消息'; }
+    if (kind === 'social-hub-item') { return '社交'; }
+    if (kind === 'social-hub-draft') { return '草稿'; }
+    if (kind === 'social-hub-connection') { return '连接'; }
     return kind;
   }
   function blockTagLabel(block) {
@@ -570,6 +1182,12 @@ const HTML_HOME_JS: string = `
     }
     if (raw.indexOf('bilibili') >= 0 || raw.indexOf('哔哩哔哩') >= 0 || raw.indexOf('b 站') >= 0 || raw.indexOf('b站') >= 0) {
       return 'media-bilibili';
+    }
+    if (kind.indexOf('social-hub') === 0) {
+      var platform = [text(block && block.source), metricValue(block, ['platform'])].join(' ').toLowerCase();
+      if (platform.indexOf('slack') >= 0) { return 'social-slack'; }
+      if (platform.indexOf('wecom') >= 0 || platform.indexOf('wework') >= 0 || platform.indexOf('企业微信') >= 0) { return 'social-wecom'; }
+      if (platform === 'x' || platform.indexOf(' x') >= 0 || platform.indexOf('twitter') >= 0) { return 'social-x'; }
     }
     if (kind === 'train-option' || raw.indexOf('12306') >= 0 || raw.indexOf('train') >= 0 || raw.indexOf('高铁') >= 0) {
       return 'travel-train';
@@ -641,6 +1259,9 @@ const HTML_HOME_JS: string = `
     var key = raw.toLowerCase();
     if (key === 'ready' || key === 'success' || key === 'available') { return '已完成'; }
     if (key === 'pending' || key === 'thinking') { return '执行中'; }
+    if (key === 'tool') { return '工具结果'; }
+    if (key === 'model') { return '模型结果'; }
+    if (key === 'welcome') { return '待输入'; }
     if (key === 'needs_auth') { return '待授权'; }
     if (key === 'error' || key === 'failed' || key === 'fail') { return '失败'; }
     return raw;
@@ -671,6 +1292,168 @@ const HTML_HOME_JS: string = `
       return '还没有任务结果。发起一次查询后，卡片会在这里展开。';
     }
     return '暂无任务结果。真实返回后会显示在这里。';
+  }
+  function sceneSectionTitle() {
+    if (scene === 'gmail') { return '邮件线程'; }
+    if (scene === 'social') { return '消息卡片'; }
+    if (scene === 'thinking') { return '执行状态'; }
+    if (scene === 'welcome') { return '起始面板'; }
+    return '结果看板';
+  }
+  function sceneVisualTitle() {
+    if (scene === 'gmail') { return '收件预览舱'; }
+    if (scene === 'social') { return 'Message Flow'; }
+    if (scene === 'thinking') { return 'Running'; }
+    if (scene === 'welcome') { return 'Ready'; }
+    return 'Result Board';
+  }
+  function previewBlocks() {
+    var blocks = list(data.blocks).slice(0, 3);
+    if (blocks.length > 0) { return blocks; }
+    var timeline = list(data.timeline).slice(0, 3);
+    if (timeline.length > 0) {
+      return timeline.map(function (item, index) {
+        return {
+          id: 'timeline-' + String(index),
+          title: text(item.title) === 'prompt' ? '用户请求' : text(item.title),
+          subtitle: text(item.subtitle),
+          status: text(item.status),
+          source: ''
+        };
+      });
+    }
+    return [{
+      id: 'empty',
+      title: heroTitle(),
+      subtitle: emptyCopy(),
+      status: statusLabel(data.source),
+      source: ''
+    }];
+  }
+  function previewInitial(block, index) {
+    var raw = text(block && block.title).trim();
+    if (scene === 'gmail') { return '@'; }
+    if (scene === 'social') { return raw.length > 0 ? raw.substring(0, 1) : '聊'; }
+    if (scene === 'thinking') { return String(index + 1); }
+    return raw.length > 0 ? raw.substring(0, 1) : '#';
+  }
+  function previewSubtitle(block) {
+    return text(block && block.subtitle) || text(block && block.source) || statusLabel(block && block.status);
+  }
+  function addHeroStats(parent) {
+    var stats = add(parent, 'div', 'hero-stats');
+    var blocks = list(data.blocks);
+    addHeroStat(stats, '结果', blocks.length > 0 ? String(blocks.length) + ' 条' : '待返回');
+    addHeroStat(stats, '状态', isBusy ? '执行中' : statusLabel(data.source || data.kind));
+    addHeroStat(stats, '动作', list(data.actions).length > 0 ? String(list(data.actions).length) + ' 个' : '按卡片');
+  }
+  function addHeroStat(parent, label, value) {
+    var node = add(parent, 'div', 'hero-stat');
+    add(node, 'div', 'label', label);
+    add(node, 'div', 'value', value);
+  }
+  function sceneClassName() {
+    return 'scene-' + scene.replace(/[^a-z0-9-]/g, '');
+  }
+  function isEnhancedScene() {
+    return scene === 'gmail';
+  }
+  function addLegacyHero(parent) {
+    var hero = add(parent, 'header', 'hero');
+    var eyebrow = text(data.kind) === 'welcome' ? '' : kindLabel(data.kind);
+    if (eyebrow.length > 0) { add(hero, 'div', 'eyebrow', eyebrow); }
+    add(hero, 'h1', '', heroTitle());
+    add(hero, 'p', 'subtitle', heroSubtitle());
+    addActions(hero, data.actions);
+  }
+  function addHeroCopy(parent, className) {
+    var heroCopy = add(parent, 'div', className || 'hero-copy');
+    var eyebrow = text(data.kind) === 'welcome' || scene === 'gmail' ? '' : kindLabel(data.kind);
+    if (eyebrow.length > 0) { add(heroCopy, 'div', 'eyebrow', eyebrow); }
+    add(heroCopy, 'h1', '', heroTitle());
+    add(heroCopy, 'p', 'subtitle', heroSubtitle());
+    addActions(heroCopy, data.actions);
+    return heroCopy;
+  }
+  function addMailThread(parent, block, index) {
+    var row = add(parent, 'div', 'mail-thread depth-' + String(index));
+    add(row, 'span', 'mail-thread-dot');
+    var copy = add(row, 'div', 'mini-copy');
+    add(copy, 'div', 'mini-title', text(block && block.title) || '邮件线程');
+    add(copy, 'div', 'mini-subtitle', previewSubtitle(block));
+    add(row, 'span', 'mail-thread-meta', index === 0 ? '新' : statusLabel(block && block.status));
+  }
+  function addMailFolderIcon(parent, key) {
+    if (key === 'inbox') {
+      add(parent, 'span', 'mail-folder-icon inbox');
+      return;
+    }
+    var icon = key === 'gmail' ? MAIL_ICON_GMAIL : (key === 'qq' ? MAIL_ICON_QQ : '');
+    if (icon.length === 0) { return; }
+    var img = document.createElement('img');
+    img.className = 'mail-folder-icon';
+    img.src = icon;
+    img.alt = '';
+    img.setAttribute('aria-hidden', 'true');
+    parent.appendChild(img);
+  }
+  function addGmailHero(parent) {
+    var hero = add(parent, 'header', 'hero gmail-hero');
+    var copy = addHeroCopy(hero, 'hero-copy mail-copy');
+    var titleNode = copy.querySelector('h1') || copy;
+    var icon = add(titleNode, 'span', 'mail-hero-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    var deck = add(hero, 'aside', 'mail-deck');
+    var title = add(deck, 'div', 'mail-deck-title');
+    add(title, 'span', '', '收件预览舱');
+    add(title, 'span', 'mail-deck-kicker', String(list(data.blocks).length || previewBlocks().length) + ' 封');
+    previewBlocks().slice(0, 3).forEach(function (block, index) {
+      addMailThread(deck, block, index);
+    });
+    var rail = add(hero, 'nav', 'mail-rail');
+    rail.setAttribute('data-mail-filter', localState.mail);
+    [
+      ['收件箱', 'mail_filter_all', 'inbox'],
+      ['Gmail', 'mail_filter_gmail', 'gmail'],
+      ['QQ Mail', 'mail_filter_qq', 'qq']
+    ].forEach(function (item, index) {
+      var button = add(rail, 'button', index === 0 ? 'mail-folder primary' : 'mail-folder');
+      button.type = 'button';
+      addMailFolderIcon(button, item[2]);
+      add(button, 'span', '', item[0]);
+      button.setAttribute('data-mail-filter', item[1] === 'mail_filter_all' ? 'all' : (item[1] === 'mail_filter_gmail' ? 'mail-gmail' : 'mail-qq'));
+      button.addEventListener('click', function () {
+        handleLocalAction({ id: item[1] });
+      });
+    });
+  }
+  function renderSceneHero(parent) {
+    if (!isEnhancedScene()) { addLegacyHero(parent); return; }
+    if (scene === 'gmail') { addGmailHero(parent); return; }
+    addLegacyHero(parent);
+  }
+  function addSceneVisual(parent) {
+    var visual = add(parent, 'aside', 'scene-visual');
+    visual.setAttribute('aria-hidden', 'true');
+    var head = add(visual, 'div', 'scene-visual-title');
+    add(head, 'span', '', sceneVisualTitle());
+    add(head, 'span', 'scene-orb');
+    var stack = add(visual, 'div', 'mini-stack');
+    previewBlocks().forEach(function (block, index) {
+      var row = add(stack, 'div', 'mini-row');
+      var avatar = add(row, 'div', 'mini-avatar', previewInitial(block, index));
+      if (scene === 'gmail' && sourceKey(block) === 'mail-gmail') {
+        avatar.textContent = '';
+        var icon = document.createElement('img');
+        icon.src = MAIL_ICON_GMAIL;
+        icon.alt = '';
+        icon.setAttribute('aria-hidden', 'true');
+        avatar.appendChild(icon);
+      }
+      var copy = add(row, 'div', 'mini-copy');
+      add(copy, 'div', 'mini-title', text(block && block.title) || sceneSectionTitle());
+      add(copy, 'div', 'mini-subtitle', previewSubtitle(block));
+    });
   }
   function add(parent, tag, className, value) {
     var node = document.createElement(tag);
@@ -795,6 +1578,9 @@ const HTML_HOME_JS: string = `
   function handleLocalAction(action) {
     if (isBusy) { return false; }
     var id = text(action && action.id);
+    if (id === 'mail_filter_all') { localState.mail = 'all'; applyLocalView(); return true; }
+    if (id === 'mail_filter_gmail') { localState.mail = 'mail-gmail'; applyLocalView(); return true; }
+    if (id === 'mail_filter_qq') { localState.mail = 'mail-qq'; applyLocalView(); return true; }
     if (id === 'travel_show_all') { localState.travel = 'all'; applyLocalView(); return true; }
     if (id === 'travel_filter_train') { localState.travel = 'train'; applyLocalView(); return true; }
     if (id === 'travel_filter_flight') { localState.travel = 'flight'; applyLocalView(); return true; }
@@ -814,6 +1600,15 @@ const HTML_HOME_JS: string = `
     if (emptyNode) {
       emptyNode.style.display = totalCount > 0 && visibleCount === 0 ? '' : 'none';
     }
+  }
+  function updateMailFilterButtons() {
+    var rail = document.querySelector('.mail-rail');
+    if (rail) {
+      rail.setAttribute('data-mail-filter', localState.mail);
+    }
+    Array.prototype.slice.call(document.querySelectorAll('.mail-folder[data-mail-filter]')).forEach(function (button) {
+      button.classList.toggle('primary', (button.getAttribute('data-mail-filter') || '') === localState.mail);
+    });
   }
   function applyLocalView() {
     var cards = Array.prototype.slice.call(document.querySelectorAll('.block'));
@@ -840,6 +1635,9 @@ const HTML_HOME_JS: string = `
       if (kind === 'food-result' && localState.food === 'within_1km') {
         visible = distanceMeters(card.getAttribute('data-distance') || '') <= 1000;
       }
+      if (kind === 'generic-tool-result' && localState.mail !== 'all') {
+        visible = (card.getAttribute('data-source-key') || '') === localState.mail;
+      }
       if (kind === 'train-option' && localState.trainAvailable) {
         visible = hasAvailableText(card.getAttribute('data-availability') || '');
       }
@@ -853,6 +1651,7 @@ const HTML_HOME_JS: string = `
       card.style.display = visible ? '' : 'none';
     });
     updateVisibleCount(visibleCount, cards.length);
+    updateMailFilterButtons();
   }
   function addPairs(parent, items, className) {
     var kept = list(items).filter(function (item) {
@@ -865,6 +1664,26 @@ const HTML_HOME_JS: string = `
       add(card, 'div', 'label', item.label);
       add(card, 'div', 'value', item.value);
     });
+  }
+  function addMailExpandedDetails(parent, block) {
+    addActions(parent, block.actions);
+    var hasTechDetails = list(block && block.metrics).length > 0 ||
+      list(block && block.rows).length > 0 ||
+      text(block && block.rawPreview).length > 0;
+    if (!hasTechDetails) { return; }
+    var wrap = document.createElement('details');
+    wrap.className = 'mail-tech-details';
+    wrap.addEventListener('click', function (event) {
+      event.stopPropagation();
+    });
+    parent.appendChild(wrap);
+    add(wrap, 'summary', '', '详情');
+    var body = add(wrap, 'div', 'mail-tech-body');
+    addPairs(body, block.metrics, 'metrics');
+    addPairs(body, block.rows, 'rows');
+    if (text(block.rawPreview).length > 0) {
+      add(body, 'pre', 'raw', block.rawPreview);
+    }
   }
   function addActions(parent, actions) {
     var kept = list(actions).filter(function (action) {
@@ -927,12 +1746,8 @@ const HTML_HOME_JS: string = `
     });
   }
   app.textContent = '';
-  var shell = add(app, 'main', 'shell');
-  var hero = add(shell, 'header', 'hero');
-  var eyebrow = text(data.kind) === 'welcome' ? '' : kindLabel(data.kind);
-  if (eyebrow.length > 0) { add(hero, 'div', 'eyebrow', eyebrow); }
-  add(hero, 'h1', '', heroTitle());
-  add(hero, 'p', 'subtitle', heroSubtitle());
+  var shell = add(app, 'main', isEnhancedScene() ? 'shell ' + sceneClassName() : 'shell');
+  renderSceneHero(shell);
   var chips = list(data.chips).slice();
   if (chips.length > 0) {
     var chipbar = add(shell, 'nav', 'chipbar');
@@ -940,19 +1755,20 @@ const HTML_HOME_JS: string = `
       add(chipbar, 'span', 'chip', [text(chip.label), text(chip.value)].filter(Boolean).join(' · '));
     });
   }
-  addActions(hero, data.actions);
   var blocks = list(data.blocks);
   if (blocks.length > 0) {
-    var blocksSection = add(shell, 'section', 'section');
+    var blocksSection = add(shell, 'section', isEnhancedScene() ? 'section blocks-' + scene : 'section');
     var blocksHead = add(blocksSection, 'div', 'section-head');
-    add(blocksHead, 'h2', '', '任务结果');
+    add(blocksHead, 'h2', '', isEnhancedScene() ? sceneSectionTitle() : '任务结果');
     var countNode = add(blocksHead, 'div', 'meta', String(blocks.length) + ' 条');
     countNode.id = 'block-count';
     var filterEmpty = add(blocksSection, 'div', 'empty filter-empty', '当前筛选下暂无匹配结果。');
     filterEmpty.id = 'filter-empty';
     var trainIndex = 0;
-    blocks.forEach(function (block) {
+    blocks.forEach(function (block, index) {
       var card = add(blocksSection, 'article', 'block');
+      card.style.setProperty('--card-index', String(index));
+      card.style.animationDelay = String(Math.min(index, 6) * 42) + 'ms';
       var expandable = isExpandable(block);
       var blockSourceKey = sourceKey(block);
       card.setAttribute('data-kind', text(block.kind));
@@ -995,11 +1811,15 @@ const HTML_HOME_JS: string = `
       addGoogleMapPreview(card, block);
       var detailHost = expandable ? add(card, 'div', 'details') : card;
       addMediaEmbed(detailHost, block);
-      addActions(detailHost, block.actions);
-      addPairs(detailHost, block.metrics, 'metrics');
-      addPairs(detailHost, block.rows, 'rows');
-      if (text(block.rawPreview).length > 0) {
-        add(detailHost, 'pre', 'raw', block.rawPreview);
+      if (scene === 'gmail' && text(block.kind) === 'generic-tool-result') {
+        addMailExpandedDetails(detailHost, block);
+      } else {
+        addActions(detailHost, block.actions);
+        addPairs(detailHost, block.metrics, 'metrics');
+        addPairs(detailHost, block.rows, 'rows');
+        if (text(block.rawPreview).length > 0) {
+          add(detailHost, 'pre', 'raw', block.rawPreview);
+        }
       }
       addCredentialForm(detailHost, block);
     });
@@ -1028,7 +1848,7 @@ const HTML_HOME_JS: string = `
   if (history.length > 0) {
     var historySection = add(shell, 'section', 'section');
     var historyHead = add(historySection, 'div', 'section-head');
-    add(historyHead, 'h2', '', '最近上下文');
+    add(historyHead, 'h2', '', '上下文');
     history.forEach(function (item) {
       var node = add(historySection, 'article', 'history-item');
       add(node, 'div', 'meta', text(item.role));
@@ -1039,6 +1859,12 @@ const HTML_HOME_JS: string = `
 `;
 
 export function renderHtmlHomeDocument(document: HtmlHomeDocument, isBusy: boolean = false): string {
+  if (shouldRenderCalendarHomeDocument(document)) {
+    return renderCalendarHomeDocument(document, isBusy);
+  }
+  if (shouldRenderMediaHomeDocument(document)) {
+    return renderMediaHomeDocument(document, isBusy);
+  }
   if (shouldRenderTravelHomeDocument(document)) {
     return renderTravelHomeDocument(document, isBusy);
   }
@@ -1063,6 +1889,8 @@ export function renderHtmlHomeDocument(document: HtmlHomeDocument, isBusy: boole
   };
   const json = escapeScriptJson(JSON.stringify(renderDocument));
   const title = escapeHtmlText(document.title.length > 0 ? document.title : document.kind);
+  const enhancedScene: boolean = document.kind === 'gmail';
+  const bodyScene = enhancedScene ? ` data-scene="${escapeHtmlText(document.kind)}"` : '';
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1071,7 +1899,7 @@ export function renderHtmlHomeDocument(document: HtmlHomeDocument, isBusy: boole
 <title>${title}</title>
 <style>${HTML_HOME_CSS}</style>
 </head>
-<body>
+<body${bodyScene}>
 <div id="app"></div>
 <script id="home-data" type="application/json">${json}</script>
 <script>${HTML_HOME_JS}</script>

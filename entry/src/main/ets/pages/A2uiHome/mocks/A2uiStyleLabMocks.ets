@@ -14,6 +14,7 @@ import {
   A2uiRuntimeDataModel,
   A2uiSurfaceState
 } from '../../../model/A2uiTypes';
+import { emptySocialHub } from '../../../model/SocialHubTypes';
 
 export interface A2uiStyleLabCase {
   id: string;
@@ -43,11 +44,6 @@ function modelJson(
     flights: [],
     travelOptions: [],
     foods: foods,
-    social: {
-      messages: [],
-      replies: [],
-      diagnostics: []
-    },
     thoughts: thoughts,
     summary: {
       text: '',
@@ -82,7 +78,8 @@ function modelJson(
       registrationUrl: '',
       actions: []
     },
-    genericToolResults: []
+    genericToolResults: [],
+    socialHub: emptySocialHub()
   };
   return JSON.stringify(model);
 }

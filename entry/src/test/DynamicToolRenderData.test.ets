@@ -7,6 +7,7 @@ import {
   A2uiGenericToolResultData
 } from '../main/ets/model/A2uiTypes';
 import { dynamicToolConnect, genericToolResults } from '../main/ets/model/A2uiData';
+import { emptySocialHub } from '../main/ets/model/SocialHubTypes';
 
 function baseModel(): A2uiRuntimeDataModel {
   return {
@@ -15,7 +16,6 @@ function baseModel(): A2uiRuntimeDataModel {
     flights: [],
     travelOptions: [],
     foods: [],
-    social: { messages: [], replies: [], diagnostics: [] },
     thoughts: [],
     summary: { text: '', toolName: '', dataLabel: '', count: 0 },
     trip: { rows: [] },
@@ -45,7 +45,8 @@ function baseModel(): A2uiRuntimeDataModel {
         rows: [{ label: 'Result', value: 'Fixture row' }],
         rawPreview: '{"ok":true}'
       }
-    ]
+    ],
+    socialHub: emptySocialHub()
   };
 }
 
